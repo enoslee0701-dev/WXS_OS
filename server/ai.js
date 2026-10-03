@@ -145,4 +145,35 @@ async function analyzeIdea(S, ideaId) {
   return { payload: o, usage: r.usage };
 }
 
-module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, snapshot, MODEL, LIMIT };
+/* 老板决策建议（按需）：只是建议，决定由老板做 */
+const ADVICE_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['verdict', 'label', 'reasons', 'risks', 'checks', 'note'],
+  properties: {
+    verdict: { type: 'string', enum: ['approved', 'needs_info', 'rejected'] },
+    label: { type: 'string', description: '一句话结论，例如「建议有条件批准」，12 字以内' },
+    reasons: { type: 'array', items: { type: 'string' }, description: '理由，2–4 条，引用原文或资料里的事实' },
+    risks: { type: 'array', items: { type: 'string' }, description: '要注意的风险，1–3 条' },
+    checks: { type: 'array', items: { type: 'string' }, description: '老板拍板前需要确认的问题，2–4 条' },
+    note: { type: 'string', description: '可以直接用的批语，口吻是老板对团队说话，60 字以内' }
+  }
+};
+async function adviseDecision(S, decisionId) {
+  const dc = S.decisions.find(x => x.id === decisionId); if (!dc) throw { status: 404, error: '决策不存在' };
+  const owner = TM.usersWith(S, 'owner')[0], view = TM.viewFor(S, owner), L = TM.L;
+  const d = dc.ideaId ? S.ideas.find(x => x.id === dc.ideaId) : null;
+  const sm = d ? TM.latestSummary(S, d.id, 'analysis') : null;
+  const disc = d ? S.suggestions.filter(x => x.ideaId === d.id).map(x => '- ' + TM.name(S, x.authorId) + '：' + String(x.body).slice(0, 300)).join('\n') : '';
+  const system = [
+    { type: 'text', text: BASE + `\n这次的任务：给老板一份决策建议。只是建议，决定由老板做；依据老板自己的资料和原则判断，信息不够就建议先补充。` + kbBlock(view, owner, S), cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: snapshot(view, owner) }
+  ];
+  const msg = `需要老板决策：${dc.question}\n类型：${L.decision[dc.kind] || dc.kind}\n上报人：${TM.name(S, dc.requestedBy)}\n超预算阈值：${S.settings.budgetThreshold || '未设置'} 元` +
+    (d ? `\n\n想法：${d.title || ''}\n原文：${String(d.note || '').slice(0, 6000)}` : '') +
+    (sm ? `\n\n整理稿：${JSON.stringify({ overview: sm.payload.overview, goal: sm.payload.goal, issues: sm.payload.issues, open_questions: sm.payload.open_questions })}` : '') +
+    (disc ? `\n\n团队讨论：\n${disc}` : '');
+  const r = await call({ system, messages: [{ role: 'user', content: msg }], schema: ADVICE_SCHEMA, effort: 'high', maxTokens: 8000 });
+  let o; try { o = JSON.parse(r.text); } catch (e) { throw { status: 502, error: 'AI 返回的格式不对' }; }
+  return { advice: o, usage: r.usage };
+}
+
+module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, adviseDecision, snapshot, MODEL, LIMIT };

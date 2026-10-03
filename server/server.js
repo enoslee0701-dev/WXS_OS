@@ -204,6 +204,16 @@ const routes = {
     if (!TM.kbCan(S, me.uid)) return [403, { error: '只有老板或管理员可以整理知识库' }];
     return aiRun(me, 'kb', () => AI.kbOrganize(S, me.uid, String(b.topic || ''), String(b.text || '')));
   },
+  'POST /api/ai/advice': async (req, url, b, me) => {
+    if (!isOwner(me.uid)) return [403, { error: '决策建议只给老板' }];
+    const id = String(b.id || ''); if (!S.decisions.some(x => x.id === id)) return [404, { error: '决策不存在' }];
+    const [code, out] = await aiRun(me, 'advice', () => AI.adviseDecision(S, id));
+    if (code !== 200) return [code, out];
+    const n0 = S.notifications.length, r = TM.act(S, 'agent', 'decision.aiAdvice', { id, model: AI.MODEL, advice: out.advice });
+    if (!r.ok) return [409, { error: r.error }];
+    changed(n0);
+    return [200, { ok: true, ...stateFor(me.uid) }];
+  },
   /* 账号管理：老板 / 管理员给成员分派登录账号；管理员不能管老板和其他管理员 */
   'GET /api/accounts': async (req, url, b, me) => {
     if (!isMgr(me.uid)) return [403, { error: '只有老板或管理员可以管理账号' }];

@@ -1026,6 +1026,14 @@ var TM = (function () {
     ev(s, { ideaId: d.id, actor: 'agent', action: 'ai.analyze.real', text: 'Claude 完成整理 · 建议：' + L.route[np.suggested_route] });
     return {};
   };
+  /* Claude 给老板的决策建议：服务器以系统身份写到决策上（换设备也能看到，不重复收费） */
+  A['decision.aiAdvice'] = function (s, uid, p) {
+    need(uid === 'agent', '只有系统可以写入 AI 建议');
+    var dc = s.decisions.find(function (x) { return x.id === p.id; }); need(dc, '决策不存在');
+    var a = p.advice || {}, str = function (v, n) { return txt(v).slice(0, n); }, arr = function (v) { return (Array.isArray(v) ? v : []).map(function (x) { return str(x, 120); }).filter(Boolean).slice(0, 6); };
+    dc.ai = { verdict: ['approved', 'needs_info', 'rejected'].indexOf(a.verdict) >= 0 ? a.verdict : 'needs_info', label: str(a.label, 20) || '建议', reasons: arr(a.reasons), risks: arr(a.risks), checks: arr(a.checks), note: str(a.note, 300), model: str(p.model, 40), at: now(s) };
+    return {};
+  };
   /* 成员在 App 里注销账号（服务器以系统身份调用）：通知老板 */
   A['account.deactivated'] = function (s, uid, p) {
     need(uid === 'agent', '只有系统可以记录注销');

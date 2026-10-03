@@ -8,7 +8,7 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', d => b
   calls++; const body = JSON.parse(b || '{}');
   if (mode === 'down') { res.writeHead(500, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ type: 'error', error: { type: 'api_error', message: 'x' } })); }
   const kb = body.output_config && body.output_config.format;
-  const text = kb ? JSON.stringify({ title: '老板口述：做决定', secs: [{ key: 'decide', items: ['新想法先小步试点两周，看反馈再决定。'] }, { key: 'money', items: ['单笔超过五千元的支出要先问老板。'] }] })
+  const text = kb && kb.schema.properties.verdict ? JSON.stringify({ verdict: 'needs_info', label: '建议先补充信息', reasons: ['没写预算'], risks: ['成本高'], checks: ['预算上限'], note: '先出方案再报我。' }) : kb && kb.schema.properties.suggested_route ? JSON.stringify({ title: '整理', summary: 's', background: 'b', problem: 'p', goal: 'g', overview: 'o', issues: [], directions: [], category: 'other', relation_to_direction: '', open_questions: [], exception_flags: [], suggested_route: 'operator_direct', suggested_tasks: [], confidence: 0.5 }) : kb ? JSON.stringify({ title: '老板口述：做决定', secs: [{ key: 'decide', items: ['新想法先小步试点两周，看反馈再决定。'] }, { key: 'money', items: ['单笔超过五千元的支出要先问老板。'] }] })
     : '**结论**：本周最需要关注的是「清醒」App 原型。\n\n- 负责人陈立，进度 0%\n- 建议今天和何静对一下首页设计';
   setTimeout(() => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ id: 'm', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 } })); }, 300);
 }); });
@@ -45,6 +45,16 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', d => b
   ok(await until(async () => (await p.locator('.ai-m.bot').last().textContent()).includes('模拟输出')), '出错后退回规则版回答');
   mode = 'ok';
   await p.evaluate(() => document.querySelectorAll('.ai-scrim').forEach(x => x.click())); await p.waitForTimeout(200);
+
+  // ---- 老板决策：让 Claude 分析
+  const dId = await p.evaluate(() => { const d = window.__tm.S.decisions.find(x => x.status === 'pending'); return d && d.ideaId; });
+  await p.goto(URL + '#/idea/' + dId); await p.waitForTimeout(300);
+  await p.locator('[data-do=decide]').first().click(); await p.waitForSelector('.sheet [data-do=advAI]');
+  ok((await p.textContent('.sheet .ix2-advf')).includes('模拟'), '先显示规则版建议，并有「让 Claude 分析」');
+  const n3 = calls; await p.click('.sheet [data-do=advAI]');
+  ok(await until(async () => (await p.locator('.sheet .ix2-advf').textContent().catch(() => '')).includes('Claude 建议')), '弹窗里换成 Claude 建议');
+  ok(calls === n3 + 1 && (await p.textContent('.sheet .ix2-advh b')).includes('建议先补充信息') && await p.locator('.sheet [data-do=advAI]').count() === 0, '显示 Claude 的结论，按钮消失');
+  await p.evaluate(() => document.querySelectorAll('.scrim.on').forEach(x => x.click())); await p.waitForTimeout(150);
 
   // ---- 口述整理成规则：Claude 结构化输出
   await p.goto(URL + '#/kb/voice'); await p.waitForTimeout(200);

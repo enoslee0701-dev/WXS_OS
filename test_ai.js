@@ -11,6 +11,7 @@ const mock = http.createServer((req, res) => {
     const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
     if (mode === '429') return reply(429, { type: 'error', error: { type: 'rate_limit_error', message: 'slow down' } });
     const fmt = body.output_config && body.output_config.format;
+    if (fmt && fmt.schema.properties.verdict) return setTimeout(() => reply(200, { id: 'msg_d', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ verdict: 'needs_info', label: '建议先补充信息', reasons: ['原文没有写预算'], risks: ['招错人代价高'], checks: ['每月预算上限'], note: '请先出招聘方案再报我。' }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 600, output_tokens: 90 } }), 30);
     if (fmt && fmt.schema.properties.suggested_route) return setTimeout(() => reply(200, { id: 'msg_a', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ title: '全队退修会', summary: '十二月办退修会', background: '团队需要休整', problem: '日期未定', goal: '定下日期和场地', overview: 'Claude：建议十二月中旬办两天一夜的退修会。', issues: ['场地未定'], directions: ['先定日期', '再订场地'], category: 'admin', relation_to_direction: '无', open_questions: ['具体日期？'], exception_flags: ['over_budget'], suggested_route: 'to_owner', suggested_tasks: [{ title: '找三个场地', expected_output: '候选清单', acceptance_criteria: '老板选定', suggested_due_days: 7 }], confidence: 0.8 }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 500, output_tokens: 200 } }), mode === 'slow' ? 1500 : 50);
     const isKb = fmt;
     const text = isKb ? JSON.stringify({ title: '老板口述：做决定、钱和预算', secs: [{ key: 'decide', items: ['新想法先试点两周，再决定是否推开。'] }, { key: 'money', items: ['单笔超过五千元的支出要先问老板。'] }, { key: 'bogus', items: ['x'] }] }) : '结论：「新官网」进度落后，建议本周和小李对一下首页设计。';
@@ -77,12 +78,21 @@ async function team(api) {
   ok(q.body.output_config.format.type === 'json_schema' && q.body.output_config.format.schema.required.includes('secs'), '口述整理用结构化输出');
   ok((await api('POST', '/api/ai/kb', { text: 'x' }, t.dev)).status === 403, '执行者不能整理知识库');
 
+  // 决策建议：只给老板，写到决策上
+  const pend = (await api('GET', '/api/state', null, t.boss)).state.decisions.find(x => x.status === 'pending');
+  ok(!!pend, '演示数据里有待决策');
+  ok((await api('POST', '/api/ai/advice', { id: pend.id }, t.adm)).status === 403, '管理员不能要决策建议');
+  r = await api('POST', '/api/ai/advice', { id: pend.id }, t.boss);
+  const dcA = r.state && r.state.decisions.find(x => x.id === pend.id);
+  ok(r.status === 200 && dcA.ai && dcA.ai.verdict === 'needs_info' && dcA.ai.note.includes('招聘方案'), 'Claude 决策建议写到决策上');
+  const advQ = seen[seen.length - 1];
+  ok(advQ.body.output_config.format.schema.required.includes('verdict') && advQ.body.output_config.effort === 'high', '决策建议用结构化输出、较高思考强度');
+  ok((await api('POST', '/api/ai/advice', { id: 'D-none' }, t.boss)).status === 404, '决策不存在');
   mode = 'refusal'; r = await api('POST', '/api/ai/ask', { q: 'x' }, t.adm);
   ok(r.status === 422 && /没有回答/.test(r.error), '拒答有友好提示');
   mode = '429'; r = await api('POST', '/api/ai/ask', { q: 'x' }, t.adm);
   ok(r.status === 429 && /太忙/.test(r.error), '限流有友好提示');
   mode = 'ok';
-  r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 200, '老板第 3 次');
   r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 200, '老板第 4 次');
   r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 429 && /用完/.test(r.error), '超过每日上限');
   // 后台整理稿：提交想法后规则稿立刻出现，随后换成 Claude 稿

@@ -207,6 +207,8 @@ var TMS = (function () {
   var aiSt = null;
   api.aiStatus = function () { if (!api.loggedIn()) return Promise.resolve({ enabled: false }); return aiSt || (aiSt = req('GET', '/api/ai/status').catch(function () { aiSt = null; return { enabled: false }; })); };
   api.aiAsk = function (q, history) { return req('POST', '/api/ai/ask', { q: q, history: history || [] }); };
+  // 决策弹窗开着时常规同步会推迟，这里直接应用（用户就是在等这份结果）
+  api.aiAdvice = function (id) { return req('POST', '/api/ai/advice', { id: id }).then(function (r) { if (!api.outbox.length && !busy && r.version >= api.version && window.__tm) { api.version = r.version; put('tm_ver', r.version); window.__tm.setState(r.state); } return r; }); };
   api.aiKb = function (topic, text) { return req('POST', '/api/ai/kb', { topic: topic, text: text }); };
   api.flush = flush; api.pull = pull;
   return api;
