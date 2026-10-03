@@ -1,0 +1,16 @@
+{
+  "appId": "com.teamops.app",
+  "appName": "团队协同",
+  "webDir": "dist/app",
+  "backgroundColor": "#FFFFFF",
+  "ios": {
+    "contentInset": "never",
+    "scheme": "TeamOps",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 3000, "launchAutoHide": false, "backgroundColor": "#FFFFFF", "showSpinner": false },
+    "Keyboard": { "resize": "native", "resizeOnFullScreen": true },
+    "StatusBar": { "overlaysWebView": true, "style": "LIGHT" }
+  }
+}
