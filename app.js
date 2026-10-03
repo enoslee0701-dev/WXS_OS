@@ -2868,13 +2868,18 @@
     document.body.classList.toggle('no-dock', c.name === 'inbox' || c.name === 'stat' || c.name === 'project' || c.name === 'assign' || (c.name === 'new' && !!c.id) || (c.name === 'todo' && !!c.sub));
     var actHTML = acts.length ? '<div class="actions">' + acts.map(function (a) { return '<button class="btn ' + (a[2] || '') + '" data-do="' + a[1] + '"' + (a[3] ? ' data-arg="' + a[3] + '"' : '') + '>' + esc(a[0]) + '</button>'; }).join('') + '</div>' : '';
     document.body.classList.toggle('has-actions', !!acts.length);
+    // 同一页面重新渲染（例如收到别人的改动）时，保留折叠区和 <details> 的展开状态
+    var sameView = lastView === location.hash, folds = sameView ? Array.prototype.map.call(app.querySelectorAll('.ix2-fold, details'), function (e) { return e.classList.contains('open') || e.open; }) : null;
+    lastView = location.hash;
     app.innerHTML = wordsFix((home ? '' : DEMO +
       '<div class="top' + (back ? ' detail' : '') + '">' + (back ? '<button class="circle back" data-do="back" aria-label="返回"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>' : '') +
       '<h1>' + esc(title) + '</h1><button class="me-chip" data-do="switch" aria-label="切换账号，当前 ' + esc(u.name) + '">' + av(me) + '<span>' + esc(u.name) + '　' + esc(L.role[role()]) + '</span></button></div>') +
       '<main>' + body + '</main>' + actHTML +
       '<div class="dock"><nav class="tabs" aria-label="主导航">' + TABS.filter(function (t) { var cp = myCaps(); return t[0] === 'ideas' ? cp.ideas : t[0] === 'work' ? cp.work : true; }).map(function (t) { return '<a href="#/' + t[0] + '" class="' + (tabKey === t[0] ? 'on' : '') + '"' + (tabKey === t[0] ? ' aria-current="page"' : '') + '><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (tabKey === t[0] && TAB_ON[t[0]] ? TAB_ON[t[0]] : t[2]) + '</svg></span>' + t[1] + (t[0] === 'tasks' && nT ? '<span class="badge">' + nT + '</span>' : '') + '</a>'; }).join('') + '</nav></div>');
+    if (folds) { var fe = app.querySelectorAll('.ix2-fold, details'); if (fe.length === folds.length) Array.prototype.forEach.call(fe, function (e, i) { if (!folds[i]) return; if (e.tagName === 'DETAILS') e.open = true; else { e.classList.add('open'); var b = e.querySelector('[data-do=ixFold]'); if (b) { b.setAttribute('aria-expanded', 'true'); var sp = b.querySelector('span'); if (sp) sp.textContent = '收起'; } } }); }
     afterRender();
   }
+  var lastView = null;
   Object.keys(QUICK).forEach(function (k) { DO[k] = QUICK[k]; });
   DO.goAssignWork = function (el) { asg = freshAsg(el.dataset.arg); location.hash = '#/assign/' + el.dataset.arg; };
   Object.keys(PDO).forEach(function (k) { DO[k] = PDO[k]; });

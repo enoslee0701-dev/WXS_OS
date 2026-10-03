@@ -100,6 +100,16 @@ let srv = null;
   ok(await until(async () => B.evaluate(() => { const i = document.querySelector('.sheet img'); return i && i.complete && i.naturalWidth > 0 && /\/api\/files\//.test(i.src); })), '员工在另一台设备打开了老板上传的图片');
   await B.evaluate(() => document.querySelectorAll('.scrim.on').forEach(x => x.click()));
 
+  // ---- 收到别人的改动时，正在看的展开内容不会被收起
+  await A.goto(URL + '#/idea/' + dr.r.id); await A.waitForTimeout(250);
+  const fold = A.locator('.ix2-fold [data-do=ixFold]').first();
+  if (await fold.count()) {
+    await fold.click(); await A.waitForTimeout(100);
+    const nOpen = await A.locator('.ix2-fold.open').count();
+    await api('POST', '/api/act', { name: 'todo.create', payload: { title: '触发一次同步', date: '2026-10-03' } }, bossTok);
+    await A.waitForTimeout(800);
+    ok(nOpen >= 1 && await A.locator('.ix2-fold.open').count() === nOpen, '同步刷新后展开的内容保持展开');
+  }
   // ---- 离线：员工记待办，联网后自动补发
   await B.context().setOffline(true);
   await B.goto(URL + '#/todo/new/manual').catch(() => {}); await B.waitForTimeout(200);
