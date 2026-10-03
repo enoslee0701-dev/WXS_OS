@@ -14,6 +14,9 @@
   S = load();
   TM.migrate(S);
   var PHOTOS = { u_owner: '__ENOS__' };
+  /* 真实 AI：服务器模式下老板 / 管理员可用（服务器配置了密钥时）；否则一律规则模拟 */
+  var AI_ON = false;
+  if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.aiStatus().then(function (r) { AI_ON = !!(r && r.enabled); if (AI_ON && aiS && aiS.open) renderAI(); });
   /* 附件：本机预览用 blob URL；服务器模式下同时在后台上传（localId 即服务器文件 ID），别的设备从服务器读取 */
   function keepBlob(id, data) { var u = URL.createObjectURL(data); if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.upload(id, data, data && data.name); return u; }
   function blobUrl(id) { return id ? (blobs[id] || (typeof TMS !== 'undefined' && TMS.loggedIn() ? TMS.fileUrl(id) : null)) : null; }
@@ -1708,10 +1711,10 @@
     L3.innerHTML = '<div class="ai-scrim" data-do="aiClose"></div><section class="ai-panel' + (chat ? ' chat' : '') + '" role="dialog" aria-modal="true" aria-label="AI 助手">' + head + '<div class="ai-scroll">' + body + '</div>' +
       '<form class="ai-input" data-aiform="1"><div class="ai-field">' + hi('spark', 1.5) + '<input type="text" name="q" autocomplete="off" placeholder="' + (aiS.mode === 'recall' ? '想找什么？说个关键词或时间，比如「上周的录音」' : aiS.mode ? esc(CAPS[aiS.mode] ? '粘贴或输入内容，用于「' + CAPS[aiS.mode][0] + '」' : '输入内容') : '有什么想法？尽管告诉我…') + '" value="' + esc(aiS.input) + '"><button type="submit" class="ai-send" aria-label="发送">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/></svg></button></div>' +
       '<div class="ai-tools"><label>' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>' + '上传文件<input type="file" accept=".txt,.md,text/plain,text/markdown" data-aifile="1"></label><button type="button" data-do="aiVoice"' + (aiS.listening ? ' class="on"' : '') + '>' + ni('mic', 1.7) + (aiS.listening ? '正在听…' : '语音输入') + '</button><button type="button" data-do="aiPhoto">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6L16.5 7h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.5"/></svg>' + '拍照识别</button></div></form>' +
-      '<p class="ai-disc">AI 可能会生成不准确的信息，请结合实际情况判断（演示版为规则模拟）</p></section>';
+      '<p class="ai-disc">AI 可能会生成不准确的信息，请结合实际情况判断' + (AI_ON ? '（由 Claude 回答）' : '（演示版为规则模拟）') + '</p></section>';
     requestAnimationFrame(function () { var p = L3.querySelector('.ai-panel'); if (p) p.classList.add('on'); var m = document.getElementById('aimsgs'); if (m) m.scrollTop = m.scrollHeight; });
   }
-  function botSay(html, real) { aiS.msgs.push({ who: 'bot', html: html + (real ? '<span class="ai-sim">检索自你能看到的真实数据</span>' : '<span class="ai-sim">模拟输出</span>') }); }
+  function botSay(html, real) { aiS.msgs.push({ who: 'bot', html: html + (real === 'ai' ? '<span class="ai-sim ai-real">Claude 回答 · 依据你能看到的数据</span>' : real ? '<span class="ai-sim">检索自你能看到的真实数据</span>' : '<span class="ai-sim">模拟输出</span>') }); }
   function userSay(t) { aiS.msgs.push({ who: 'me', html: esc(t).replace(/\n/g, '<br>') }); }
   function li(arr) { return arr.length ? '<ul>' + arr.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>' : '<p class="muted">无</p>'; }
   /* —— 能力：基于真实数据 —— */
@@ -1821,6 +1824,22 @@
     if (aiS.mode === 'recall') { capRecall(text); return; }
     if (aiS.mode && CAP_RUN[aiS.mode]) { var m = aiS.mode; aiS.mode = null; CAP_RUN[m](text); return; }
     if (/找回|找一下|在哪|忘了|上次.*(录|传|说)|之前.*(录|传|记)/.test(text)) return capRecall(text);
+    if (/纪要|会议记录/.test(text) || /拆解|拆成|分配/.test(text) || parseTodos(text).some(function (t) { return t.time || t.people.length; })) { /* 结构化动作：继续用规则版（会生成可点击按钮） */ }
+    else if (AI_ON) return aiReal(text, function () { aiRuleAnswer(text); });
+    aiRuleAnswer(text);
+  }
+  /* 交给 Claude：先显示「思考中」，回来后替换；失败退回规则答案 */
+  function aiReal(text, fallback) {
+    var hist = aiS.msgs.slice(0, -1).filter(function (m) { return !m.pending; }).slice(-8).map(function (m) { var d = document.createElement('div'); d.innerHTML = m.html; var x = d.querySelector('.ai-sim'); if (x) x.remove(); return { role: m.who === 'me' ? 'user' : 'assistant', text: d.textContent.trim() }; });
+    var msg = { who: 'bot', html: '<span class="ai-typing"><i></i><i></i><i></i></span> 正在思考…', pending: true }; aiS.msgs.push(msg); aiS.lastText = text;
+    TMS.aiAsk(text, hist).then(function (r) {
+      msg.pending = false; msg.html = '<div class="ai-md">' + kbMd(r.text || '') + '</div>' + (r.truncated ? '<p class="muted">（回答较长，已截断）</p>' : '') + '<span class="ai-sim ai-real">Claude 回答 · 依据你能看到的数据</span>';
+      aiS.lastCopy = r.text || ''; renderAI();
+    }, function (e) {
+      aiS.msgs.splice(aiS.msgs.indexOf(msg), 1); toast((e && e.error) || 'AI 暂时不可用', true); fallback(); renderAI();
+    });
+  }
+  function aiRuleAnswer(text) {
     if (/周报/.test(text)) return capWeekly();
     if (/进度|风险|项目怎么样/.test(text)) return capProgress();
     if (/负载|谁有空|谁忙|协作/.test(text)) return capLoad();
@@ -1829,6 +1848,7 @@
     if (/拆解|拆成|分配/.test(text)) return capSplit(text);
     if (/方案|怎么做|建议/.test(text)) return capOptions(text);
     if (parseTodos(text).some(function (t) { return t.time || t.people.length; })) return capTodos(text);
+    if (AI_ON) { botSay('AI 暂时没回应，可以换个说法再问一次。'); aiS.lastText = text; return; }
     botSay('我先帮你记下了。演示版能做这些：写周报、项目进度分析、团队负载、今日优先级、会议纪要、拆待办、任务拆解、方案建议、写通知和议程。' + (myCaps().recordIdea ? '<br><button class="ai-act" data-do="aiSaveIdea">把这句话存成想法草稿</button>' : ''));
     aiS.lastText = text;
   }
@@ -2940,7 +2960,7 @@
     var main = list.filter(function (x) { return x.key !== 'quote' && x.key !== 'other'; }).slice(0, 2).map(function (x) { return x.name.replace(/^我/, ''); });
     return { title: ('老板口述：' + (main.length ? main.join('、') : '做事原则')).slice(0, 40), secs: list, count: n };
   }
-  function kbvMd(o) { return '# ' + o.title + '\n\n> 来源：老板口述录音，AI 整理成条（演示：规则模拟），已由老板核对。\n' + o.secs.filter(function (x) { return x.items.length; }).map(function (x) { return '\n## ' + x.name + '\n' + x.items.map(function (t) { return '- ' + t; }).join('\n'); }).join('\n') + '\n'; }
+  function kbvMd(o) { return '# ' + o.title + '\n\n> 来源：老板口述录音，' + (o.real ? 'Claude 整理成条' : 'AI 整理成条（演示：规则模拟）') + '，已由老板核对。\n' + o.secs.filter(function (x) { return x.items.length; }).map(function (x) { return '\n## ' + x.name + '\n' + x.items.map(function (t) { return '- ' + t; }).join('\n'); }).join('\n') + '\n'; }
   function kbvSyncText() { var ta = document.getElementById('kbv-text'); if (ta && !kbv.rec) kbv.text = ta.value; }
   function kbvKeep() { var o = kbv.out; if (!o) return; var tl = document.getElementById('kbv-title'), md = document.getElementById('kbv-md'), rw = document.getElementById('kbv-raw'); if (tl) o.title = tl.value; if (md) o.md = md.value; if (rw) kbv.raw = rw.checked; }
   function kbvStart() {
@@ -2992,6 +3012,15 @@
   DO.kbvMake = function () {
     if (kbv.rec) kbvStop(true); kbvSyncText();
     var t = kbv.text.trim(); if (t.length < 15) { render(); return toast('先说几句，内容太少整理不出规则', true); }
+    if (AI_ON && !kbv.ruleOnly) {
+      openSheet('AI 正在整理', '<ol class="a-prog"><li class="ok">读取口述内容</li><li id="kp-ai">Claude 正在断句、去口头语、按主题归类…</li></ol>', '请稍候', function () {});
+      var b0 = document.querySelector('.sheet footer button[type=submit]'); if (b0) b0.disabled = true;
+      TMS.aiKb(kbv.topic, t).then(function (o2) {
+        if (!o2.count) { closeSheet(); return toast('没有找到能整理成规则的句子，再说具体一点', true); }
+        o2.real = true; kbv.out = o2; kbv.mdMode = false; closeSheet(); render(); window.scrollTo(0, 0);
+      }, function (e) { closeSheet(); toast(((e && e.error) || 'AI 暂时不可用') + '，已改用规则整理', true); kbv.ruleOnly = true; DO.kbvMake(); kbv.ruleOnly = false; });
+      return;
+    }
     var o = kbOrganize(t, kbv.topic); if (!o.count) return toast('没有找到能整理成规则的句子，再说具体一点', true);
     var steps = ['断句、去掉口头语', '按主题归类', '整理成条'];
     openSheet('AI 正在整理', '<ol class="a-prog">' + steps.map(function (x, i) { return '<li id="kp' + i + '">' + x + '</li>'; }).join('') + '</ol><div class="callout">演示版：整理由规则模拟完成，不调用真实大模型。</div>', '请稍候', function () {});

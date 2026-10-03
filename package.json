@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node build.js",
     "dev": "node scripts/dev.js",
-    "test": "node test.js && node test_server.js",
+    "test": "node test.js && node test_server.js && node test_ai.js",
     "e2e": "node scripts/e2e.js",
     "check": "npm run build && npm test && npm run e2e",
     "setup": "npx playwright install chromium",
@@ -22,6 +22,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@capacitor/app": "^8.1.2",
     "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.5.2",

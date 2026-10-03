@@ -188,6 +188,11 @@ var TMS = (function () {
   api.fileUrl = function (id) { return api.loggedIn() && id ? api.base + '/api/files/' + encodeURIComponent(id) + '?token=' + encodeURIComponent(api.token) : null; };
   if (api.loggedIn()) { window.addEventListener('load', pump); window.addEventListener('online', function () { upDelay = 3000; pump(); }); }
 
+  /* ---------- 真实 AI（服务器代理）：未启用或出错时由调用方退回规则模拟 ---------- */
+  var aiSt = null;
+  api.aiStatus = function () { if (!api.loggedIn()) return Promise.resolve({ enabled: false }); return aiSt || (aiSt = req('GET', '/api/ai/status').catch(function () { aiSt = null; return { enabled: false }; })); };
+  api.aiAsk = function (q, history) { return req('POST', '/api/ai/ask', { q: q, history: history || [] }); };
+  api.aiKb = function (topic, text) { return req('POST', '/api/ai/kb', { topic: topic, text: text }); };
   api.flush = flush; api.pull = pull;
   return api;
 })();

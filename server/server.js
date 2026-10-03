@@ -7,6 +7,7 @@
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 const TM = require('../engine.js');
+const AI = require('./ai.js');
 
 const PORT = +process.env.PORT || 8787, HOST = process.env.HOST || '0.0.0.0';
 const DATA = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS creds(uid TEXT PRIMARY KEY, login TEXT UNIQUE COLLATE NOCASE, salt TEXT, hash TEXT, must_change INTEGER DEFAULT 1, disabled INTEGER DEFAULT 0, created INTEGER, last_login INTEGER);
 CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, uid TEXT, created INTEGER, seen INTEGER, agent TEXT);
 CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY, uid TEXT, name TEXT, type TEXT, size INTEGER, created INTEGER);
+CREATE TABLE IF NOT EXISTS ai_log(at INTEGER, uid TEXT, kind TEXT, in_tok INTEGER, out_tok INTEGER, ok INTEGER);
 CREATE TABLE IF NOT EXISTS ops(seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, uid TEXT, action TEXT, payload TEXT, ok INTEGER, error TEXT);`);
 const q = (sql) => db.prepare(sql);
 const getMeta = (k) => { const r = q('SELECT v FROM meta WHERE k=?').get(k); return r ? r.v : null; };
@@ -124,6 +126,13 @@ const routes = {
     q('DELETE FROM sessions WHERE uid=? AND token<>?').run(me.uid, me.token);
     return [200, { ok: true }];
   },
+  /* 真实 AI：没配置密钥或没有权限时 enabled=false，客户端用规则模拟 */
+  'GET /api/ai/status': async (req, url, b, me) => [200, { enabled: AI.enabled() && AI.allowed(S, me.uid), configured: AI.enabled(), model: AI.MODEL }],
+  'POST /api/ai/ask': async (req, url, b, me) => aiRun(me, 'ask', () => AI.ask(S, me.uid, String(b.q || ''), b.history)),
+  'POST /api/ai/kb': async (req, url, b, me) => {
+    if (!TM.kbCan(S, me.uid)) return [403, { error: '只有老板或管理员可以整理知识库' }];
+    return aiRun(me, 'kb', () => AI.kbOrganize(S, me.uid, String(b.topic || ''), String(b.text || '')));
+  },
   /* 账号管理：老板 / 管理员给成员分派登录账号 */
   'GET /api/accounts': async (req, url, b, me) => {
     if (!isMgr(me.uid)) return [403, { error: '只有老板或管理员可以管理账号' }];
@@ -190,6 +199,23 @@ function getFile(req, res, id) {
     return fs.createReadStream(p, { start: a, end: z }).pipe(res);
   }
   res.writeHead(200, { ...h, 'Content-Length': size }); fs.createReadStream(p).pipe(res);
+}
+
+async function aiRun(me, kind, fn) {
+  if (!AI.enabled()) return [503, { error: 'AI 还没有配置（服务器缺少 ANTHROPIC_API_KEY）' }];
+  if (!AI.allowed(S, me.uid)) return [403, { error: 'AI 目前只对老板和管理员开放' }];
+  const since = new Date(); since.setHours(0, 0, 0, 0);
+  const n = q('SELECT COUNT(*) AS n FROM ai_log WHERE uid=? AND at>=?').get(me.uid, since.getTime()).n;
+  if (n >= AI.LIMIT) return [429, { error: '今天的 AI 使用次数已用完（' + AI.LIMIT + ' 次）' }];
+  try {
+    const r = await fn();
+    q('INSERT INTO ai_log VALUES(?,?,?,?,?,1)').run(Date.now(), me.uid, kind, (r.usage && r.usage.input_tokens) || 0, (r.usage && r.usage.output_tokens) || 0);
+    delete r.usage; return [200, r];
+  } catch (e) {
+    q('INSERT INTO ai_log VALUES(?,?,?,0,0,0)').run(Date.now(), me.uid, kind);
+    if (e && e.status && e.error) return [e.status, { error: e.error }];
+    console.error('AI 出错', e); return [500, { error: 'AI 处理出错' }];
+  }
 }
 
 const PUBLIC = new Set(['GET /api/health', 'GET /api/setup', 'POST /api/setup', 'POST /api/login']);
