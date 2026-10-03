@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS ai_log(at INTEGER, uid TEXT, kind TEXT, in_tok INTEGE
 CREATE TABLE IF NOT EXISTS devices(token TEXT PRIMARY KEY, uid TEXT, platform TEXT, created INTEGER);
 CREATE TABLE IF NOT EXISTS ops(seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, uid TEXT, action TEXT, payload TEXT, ok INTEGER, error TEXT);`);
 if (!db.prepare('PRAGMA table_info(sessions)').all().some(c => c.name === 'ft')) db.exec('ALTER TABLE sessions ADD COLUMN ft TEXT');
+if (!db.prepare('PRAGMA table_info(devices)').all().some(c => c.name === 'session')) db.exec('ALTER TABLE devices ADD COLUMN session TEXT');
 const q = (sql) => db.prepare(sql);
 const getMeta = (k) => { const r = q('SELECT v FROM meta WHERE k=?').get(k); return r ? r.v : null; };
 const setMeta = (k, v) => q('INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v').run(k, v);
@@ -65,7 +66,7 @@ function setCred(uid, login, pw, mustChange) {
      ON CONFLICT(uid) DO UPDATE SET login=excluded.login, salt=excluded.salt, hash=excluded.hash, must_change=excluded.must_change`).run(uid, login, salt, hashPw(pw, salt), mustChange ? 1 : 0, t);
 }
 function newSession(uid, agent) { const tok = crypto.randomBytes(32).toString('hex'), ft = crypto.randomBytes(24).toString('hex'), t = Date.now(); q('INSERT INTO sessions(token,uid,created,seen,agent,ft) VALUES(?,?,?,?,?,?)').run(tok, uid, t, t, String(agent || '').slice(0, 120), ft); return { token: tok, ft }; }
-function dropSessions(where, ...args) { q('DELETE FROM sessions WHERE ' + where).run(...args); kickStale(); }
+function dropSessions(where, ...args) { q('DELETE FROM devices WHERE session IN (SELECT token FROM sessions WHERE ' + where + ')').run(...args); q('DELETE FROM sessions WHERE ' + where).run(...args); kickStale(); }
 /* 会话令牌只认请求头；网址里只在 SSE（EventSource 不能带请求头）时认 token，读附件时认文件令牌 ft */
 function auth(req, url, mode) {
   const h = req.headers.authorization || '';
@@ -107,8 +108,9 @@ function pushNew(list) {
   list.forEach(n => {
     const u = TM.user(S, n.userId); if (!u || (u.prefs && u.prefs.notifyImportant === false)) return;
     const badge = S.notifications.filter(x => x.userId === n.userId && !x.read).length;
-    q('SELECT token FROM devices WHERE uid=?').all(n.userId).forEach(d => {
-      PUSH.send(d.token, { title: n.title, body: n.body, link: n.link, badge }).then(r => { if (PUSH.dead(r)) q('DELETE FROM devices WHERE token=?').run(d.token); });
+    // 只推给还登录着的设备（会话有效、账号没停用）
+    q('SELECT d.token FROM devices d JOIN sessions s ON s.token = d.session JOIN creds c ON c.uid = d.uid WHERE d.uid=? AND c.disabled=0').all(n.userId).forEach(d => {
+      PUSH.send(d.token, { title: n.title, body: n.body, link: n.link, badge }).then(r => { if (PUSH.dead(r)) q('DELETE FROM devices WHERE token=?').run(d.token); }).catch(e => console.error('推送出错', e));
     });
   });
 }
@@ -171,8 +173,9 @@ const routes = {
     return [200, { ok: !!r.ok, error: r.ok ? undefined : r.error, r: pickR(r), ...stateFor(me.uid) }];
   },
   'POST /api/password': async (req, url, b, me) => {
-    const c = q('SELECT * FROM creds WHERE uid=?').get(me.uid);
-    if (!me.mustChange && !checkPw(c, b.old || '')) return [400, { error: '原密码不对' }];
+    const c = q('SELECT * FROM creds WHERE uid=?').get(me.uid), pk = 'pw|' + me.uid;
+    if (limited(pk, 10)) return [429, { error: '尝试次数太多，请 15 分钟后再试' }];
+    if (!me.mustChange && !checkPw(c, b.old || '')) { failed(pk); return [400, { error: '原密码不对' }]; }
     const pw = String(b.password || ''); if (pw.length < 6) return [400, { error: '新密码至少 6 位' }];
     setCred(me.uid, c.login, pw, false);
     dropSessions('uid=? AND token<>?', me.uid, me.token);
@@ -181,8 +184,9 @@ const routes = {
   /* 在 App 里注销自己的账号（App Store 要求）：需要当前密码；老板不能注销（团队会没人管） */
   'POST /api/account/deactivate': async (req, url, b, me) => {
     if (isOwner(me.uid)) return [400, { error: '老板的账号不能注销。如需交接团队，请联系开发者' }];
-    const c = q('SELECT * FROM creds WHERE uid=?').get(me.uid);
-    if (!checkPw(c, b.password || '')) return [400, { error: '密码不对' }];
+    const c = q('SELECT * FROM creds WHERE uid=?').get(me.uid), pk = 'pw|' + me.uid;
+    if (limited(pk, 10)) return [429, { error: '尝试次数太多，请 15 分钟后再试' }];
+    if (!checkPw(c, b.password || '')) { failed(pk); return [400, { error: '密码不对' }]; }
     q('UPDATE creds SET disabled=1 WHERE uid=?').run(me.uid);
     dropSessions('uid=?', me.uid);
     q('DELETE FROM devices WHERE uid=?').run(me.uid);
@@ -192,11 +196,13 @@ const routes = {
   },
   /* iOS 推送：登记 / 注销设备（同一台手机换人登录，归属跟着换） */
   'POST /api/devices': async (req, url, b, me) => {
-    const t = String(b.token || ''); if (!/^[0-9a-fA-F]{32,200}$/.test(t)) return [400, { error: '设备令牌不对' }];
-    q('INSERT INTO devices(token,uid,platform,created) VALUES(?,?,?,?) ON CONFLICT(token) DO UPDATE SET uid=excluded.uid, platform=excluded.platform').run(t, me.uid, b.platform === 'android' ? 'android' : 'ios', Date.now());
+    const t = String(b.token || '').toLowerCase(); if (!/^[0-9a-f]{64,200}$/.test(t) || t.length % 2) return [400, { error: '设备令牌不对' }];
+    q('INSERT INTO devices(token,uid,platform,created,session) VALUES(?,?,?,?,?) ON CONFLICT(token) DO UPDATE SET uid=excluded.uid, platform=excluded.platform, session=excluded.session, created=excluded.created').run(t, me.uid, b.platform === 'android' ? 'android' : 'ios', Date.now(), me.token);
+    // 每人最多 10 台设备，多了删最早的
+    q('DELETE FROM devices WHERE uid=? AND token NOT IN (SELECT token FROM devices WHERE uid=? ORDER BY created DESC LIMIT 10)').run(me.uid, me.uid);
     return [200, { ok: true, push: PUSH.enabled() }];
   },
-  'POST /api/devices/remove': async (req, url, b, me) => { q('DELETE FROM devices WHERE token=? AND uid=?').run(String(b.token || ''), me.uid); return [200, { ok: true }]; },
+  'POST /api/devices/remove': async (req, url, b, me) => { q('DELETE FROM devices WHERE token=? AND uid=?').run(String(b.token || '').toLowerCase(), me.uid); return [200, { ok: true }]; },
   /* 真实 AI：没配置密钥或没有权限时 enabled=false，客户端用规则模拟 */
   'GET /api/ai/status': async (req, url, b, me) => [200, { enabled: AI.enabled() && AI.allowed(S, me.uid), configured: AI.enabled(), model: AI.MODEL }],
   'POST /api/ai/ask': async (req, url, b, me) => aiRun(me, 'ask', () => AI.ask(S, me.uid, String(b.q || ''), b.history)),
@@ -313,18 +319,24 @@ function getFile(req, res, id, me) {
 }
 
 /* 后台：新生成的规则版整理稿交给 Claude 升级（AI_AUTO_ANALYZE=0 关闭）；写回时整理稿已被人工改过就放弃 */
-const analyzing = new Set();
+const analyzing = new Set(), lastAuto = new Map();
 function autoAnalyze(added) {
   if (!AI.enabled() || process.env.AI_AUTO_ANALYZE === '0') return;
   added.filter(x => (x.kind === 'analysis' || x.kind === 'digest') && x.authorType === 'agent' && x.payload && x.payload.simulated).forEach(sm => {
-    if (analyzing.has(sm.id)) return; analyzing.add(sm.id);
+    if (analyzing.has(sm.id)) return;
+    // 同一个想法 10 分钟内只自动跑一次（防止反复「重新整理」刷掉全队的 AI 额度）
+    const k = sm.kind + '|' + sm.ideaId; if (lastAuto.get(k) > Date.now() - 10 * 60e3) return; lastAuto.set(k, Date.now());
+    analyzing.add(sm.id);
     const dig = sm.kind === 'digest';
     aiRun({ uid: 'agent' }, dig ? 'digest' : 'analyze', () => dig ? AI.digestDiscussion(S, sm.ideaId) : AI.analyzeIdea(S, sm.ideaId), true).then(([code, out]) => {
       analyzing.delete(sm.id);
       if (code !== 200 || !S) return;
-      const n0 = S.notifications.length, r = TM.act(S, 'agent', dig ? 'idea.digestResult' : 'idea.aiResult', { id: sm.ideaId, summaryId: sm.id, model: AI.MODEL, payload: out.payload });
-      if (r.ok) changed(n0);
-    }, () => analyzing.delete(sm.id));
+      const snap = JSON.stringify(S), n0 = S.notifications.length;
+      try {
+        const r = TM.act(S, 'agent', dig ? 'idea.digestResult' : 'idea.aiResult', { id: sm.ideaId, summaryId: sm.id, model: AI.MODEL, payload: out.payload });
+        if (r.ok) changed(n0);
+      } catch (e) { S = JSON.parse(snap); console.error('写回 AI 结果出错，已回滚', e); }
+    }).catch(e => { analyzing.delete(sm.id); console.error('后台 AI 出错', e); });
   });
 }
 
@@ -334,7 +346,7 @@ async function aiRun(me, kind, fn, system) {
   if (!system && !AI.allowed(S, me.uid)) return [403, { error: 'AI 目前只对老板和管理员开放' }];
   const since = new Date(); since.setHours(0, 0, 0, 0);
   const n = q('SELECT COUNT(*) AS n FROM ai_log WHERE uid=? AND at>=?').get(me.uid, since.getTime()).n;
-  if (n >= AI.LIMIT) return [429, { error: '今天的 AI 使用次数已用完（' + AI.LIMIT + ' 次）' }];
+  if (n >= (system ? AI.SYSTEM_LIMIT : AI.LIMIT)) return [429, { error: '今天的 AI 使用次数已用完（' + AI.LIMIT + ' 次）' }];
   const row = q('INSERT INTO ai_log VALUES(?,?,?,0,0,2)').run(Date.now(), me.uid, kind).lastInsertRowid;
   try {
     const r = await fn();
@@ -391,7 +403,11 @@ const server = http.createServer(async (req, res) => {
     console.error(e); send(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? '内容太大' : '请求格式不对' });
   }
 });
+process.on('unhandledRejection', (e) => console.error('未处理的异步错误（已忽略，服务继续运行）', e));
+/* 重启后补做：最近 2 天还停在规则版、想法仍待整理的整理稿 / 总结，重新交给 Claude */
+function sweepAi() { if (!S) return; const t = Date.now() - 2 * 864e5; autoAnalyze(S.summaries.filter(x => x.at > t && x.payload && x.payload.simulated && x.authorType === 'agent' && (x.kind === 'digest' || (S.ideas.find(d => d.id === x.ideaId) || {}).status === 'triage') && TM.latestSummary(S, x.ideaId, x.kind) === x)); }
 if (require.main === module) server.listen(PORT, HOST, () => {
+  setTimeout(sweepAi, 3000);
   console.log(`团队协同服务器已启动：http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  数据目录：${DATA}`);
   if (SETUP_CODE) console.log(`还没有创建团队。创建团队时需要初始化码：${SETUP_CODE}`);
 });

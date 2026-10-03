@@ -512,5 +512,25 @@ must(TM.act(s, 'agent', 'decision.aiAdvice', { id: pd1.id, model: 'claude-opus-5
 const pd2 = s.decisions.find(x => x.id === pd1.id); // 被拒的操作会回滚、替换对象，重新取
 ok(pd2.ai.verdict === 'needs_info' && pd2.ai.reasons.length === 2 && pd2.ai.note.length === 300 && pd2.ai.model === 'claude-opus-5-5', 'AI 建议字段清洗');
 
+// ===== 第二轮审查：泄漏与覆盖 =====
+s = TM.migrate(fresh());
+s.knowledge.push({ id: 'Ksecret', title: '老板私密：投影仪采购原则', body: '# 采购\n- 投影仪会议室采购只买二手，预算机密不要外传。', scope: 'ai_only', on: true, by: O, at: 1, size: 30 });
+let lk = must(TM.act(s, LD, 'idea.create', { note: '会议室投影仪坏了要采购一台新的' }), '负责人记想法');
+must(TM.act(s, LD, 'idea.submit', { id: lk.id, path: 'direct' }), '提交');
+let lkSum = TM.latestSummary(s, lk.id, 'analysis');
+ok(!JSON.stringify(lkSum.payload).includes('机密') && !JSON.stringify(lkSum.payload).includes('Ksecret'), '规则版整理稿不引用「仅 AI 可见」的老板资料');
+const pdx = s.decisions.find(x => x.status === 'pending');
+must(TM.act(s, 'agent', 'decision.aiAdvice', { id: pdx.id, advice: { verdict: 'approved', label: '批', reasons: ['老板的私密理由'], note: 'x' } }), '写入建议');
+ok(!JSON.stringify(TM.viewFor(s, LD).decisions).includes('老板的私密理由') && JSON.stringify(TM.viewFor(s, O).decisions).includes('老板的私密理由'), 'Claude 决策建议只下发给老板');
+const coI = s.suggestions[0].ideaId; must(TM.act(s, O, 'idea.digest', { id: coI }), '老板总结讨论');
+ok(TM.viewFor(s, O).summaries.some(x => x.kind === 'digest') && !TM.viewFor(s, LD).summaries.some(x => x.kind === 'digest') && !TM.viewFor(s, DS).summaries.some(x => x.kind === 'digest'), '讨论总结只下发给老板');
+// AI 结果迟到：想法已被认领派发，不再替换整理稿
+let lt = must(TM.act(s, O, 'idea.create', { note: '茶水间换饮水机' }), '建想法');
+must(TM.act(s, O, 'idea.submit', { id: lt.id, path: 'direct' }), '提交');
+const ltSum = TM.latestSummary(s, lt.id, 'analysis');
+must(TM.act(s, OP, 'idea.claim', { id: lt.id }), '认领');
+must(TM.act(s, OP, 'idea.route', { id: lt.id, kind: 'admin', tasks: [{ title: '买饮水机', ownerId: AX, expected: '照片', criteria: '可用' }] }), '派发');
+rej(TM.act(s, 'agent', 'idea.aiResult', { id: lt.id, summaryId: ltSum.id, payload: { title: '新标题', overview: '迟到的 AI 结果' } }), '想法已派发，迟到的 AI 结果不覆盖');
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

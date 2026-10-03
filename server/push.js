@@ -24,13 +24,16 @@ function token() {
 }
 
 let session = null;
+function drop(s) { if (session === s) session = null; try { s.destroy(); } catch (e) {} }
 function conn() {
   if (session && !session.closed && !session.destroyed) return session;
-  session = http2.connect(cfg().host);
-  session.on('error', () => { session = null; });
-  session.on('goaway', () => { session = null; });
-  session.unref && session.unref();
-  return session;
+  const s = http2.connect(cfg().host);
+  session = s;
+  s.on('error', () => drop(s));
+  s.on('goaway', () => drop(s));
+  s.setTimeout(5 * 60e3, () => drop(s)); // 长时间空闲的连接（可能已经半断）直接丢弃，下次重连
+  s.unref && s.unref();
+  return s;
 }
 
 /* 发一条：返回 { ok, status, reason }；reason 为 BadDeviceToken / Unregistered 时调用方应删掉这个设备 */
@@ -43,11 +46,12 @@ function send(deviceToken, msg) {
       req = s.request({ ':method': 'POST', ':path': '/3/device/' + deviceToken, authorization: 'bearer ' + token(), 'apns-topic': cfg().bundle, 'apns-push-type': 'alert', 'apns-priority': '10', 'content-type': 'application/json' });
     } catch (e) { session = null; return resolve({ ok: false, status: 0, reason: 'request' }); }
     let status = 0, data = '';
-    req.setTimeout(10000, () => { req.close(); resolve({ ok: false, status: 0, reason: 'timeout' }); });
+    // 超时多半是连接已经半断（网络切换、NAT 超时）：丢掉整个连接，下次重建
+    req.setTimeout(10000, () => { req.close(); drop(s); resolve({ ok: false, status: 0, reason: 'timeout' }); });
     req.on('response', (h) => { status = h[':status']; });
     req.on('data', (d) => { data += d; });
     req.on('end', () => { let reason = ''; try { reason = JSON.parse(data || '{}').reason || ''; } catch (e) {} resolve({ ok: status === 200, status, reason }); });
-    req.on('error', () => resolve({ ok: false, status: 0, reason: 'error' }));
+    req.on('error', () => { if (!status) drop(s); resolve({ ok: false, status: 0, reason: 'error' }); });
     req.end(payload);
   });
 }

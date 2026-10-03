@@ -9,6 +9,7 @@ const TM = require('../engine.js');
 
 const MODEL = process.env.AI_MODEL || 'claude-opus-5-5';
 const LIMIT = +process.env.AI_DAILY_LIMIT || 200;
+const SYSTEM_LIMIT = +process.env.AI_SYSTEM_LIMIT || 100; // 后台自动整理 / 总结的全队每日上限
 let client = null;
 const enabled = () => !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
 const cli = () => client || (client = new Anthropic());
@@ -130,7 +131,8 @@ const ANALYSIS_SCHEMA = {
 async function analyzeIdea(S, ideaId) {
   const d = S.ideas.find(x => x.id === ideaId); if (!d) throw { status: 404, error: '想法不存在' };
   const owner = TM.usersWith(S, 'owner')[0];
-  const view = TM.viewFor(S, owner); // 系统整理按老板视角取资料（含仅 AI 可见的老板资料）
+  // 整理稿会给想法的所有查看者看：只用公开给团队的资料，不能带出「仅 AI 可见」的老板资料
+  const view = Object.assign({}, TM.viewFor(S, owner)); view.knowledge = (view.knowledge || []).filter(k => k.scope === 'team');
   const L = TM.L;
   const system = [
     { type: 'text', text: `你是团队协同 App 的 AI 助理，负责把成员提交的想法整理成清楚的「整理稿」，交给运营者跟进、老板决策。
@@ -225,4 +227,4 @@ async function parseProject(S, uid, text) {
   };
 }
 
-module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, parseProject, snapshot, MODEL, LIMIT };
+module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, parseProject, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };

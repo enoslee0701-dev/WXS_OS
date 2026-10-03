@@ -25,6 +25,8 @@ var TMS = (function () {
         function () { clearTimeout(tm); throw { status: 0, error: '连不上服务器，请检查网络和服务器地址' }; });
   }
   function req(method, path, body) { return reqAt(api.base, method, path, body, api.token); }
+  // iOS 里：localStorage 的删除要先同步到原生备份再刷新，否则刷新后会被当成「丢失」又补回来（退出了又登录回去）
+  function reloadSafe() { var done = false, go = function () { if (!done) { done = true; location.reload(); } }; try { if (window.TMN && TMN.native && TMN.flush) { TMN.flush().then(go, go); setTimeout(go, 1500); return; } } catch (e) {} go(); }
   function toast(m, bad) { if (window.__tm && window.__tm.toast) window.__tm.toast(m, bad); }
 
   /* ---------- 状态提示 ---------- */
@@ -55,6 +57,8 @@ var TMS = (function () {
   }
   function flush() {
     if (busy || !api.outbox.length || !api.loggedIn()) return;
+    // 发件箱是别人留下的（换了人登录）：不能用当前账号发出去
+    var ou = g('tm_outbox_uid'); if (ou && ou !== g(KU)) { api.outbox = []; saveBox(); put('tm_outbox_uid', null); return; }
     busy = true; setStatus(api.status === 'offline' ? 'offline' : 'syncing');
     var op = api.outbox[0];
     req('POST', '/api/act', { name: op.n, payload: op.p, base: api.version }).then(function (res) {
@@ -84,12 +88,13 @@ var TMS = (function () {
     if (a && (a.tagName === 'TEXTAREA' || (a.tagName === 'INPUT' && !/checkbox|radio|button|submit|file/.test(a.type)) || a.isContentEditable)) return true;
     return !!document.querySelector('#layer .sheet, .ai-panel');
   }
+  function keepLocal(st, cur) { LOCAL_ONLY.forEach(function (k) { if (cur && cur[k] !== undefined) st[k] = cur[k]; }); }
   function apply(st) {
     if (!st || !window.__tm) return;
     if (editing()) { pending = st; clearTimeout(pendT); pendT = setTimeout(function () { var x = pending; pending = null; apply(x); }, 1500); return; }
     pending = null;
     var cur = window.__tm.S;
-    LOCAL_ONLY.forEach(function (k) { if (cur && cur[k] !== undefined) st[k] = cur[k]; });
+    keepLocal(st, cur);
     if (cur && JSON.stringify(cur) === JSON.stringify(st)) return;
     window.__tm.setState(st);
   }
@@ -110,7 +115,7 @@ var TMS = (function () {
   function expired() {
     // 发件箱保留：同一个人重新登录后继续补发（换了人就清掉）
     ['tm_token', 'tm_ft', 'tm_ver', 'tm_must', K, KU].forEach(function (k) { put(k, null); });
-    toast('登录已过期，请重新登录', true); setTimeout(function () { location.hash = '#/login'; location.reload(); }, 800);
+    toast('登录已过期，请重新登录', true); setTimeout(function () { location.hash = '#/login'; reloadSafe(); }, 800);
   }
 
   /* ---------- 推送：SSE，失败时轮询 ---------- */
@@ -144,16 +149,16 @@ var TMS = (function () {
     put('tm_server', api.sameOrigin ? null : base); put('tm_token', res.token); put('tm_ft', res.fileToken || null); put('tm_ver', res.version);
     if (g('tm_outbox_uid') !== res.uid) { put('tm_outbox', null); put('tm_outbox_uid', null); }
     put(K, JSON.stringify(res.state)); put(KU, res.uid); put('tm_must', res.mustChange ? '1' : null);
-    location.hash = '#/home'; location.reload();
+    location.hash = '#/home'; reloadSafe();
   }
   api.serverUrl = function () { return api.sameOrigin ? location.origin : api.base; };
   api.probe = function (server) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'GET', '/api/health').then(function (r) { return { base: b, setup: r.setup }; }); };
   api.login = function (server, login, password) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'POST', '/api/login', { login: login, password: password }).then(function (res) { establish(b, res); }); };
   api.setup = function (server, o) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'POST', '/api/setup', o).then(function (res) { establish(b, res); }); };
-  api.useServer = function (server) { put('tm_server', norm(server) || 'http://'); put(K, null); put(KU, null); location.hash = '#/login'; location.reload(); };
-  api.useLocal = function () { ['tm_server', 'tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; location.reload(); };
+  api.useServer = function (server) { put('tm_server', norm(server) || 'http://'); put(K, null); put(KU, null); location.hash = '#/login'; reloadSafe(); };
+  api.useLocal = function () { ['tm_server', 'tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; reloadSafe(); };
   api.logout = function () {
-    var done = function () { ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; location.reload(); };
+    var done = function () { ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; reloadSafe(); };
     var out = function () { req('POST', '/api/logout').then(done, done); };
     // 先注销这台手机的推送（退出后会话就失效了），再退出
     var pt = g('tm_push_token'); if (pt) req('POST', '/api/devices/remove', { token: pt }).then(out, out); else out();
@@ -176,14 +181,16 @@ var TMS = (function () {
   function pump() {
     if (upBusy || !api.loggedIn()) return;
     upBusy = true;
-    // 只取队首一个（不把所有大视频一次读进内存）
-    Promise.all([tx('readonly', function (st) { return st.count(); }), idb().then(function (db) { return new Promise(function (ok, bad) { var r = db.transaction('q', 'readonly').objectStore('q').openCursor(); r.onsuccess = function () { ok(r.result ? r.result.value : null); }; r.onerror = function () { bad(r.error); }; }); })]).then(function (x) {
+    // 只取一个属于当前登录人的（不把所有大视频一次读进内存；换人登录时，前一个人的文件留着等他回来）
+    var who = g(KU);
+    Promise.all([tx('readonly', function (st) { return st.count(); }), idb().then(function (db) { return new Promise(function (ok, bad) { var r = db.transaction('q', 'readonly').objectStore('q').openCursor(); r.onsuccess = function () { var c = r.result; if (!c) return ok(null); if (!c.value.uid || c.value.uid === who) return ok(c.value); c.continue(); }; r.onerror = function () { bad(r.error); }; }); })]).then(function (x) {
       api.uploading = x[0] || 0; setStatus(api.status);
       var it = x[1]; if (!it) { upBusy = false; return; }
       return fetch(api.base + '/api/files/' + encodeURIComponent(it.id), { method: 'PUT', headers: { Authorization: 'Bearer ' + api.token, 'Content-Type': it.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(it.name || '') }, body: it.blob })
         .then(function (r) {
           if (r.status === 401) { upBusy = false; return expired(); }
-          // 成功，或服务器明确拒绝（太大、ID 冲突）：都从队列移除，避免卡住后面的文件
+          if (r.status === 403) { upBusy = false; return; } // 还没改初始密码：先留着，改完再传
+          // 成功，或服务器明确拒绝（太大、ID 冲突）：从队列移除并提示，避免卡住后面的文件
           if (r.ok || (r.status >= 400 && r.status < 500)) {
             if (!r.ok) r.json().then(function (j) { toast('附件「' + (it.name || '') + '」没能上传：' + (j.error || r.status), true); }, function () {});
             return tx('readwrite', function (st) { return st.delete(it.id); }).then(function () { upBusy = false; upDelay = 3000; pump(); });
@@ -194,7 +201,7 @@ var TMS = (function () {
   }
   api.upload = function (id, blob, name) {
     if (!api.loggedIn() || !id || !blob) return;
-    tx('readwrite', function (st) { return st.put({ id: String(id), blob: blob, name: name || blob.name || '', type: blob.type || '', at: Date.now() }); }).then(pump, function () {
+    tx('readwrite', function (st) { return st.put({ id: String(id), uid: g(KU), blob: blob, name: name || blob.name || '', type: blob.type || '', at: Date.now() }); }).then(pump, function () {
       // 没有 IndexedDB（极少数环境）：直接上传一次
       fetch(api.base + '/api/files/' + encodeURIComponent(id), { method: 'PUT', headers: { Authorization: 'Bearer ' + api.token, 'Content-Type': blob.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(name || blob.name || '') }, body: blob }).catch(function () {});
     });
@@ -208,7 +215,7 @@ var TMS = (function () {
   api.aiStatus = function () { if (!api.loggedIn()) return Promise.resolve({ enabled: false }); return aiSt || (aiSt = req('GET', '/api/ai/status').catch(function () { aiSt = null; return { enabled: false }; })); };
   api.aiAsk = function (q, history) { return req('POST', '/api/ai/ask', { q: q, history: history || [] }); };
   // 决策弹窗开着时常规同步会推迟，这里直接应用（用户就是在等这份结果）
-  api.aiAdvice = function (id) { return req('POST', '/api/ai/advice', { id: id }).then(function (r) { if (!api.outbox.length && !busy && r.version >= api.version && window.__tm) { api.version = r.version; put('tm_ver', r.version); window.__tm.setState(r.state); } return r; }); };
+  api.aiAdvice = function (id) { return req('POST', '/api/ai/advice', { id: id }).then(function (r) { if (!api.outbox.length && !busy && r.version >= api.version && window.__tm) { api.version = r.version; put('tm_ver', r.version); keepLocal(r.state, window.__tm.S); window.__tm.setState(r.state); } return r; }); };
   api.aiProject = function (text) { return req('POST', '/api/ai/project', { text: text }); };
   api.aiKb = function (topic, text) { return req('POST', '/api/ai/kb', { topic: topic, text: text }); };
   api.flush = flush; api.pull = pull;

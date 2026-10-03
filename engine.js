@@ -204,12 +204,13 @@ var TM = (function () {
     var stop = ['我们', '一个', '这个', '那个', '可以', '需要', '是否', '什么', '没有', '还是', '如果', '因为', '所以', '已经', '现在', '比较', '一下', '然后', '自己', '他们', '你们', '要求', '同意'];
     return out.filter(function (x, i, a) { return a.indexOf(x) === i && stop.indexOf(x) < 0; });
   }
-  function kbMatch(s, text, n) {
+  // teamOnly：结果会存下来给员工看时（整理稿），只能引用公开给团队的资料，不能带出「仅 AI 可见」的老板资料
+  function kbMatch(s, text, n, teamOnly) {
     kbInit(s); var x = String(text || ''), syn = [[/招(?!呼)/, '招聘 招人 岗位'], [/钱|花费|费用|成本|买/, '预算 支出 成本'], [/人手|人力|跟不上|忙不过来/, '工作量 招聘'], [/兼职|全职|试用/, '兼职 全职 试用'], [/方向|战略|目标/, '方向 重点'], [/同工|团队|同事/, '团队 同工']];
     syn.forEach(function (p) { if (p[0].test(x)) x += ' ' + p[1]; });
     var q = kbTerms(x); if (!q.length) return [];
     var hits = [];
-    s.knowledge.filter(function (k) { return k.on; }).forEach(function (k) {
+    s.knowledge.filter(function (k) { return k.on && (!teamOnly || k.scope === 'team'); }).forEach(function (k) {
       var head = '';
       k.body.split(/\n+/).forEach(function (line) {
         var l = line.trim(); if (!l) return; if (/^#/.test(l)) { head = l.replace(/^#+\s*/, ''); return; }
@@ -281,7 +282,7 @@ var TM = (function () {
     return {
       simulated: true, title: title, summary: txt(d.note).slice(0, 60) || title,
       background: txt(d.note) || '（材料中未说明）', problem: dv.issues.join('；'), goal: dv.goal, overview: dv.overview, issues: dv.issues, directions: dv.directions,
-      category: cat, refs: kbMatch(s, t, 3), relation_to_direction: kbMatch(s, t, 1).length ? '与公司资料「' + kbMatch(s, t, 1)[0].title + '」相关：' + kbMatch(s, t, 1)[0].text : s.settings.direction ? '需对照公司方向判断是否闭环（演示未做判断）' : '知识库里没有找到相关的公司资料',
+      category: cat, refs: kbMatch(s, t, 3, true), relation_to_direction: kbMatch(s, t, 1, true).length ? '与公司资料「' + kbMatch(s, t, 1, true)[0].title + '」相关：' + kbMatch(s, t, 1, true)[0].text : s.settings.direction ? '需对照公司方向判断是否闭环（演示未做判断）' : '知识库里没有找到相关的公司资料',
       options: [], open_questions: oq, exception_flags: flags, suggested_route: route,
       suggested_tasks: [{ title: title, expected_output: '完成说明 + 照片或截图', acceptance_criteria: '由验收人按目标确认', suggested_due_days: 3 }],
       confidence: 0.5
@@ -966,11 +967,15 @@ var TM = (function () {
     v.ideas = v.ideas.filter(function (d) { return I[d.id]; });
     v.ideas.forEach(function (d) { var o = s.ideas.find(function (x) { return x.id === d.id; }); d.media = (d.media || []).filter(function (m) { return canSeeMediaItem(s, uid, o, m); }); });
     v.suggestions = v.suggestions.filter(byIdea);
-    v.summaries = v.summaries.filter(byIdea);
+    var own = hasRole(s, uid, 'owner');
+    // 讨论总结只给老板看
+    v.summaries = v.summaries.filter(function (x) { return byIdea(x) && (x.kind !== 'digest' || own); });
     var mgr = hasRole(s, uid, 'owner') || hasRole(s, uid, 'admin');
     // 动态：关联的想法 / 项目 / 任务都得看得到；不关联任何对象的（成员、配置变更）只给老板和管理员
     v.events = v.events.filter(function (e) { if (!e.ideaId && !e.workId && !e.taskId) return mgr; return byIdea(e) && (!e.workId || W[e.workId]) && (!e.taskId || T[e.taskId]); });
     v.decisions = v.decisions.filter(function (x) { return (x.ideaId && I[x.ideaId]) || (x.workId && W[x.workId]) || (!x.ideaId && !x.workId && hasRole(s, uid, 'owner')); });
+    // 决策上的 Claude 建议基于老板的全部资料，只给老板
+    if (!own) v.decisions.forEach(function (x) { delete x.ai; });
     v.workItems = v.workItems.filter(function (w) { return W[w.id]; });
     v.tasks = v.tasks.filter(function (t) { return T[t.id]; });
     ['checklist', 'deliverables', 'comments'].forEach(function (k) { v[k] = (v[k] || []).filter(function (x) { return !x.taskId || T[x.taskId]; }); });
@@ -1007,6 +1012,8 @@ var TM = (function () {
     var d = s.ideas.find(function (x) { return x.id === p.id; }); need(d, '想法不存在');
     var sm = latestSummary(s, d.id, 'analysis');
     need(sm && sm.id === p.summaryId && sm.authorType === 'agent', '整理稿已经更新过，不覆盖');
+    // 运营者已经据此派发、或已送老板 / 老板已决定：整理稿是当时决定的依据，不再改
+    need(d.status === 'triage' && !s.workItems.some(function (w) { return w.ideaId === d.id; }) && !s.decisions.some(function (x) { return x.ideaId === d.id && x.status !== 'pending'; }), '想法已经往前推进，不再替换整理稿');
     var a = p.payload || {}, str = function (v, n) { return txt(v).slice(0, n); }, arr = function (v, n, m) { return (Array.isArray(v) ? v : []).map(function (x) { return str(x, m); }).filter(Boolean).slice(0, n); };
     var np = Object.assign({}, sm.payload, {
       simulated: false, model: str(p.model, 40),

@@ -73,6 +73,18 @@ const wait = (ms) => new Promise(z => setTimeout(z, ms));
   await wait(400);
   ok(got.length === n2, '设备换主人后，小李的通知不再推到这台手机');
   ok((await post('/api/devices/remove', { token: LI_DEV }, boss)).ok, '退出登录时注销设备');
+  ok((await post('/api/devices', { token: 'ab'.repeat(31) + 'a' }, liTok)).status === 400, '令牌长度不对被拒');
+  // 小李重新登记自己的手机；老板重置小李密码（手机丢了）→ 这台手机不再收到推送
+  const LI2 = 'ef'.repeat(32), liTok2 = (await post('/api/login', { login: 'xiaoli', password: 'li654321' })).token;
+  await post('/api/devices', { token: LI2 }, liTok2);
+  await post('/api/act', { name: 'project.create', payload: { title: '第五个项目', ptype: 'tech', operatorId: wang, goal: 'x', tasks: [{ title: '第五张', ownerId: li, expected: '图', criteria: '好' }] } }, boss);
+  await wait(400);
+  const n3 = got.filter(x => x.h[':path'].endsWith(LI2)).length;
+  ok(n3 >= 1, '重新登记后收到推送');
+  await post('/api/accounts', { uid: li, reset: true }, boss);
+  await post('/api/act', { name: 'project.create', payload: { title: '第六个项目', ptype: 'tech', operatorId: wang, goal: 'x', tasks: [{ title: '第六张', ownerId: li, expected: '图', criteria: '好' }] } }, boss);
+  await wait(400);
+  ok(got.filter(x => x.h[':path'].endsWith(LI2)).length === n3, '密码被重置（会话失效）后这台手机不再收到推送');
   srv.kill(); apns.close(); fs.rmSync(DIR, { recursive: true, force: true });
   console.log(`\n推送 通过 ${pass}，失败 ${fail}`); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

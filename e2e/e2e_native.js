@@ -132,6 +132,7 @@ const FAKE = (opts) => {
     await c3.route('http://push.test/**', async (route) => { const r = route.request(), u = new globalThis.URL(r.url()); reqs.push(r.method() + ' ' + u.pathname + ' ' + (r.postData() || ''));
       if (u.pathname === '/api/events') return route.fulfill({ status: 200, contentType: 'text/event-stream', body: '' });
       if (u.pathname === '/api/state') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: 1, state: JSON.parse(seed2) }) });
+      if (u.pathname === '/api/health') return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"setup":true}' });
       if (u.pathname === '/api/logout') return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
       return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"enabled":false}' }); });
     p = await c3.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); await p.goto(URL);
@@ -139,9 +140,12 @@ const FAKE = (opts) => {
     ok(reqs.some(x => x.startsWith('POST /api/devices ') && x.includes('cd'.repeat(32))), '登录后申请通知权限并登记设备');
     await p.evaluate(() => __fake.emit('PushNotifications', 'pushNotificationActionPerformed', { notification: { data: { link: '#/ideas' } } })); await p.waitForTimeout(150);
     ok(p.url().endsWith('#/ideas'), '点通知跳到对应页面');
-    const n0 = reqs.length; await p.evaluate(() => TMS.logout()); await p.waitForTimeout(600);
+    const n0 = reqs.length; ok('tm_token' in await p.evaluate(() => __fake.prefs()), '登录状态已备份到原生存储'); await p.evaluate(() => TMS.logout()); await p.waitForTimeout(600);
     const tail = reqs.slice(n0).map(x => x.split(' ')[1]);
     ok(tail.indexOf('/api/devices/remove') >= 0 && tail.indexOf('/api/devices/remove') < tail.indexOf('/api/logout'), '退出时先注销设备再退出 ' + tail.join(','));
+    await p.waitForTimeout(800);
+    ok(await p.evaluate(() => !localStorage.getItem('tm_token') && !localStorage.getItem('tm_demo_v3')) && !('tm_token' in await p.evaluate(() => __fake.prefs())), '退出后刷新：令牌和数据不会被原生备份「复活」');
+    ok(await p.locator('form[data-form=srvLogin]').count() === 1, '退出后停在登录页');
     ok(p.errs.length === 0, '推送流程无报错 ' + p.errs.join('|'));
     await c3.close(); }
   console.log(`原生桥接 E2E 通过 ${pass}，失败 ${fail}`); await b.close(); process.exit(fail ? 1 : 0);
