@@ -2966,3 +2966,15 @@ textarea{min-height:76px;padding:9px 12px;font-size:15px;border-radius:12px}
 .cred span{color:#5B6475}
 .cred b{font-family:ui-monospace,Menlo,monospace;font-size:15px;word-break:break-all;text-align:right;user-select:all;-webkit-user-select:all}
 .me-acct .me-out span{color:var(--bad,#D93A3A)}
+
+/* 首页锁定滚动时 body 是 overflow:hidden，会裁掉 .hm 用负 margin 顶进安全区的部分（iPhone 上顶部、底部各露一条白边）：首页不要根元素的安全区内边距，.hm 自己处理 */
+:root:has(body.home-lock){padding-top:0;padding-bottom:0}
+body.home-lock .hm{margin-top:0}
+/* 根元素透明：画布用 body 的背景铺满（含 iPhone 安全区）；顶部渐变层也延伸进安全区，避免状态栏下出现白条 */
+html{background:transparent!important}
+body::before{top:calc(-1 * env(safe-area-inset-top,0px))}
+
+/* 这些页面 main 有 zoom:.8，安全区的负外边距和内边距会被一起缩小：按比例补偿，让大图顶到屏幕最上方、内容避开状态栏 */
+.is-new main .tk2-hero,.is-new main .wp-hero,.is-new main .tm-hero,.is-new main .n-hero,.is-new main .vr-hero{margin-top:calc(-1 * env(safe-area-inset-top,0px) / .8)!important;padding-top:calc(env(safe-area-inset-top,0px) / .8 + 16px)!important}
+/* 首页 main 有 zoom:.86：最小高度按比例放大，铺满整屏 */
+body.home-lock .hm{min-height:calc(100vh / .86)}

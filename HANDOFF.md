@@ -1,4 +1,4 @@
-# 团队协同 App · 交接说明（2026-10-02 · 第六轮）
+# 团队协同 App · 交接说明（2026-10-03 · 第七轮）
 
 ## 发布
 - 链接（始终更新同一个）：https://claude.ai/artifact/9B6z2RbfjJ2xSoSNYPMEbN
@@ -36,9 +36,31 @@
 ## 本轮新增（第六轮）
 AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老板/管理员）：选主题 → 大按钮录音（Web Speech 连续识别，中途断开自动续上；不支持时提示用输入法话筒）→ 文本框可改 →「AI 整理成规则」（kbOrganize：断句、去口头语、按 决定/用人/钱/对外/团队/初心/常说的话 归类，未命中归入所选主题或「其他原则」，演示为规则模拟）→ 确认页可删条、改标题、改全文、选可见范围、附口述原文 → kb.add（source:'voice'，列表标「口述整理」）。新增 e2e_kbv.js（20 项）。阶段 3 接大模型后替换 kbOrganize 即可。
 
+## 本轮新增（第七轮 · 2026-10-03 · 自动化开发日）
+用户决定：Capacitor 封装 iOS（Android 暂缓）；老板与团队同地；大模型主要老板用；账号由老板创建分派、不开放注册；单团队自用；开发者账号 / App 名最后定。
+
+1. **iOS App**（`ios/`，Capacitor 8 + SPM，无需 CocoaPods）：`capacitor.config.json` 的 webDir=`dist/app`；自写原生语音插件 `ios/App/App/SpeechPlugin.swift`（SFSpeechRecognizer）+ `MainViewController.swift`（注册插件、右滑返回）；Info.plist 加麦克风/相机/相册/语音权限说明、`teamops://` 深链接、仅竖屏。占位 Bundle ID `com.teamops.app`。模拟器已跑通。
+2. **native.js**（在 engine 前加载，浏览器里不生效）：数据双存（localStorage 的 tm_* 镜像到原生 Preferences，WebView 数据被清后自动恢复）、语音兼容层（原生插件 → 浏览器 SpeechRecognition 接口，按停顿切句）、剪贴板深链接、状态栏/键盘/启动屏。build.js 把 `@capacitor/core` 浏览器版内嵌在它前面。
+3. **字体本地化**：`fonts/`（Figtree、Caveat 拉丁子集 woff2），不再依赖 Google Fonts。
+4. **按角色区分界面**：引擎 `TM.caps(s, uid)` 是唯一的能力表（recordIdea/createProject/assign/claimIdeas/members/settings/kbEdit/resetData/ideas/work…）；首页两张卡片按角色给（老板/发起人：记录想法+新建项目；运营者：整理想法+新建项目；执行者：我的待办+记一条待办；管理员：成员与账号+AI 知识库）；管理员底部只有 3 个标签；新建菜单、AI 快捷按钮、团队邀请、我的·流程开关、更多设置、操作记录按能力显示；越权路由直接跳回（不再显示空的无权限页）；「每条都送」模式下非老板不显示新建项目（引擎 `TM.canCreateProject` 同步收紧）；重置数据限老板/管理员。
+5. **服务器**（`server/server.js`，零依赖 node:http + node:sqlite，`npm run server`，默认 8787，数据在 `server/data/`）：首次启动老板创建团队（可带演示数据）；老板/管理员给成员分派账号（自动生成初始密码、首次登录强制改密、重置、停用）；`/api/act` 用登录身份跑 engine；`TM.viewFor` 按身份裁剪下发（别人的草稿、通知、待办、仅 AI 可见资料不下发）；SSE 推送；每天备份一份快照；登录限流；异常回滚。同端口直接提供网页版（同源自动走服务器模式）。
+6. **sync.js**（engine 与 app 之间）：服务器模式下拦截 TM.act，本地先执行、发件箱顺序上送、以服务器结果为准；断网存发件箱、联网补发；正在输入/弹窗打开时推迟应用远端更新；ID 冲突修正地址；离线提示条。本地演示模式下不生效。
+7. **登录与账号界面**：服务器模式登录页（账号密码；App 里可填服务器地址；首次是「创建你的团队」）；我的 → 账号与安全（修改密码、服务器、退出登录）；成员资料 → 登录账号与密码；添加成员后自动弹出分派账号并显示可复制的登录信息。
+8. **清理演示数据**（原待办 1）：引擎 `data.clearDemo`（老板/管理员），清空内容、保留成员设置和自己加的资料；新团队 `TM.blank`。
+9. 测试：业务 322 项；新增 `test_server.js`（40 项，纳入 npm test）；端到端新增 e2e_native（22）、e2e_roles（81，7 个账号逐个点遍入口确认无「无权限」提示）、e2e_srv（30，双浏览器 + 真实服务器）。共 22 组。
+
 ## 待办
-1. 演示数据一键清理
-2. 阶段 2 接 Supabase；阶段 3 接真实大模型与转写
+1. 附件上传到服务器（现在服务器模式下附件仍只存本机：需要 /api/files + media 引用 fileId）
+2. iOS 真机：需要 Apple 开发者账号（用户说最后再说）；推送通知（APNs）同样依赖它
+3. 真实大模型：服务端代理 + 开关，无 Key 时保持规则模拟（需要用户提供 API Key）
+4. 服务器部署到公网（https）后，App 里填 https 地址即可；局域网 http 已在 Info.plist 允许本地网络
+5. Android：装 SDK 后 `npx cap add android`
+6. app.js 按页面拆模块（函数同名覆盖隐患）
+
+## 命令（新增）
+- `npm run server`：启动服务器（PORT / HOST / DATA_DIR 可配）
+- `npm run ios`：构建网页 → 拷进 iOS 工程 → 编译并在模拟器启动
+- 打开 Xcode：`npx cap open ios`
 
 ## 规范
 - 用户偏好：中文、简洁、按设计图 1:1 复刻、每次交付前跑完测试、结尾给编号的下一步

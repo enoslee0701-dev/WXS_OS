@@ -85,6 +85,13 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>用于连接团队在局域网里的服务器。</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 </dict>
