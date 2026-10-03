@@ -8,12 +8,13 @@
   /* ---------- 存储 ---------- */
   var SRV_ON = typeof TMS !== 'undefined' && TMS.loggedIn();
   function load() {
-    try { var raw = localStorage.getItem(K); if (raw) { var x = JSON.parse(raw); if (x && x.v === 3) return x; } } catch (e) {}
+    try { var raw = localStorage.getItem(K); if (raw) { var x = JSON.parse(raw); if (x && x.v === 3 && !x.loading) return x; } } catch (e) {}
     // 服务器模式：完整缓存太大存在 IndexedDB 里（异步），先用小的「启动骨架」（成员、设置）启动，绝不能退回演示数据
     if (SRV_ON) { try { var b = JSON.parse(localStorage.getItem('tm_boot') || 'null'); if (b && b.users) { var sh = TM.blank({}); sh.users = b.users; sh.settings = b.settings || sh.settings; sh.seq = b.seq || sh.seq; sh.real = b.real; sh.loading = true; return sh; } } catch (e) {} var e0 = TM.blank({}); e0.loading = true; return e0; }
     return TM.seed();
   }
   function save() {
+    if (S.loading) return; // 启动骨架不是完整数据，不能存成缓存（否则离线时再也读不到 IndexedDB 里的完整数据）
     var j = JSON.stringify(S);
     try { localStorage.setItem(K, j); } catch (e) {
       // 超过 localStorage 容量（约 5MB，团队用久了会到）：完整数据改存 IndexedDB
@@ -335,7 +336,7 @@
     var nT = todoItems().filter(function (x) { return !x.done; }).length;
     var nTri = c.claimIdeas ? vIdeas().filter(function (d) { return d.status === 'triage' && !d.followerId; }).length : 0;
     if (c.recordIdea) out.push(['quickIdea', ai2('bulb', 1.5), '记录想法', '随时记录，激发灵感']);
-    if (c.claimIdeas) out.push(['hmTriage', ai2('bulb', 1.5), '整理想法', nTri ? nTri + ' 条新想法等你认领' : '暂时没有待认领的想法']);
+    if (c.claimIdeas && !c.recordIdea) out.push(['hmTriage', ai2('bulb', 1.5), '整理想法', nTri ? nTri + ' 条新想法等你认领' : '暂时没有待认领的想法']);
     if (c.createProject) out.push(['quickProject', ti('plus2', 1.6), '新建项目', '从想法开始，落地执行']);
     if (c.assign) out.push(['quickAssign', ai2('person', 1.6), '分配任务', '让合适的人做合适的事']);
     if (!c.ideas) { if (c.members) out.push(['hmTeam', ai2('team', 1.6), '成员与账号', '添加成员、设置角色']); if (c.kbEdit) out.push(['hmKB', ai2('doc2', 1.6), 'AI 知识库', '维护老板思想与公司资料']); }
@@ -1114,7 +1115,7 @@
 
   function afterRender() {
     if (SRV && me && TMS.mustChange && !mustAsked && !document.querySelector('#layer .sheet')) { mustAsked = true; setTimeout(function () { DO.srvPassword(); }, 300); }
-    if (SRV && me && isOwner() && S.real && cur().name === 'home' && !onboardAsked && !document.querySelector('#layer .sheet') && !onboardDone()) { onboardAsked = true; setTimeout(function () { DO.onboard(); }, 400); }
+    if (SRV && me && isOwner() && S.real && !S.loading && cur().name === 'home' && !onboardAsked && !document.querySelector('#layer .sheet') && !onboardDone()) { onboardAsked = true; setTimeout(function () { DO.onboard(); }, 400); }
     var strip = document.getElementById('tkdays');
     if (strip) { if (td.stripScroll != null) strip.scrollLeft = td.stripScroll; else { var tg = strip.querySelector('.today') || strip.querySelector('.on'); if (tg) strip.scrollLeft = tg.offsetLeft - strip.firstElementChild.offsetLeft; } strip.onscroll = function () { td.stripScroll = strip.scrollLeft; }; }
     document.querySelectorAll('video[data-vmeta]').forEach(function (v) { v.onloadedmetadata = function () { var m = cam.clips[+v.dataset.vmeta]; if (m && !m.durationSec && isFinite(v.duration)) { m.durationSec = Math.round(v.duration); render(); } }; });
@@ -3071,10 +3072,11 @@
       for (var k = 0; k < n; k++) {
         var nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
         var name = dec.decode(u8.subarray(p + 46, p + 46 + nl));
-        if (name === 'word/document.xml') ent = { method: dv.getUint16(p + 10, true), size: dv.getUint32(p + 20, true), off: dv.getUint32(p + 42, true) };
+        if (name === 'word/document.xml') ent = { method: dv.getUint16(p + 10, true), size: dv.getUint32(p + 20, true), raw: dv.getUint32(p + 24, true), off: dv.getUint32(p + 42, true) };
         p += 46 + nl + xl + cl;
       }
       if (!ent) throw new Error('Word 文件里没有正文');
+      if (ent.raw > 20 * 1024 * 1024 || ent.off + ent.size > u8.length) throw new Error('Word 文件太大或已损坏');
       var lh = ent.off, start = lh + 30 + dv.getUint16(lh + 26, true) + dv.getUint16(lh + 28, true), raw = u8.subarray(start, start + ent.size);
       if (ent.method === 0) return dec.decode(raw);
       if (ent.method !== 8 || typeof DecompressionStream === 'undefined') throw new Error('这台设备不支持读取这种 Word 文件');
@@ -3088,7 +3090,7 @@
         out.push(h ? new Array(+(h[2] || h[1]) + 1).join('#') + ' ' + t : list ? '- ' + t : t);
       });
       return out.join('\n\n');
-    });
+    }).catch(function (e) { throw new Error(/[\u4e00-\u9fa5]/.test(e && e.message || '') ? e.message : '不是有效的 Word 文件'); });
   }
   /* ---------- AI 知识库 ---------- */
   var kbTry = '';
@@ -3340,7 +3342,7 @@
     if (el.dataset && el.dataset.camfile && el.files.length) { addVideos(el.files); return; }
     if (el.dataset && el.dataset.aifile && el.files[0]) { var af = el.files[0]; if (!/\.(txt|md)$/i.test(af.name) && !/^text\//.test(af.type)) { toast('演示版只能读取 TXT、Markdown 文本文件', true); return; } var rd = new FileReader(); rd.onload = function () { var tx2 = String(rd.result).slice(0, 4000); if (!aiS.mode) aiS.mode = 'minutes'; aiHandle(tx2); renderAI(); }; rd.readAsText(af); return; }
     if (el.dataset && el.dataset.pref) { var pp = {}; pp[el.dataset.pref] = el.checked; act('member.update', { id: me, prefs: pp }, el.checked ? '已开启' : '已关闭'); return; }
-    if (el.dataset && el.dataset.kbfile && el.files.length) { var fs = Array.prototype.slice.call(el.files), n = 0, bad = []; var next = function () { var f = fs.shift(); if (!f) { save(); render(); toast(n ? '已添加 ' + n + ' 份资料' + (bad.length ? '；' + bad.join('、') + ' 没读到内容' : '') : '没有添加成功：' + bad.join('、'), !n); return; } if (f.size > (/\.(docx|pdf)$/i.test(f.name) ? 10000000 : 600000)) { bad.push(f.name + '（太大）'); return next(); } var addKb = function (body) { var r = TM.act(S, me, 'kb.add', { title: f.name.replace(/\.(md|markdown|txt|docx|pdf)$/i, ''), body: body, scope: 'team' }); if (r.ok) n++; else bad.push(f.name + '（' + r.error + '）'); next(); }; if (/\.docx$/i.test(f.name)) { docxToMd(f).then(addKb, function (e) { bad.push(f.name + '（' + (e && e.message || '读不出来') + '）'); next(); }); return; } if (/\.pdf$/i.test(f.name)) { if (!AI_ON) { bad.push(f.name + '（PDF 需要启用 AI 才能读取）'); return next(); } toast('Claude 正在读「' + f.name + '」…'); var fr2 = new FileReader(); fr2.onload = function () { TMS.aiDoc(f.name, String(fr2.result).split(',')[1] || '').then(function (r) { addKb(r.text || ''); }, function (e) { bad.push(f.name + '（' + ((e && e.error) || 'AI 读取失败') + '）'); next(); }); }; fr2.readAsDataURL(f); return; } var rd = new FileReader(); rd.onload = function () { addKb(String(rd.result || '')); }; rd.onerror = function () { bad.push(f.name); next(); }; rd.readAsText(f); }; next(); el.value = ''; return; }
+    if (el.dataset && el.dataset.kbfile && el.files.length) { var fs = Array.prototype.slice.call(el.files), n = 0, bad = []; var next = function () { var f = fs.shift(); if (!f) { save(); render(); toast(n ? '已添加 ' + n + ' 份资料' + (bad.length ? '；' + bad.join('、') + ' 没读到内容' : '') : '没有添加成功：' + bad.join('、'), !n); return; } if (f.size > (/\.(docx|pdf)$/i.test(f.name) ? 10000000 : 600000)) { bad.push(f.name + '（太大）'); return next(); } var f2title = ''; var addKb = function (body) { var r = TM.act(S, me, 'kb.add', { title: f.name.replace(/\.(md|markdown|txt|docx|pdf)$/i, '').slice(0, 40) + f2title, body: body, scope: 'team' }); if (r.ok) n++; else bad.push(f.name + '（' + r.error + '）'); next(); }; if (/\.docx$/i.test(f.name)) { docxToMd(f).then(addKb, function (e) { bad.push(f.name + '（' + (e && e.message || '读不出来') + '）'); next(); }); return; } if (/\.pdf$/i.test(f.name)) { if (!AI_ON) { bad.push(f.name + '（PDF 需要启用 AI 才能读取）'); return next(); } toast('Claude 正在读「' + f.name + '」…'); var fr2 = new FileReader(); fr2.onerror = function () { bad.push(f.name + '（读不出来）'); next(); }; fr2.onload = function () { TMS.aiDoc(f.name, String(fr2.result).split(',')[1] || '').then(function (r) { if (r.truncated) f2title = '（内容不完整）'; addKb(r.text || ''); }, function (e) { bad.push(f.name + '（' + ((e && e.error) || 'AI 读取失败') + '）'); next(); }); }; fr2.readAsDataURL(f); return; } var rd = new FileReader(); rd.onload = function () { addKb(String(rd.result || '')); }; rd.onerror = function () { bad.push(f.name); next(); }; rd.readAsText(f); }; next(); el.value = ''; return; }
     if (el.dataset && el.dataset.avatar && el.files.length) { avatarPick(el.files[0]); el.value = ''; return; }
     if (el.dataset && el.dataset.wfile && el.files.length) { var wm = Array.prototype.map.call(el.files, function (f) { var o = { kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, size: fmtSize(f.size) }; o.localId = rid('w'); blobs[o.localId] = keepBlob(o.localId, f); return o; }); act('work.attach', { id: el.dataset.wfile, media: wm }, '已上传 ' + wm.length + ' 个文件' + (SRV ? '' : '（演示版不上传）')); return; }
     if (el.dataset && el.dataset.ixfile && el.files.length) { var media = Array.prototype.map.call(el.files, function (f) { var o = { kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, size: fmtSize(f.size) }; o.localId = rid('x'); blobs[o.localId] = keepBlob(o.localId, f); return o; }); act('idea.attach', { id: el.dataset.ixfile, media: media }, '已添加 ' + media.length + ' 个附件' + (SRV ? '' : '（演示版不上传）')); return; }

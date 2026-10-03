@@ -114,7 +114,10 @@ var TMN = (function () {
       var u = String(e && e.url || ''), j = u.match(/^teamops:\/\/join\?(.*)$/);
       if (j) { // 扫老板给的二维码加入：记下服务器地址和账号，登录页自动填好
         var q = {}; j[1].split('&').forEach(function (kv) { var p = kv.split('='); try { q[p[0]] = decodeURIComponent(p[1] || ''); } catch (x) {} });
-        if (!/^https?:\/\//.test(q.server || '')) return;
+        // 只接受干净的服务器地址：http/https、没有用户名密码、路径 / 查询 / # 都为空；显示和保存都只用 origin
+        var su; try { su = new URL(q.server); } catch (x) { return; }
+        if (!/^https?:$/.test(su.protocol) || su.username || su.password || (su.pathname && su.pathname !== '/') || su.search || su.hash) return;
+        q.server = su.origin; q.login = /^[A-Za-z0-9_.@-]{3,32}$/.test(q.login || '') ? q.login : '';
         if (window.TMS && TMS.loggedIn()) { if (window.__tm && window.__tm.toast) window.__tm.toast('你已经登录了。要换账号，请先在「我的」里退出登录', true); return; }
         // 防钓鱼：别人也能做这种链接，切换服务器前必须让用户确认地址
         if (!window.confirm('要连接到这个团队服务器吗？\n\n' + q.server + (q.login ? '\n账号：' + q.login : '') + '\n\n只在扫描老板给你的二维码时才确认。如果不认识这个地址，请点取消。')) return;

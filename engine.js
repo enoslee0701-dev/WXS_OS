@@ -190,7 +190,7 @@ var TM = (function () {
       recordIdea: canInitiate(s, uid),          // 记录想法
       createProject: canCreateProject(s, uid),  // 新建项目
       assign: canAssign(s, uid),                // 分配任务
-      claimIdeas: hasRole(s, uid, 'operator'),  // 认领整理想法
+      claimIdeas: canFollow(s, uid),             // 认领整理想法（没有运营者时老板兼任）
       decide: owner,                            // 老板决策
       members: owner || admin,                  // 添加 / 管理成员
       settings: owner || admin,                 // 流程开关、提醒阈值
@@ -467,7 +467,7 @@ var TM = (function () {
     ev(s, { ideaId: d.id, actor: uid, action: 'ai.reanalyze', text: '重新生成 AI 整理稿（模拟）' }); touchIdea(s, d); return {};
   };
   A['idea.retryAi'] = function (s, uid, p) {
-    var d = idea(s, p.id); need(d.followerId === uid || (hasRole(s, uid, 'operator') && !d.followerId), '只有跟进人可以重试'); need(d.aiStatus === 'failed', 'AI 没有失败，无需重试');
+    var d = idea(s, p.id); need(d.followerId === uid || (canFollow(s, uid) && !d.followerId), '只有跟进人可以重试'); need(d.aiStatus === 'failed', 'AI 没有失败，无需重试');
     d.aiStatus = 'queued'; ev(s, { ideaId: d.id, actor: uid, action: 'ai.retry', text: '手动重试 AI 整理' }); runAnalysis(s, d); return {};
   };
   A['idea.requestDecision'] = function (s, uid, p) {

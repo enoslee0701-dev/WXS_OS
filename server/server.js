@@ -313,7 +313,8 @@ const safeType = (t) => { t = String(t || '').split(';')[0].trim().toLowerCase()
 /* 读权限：上传人自己；或者附件挂在他看得到的想法（且该附件对他可见）/ 项目上 */
 function canReadFile(uid, f) {
   if (f.uid === uid) return true;
-  if (S.users.some(u => u.avatar === f.id)) return true; // 头像：全队可见
+  // 头像：全队可见——但只认本人上传的文件（否则谁都能把别人的私有附件设成自己的头像，让全队可读）
+  if (S.users.some(u => u.avatar === f.id && u.id === f.uid)) return true;
   for (const d of S.ideas) for (const m of d.media || []) if (m.localId === f.id && TM.canSeeMediaItem(S, uid, d, m)) return true;
   for (const w of S.workItems) for (const m of w.files || []) if (m.localId === f.id && TM.canViewWork(S, uid, w)) return true;
   return false;

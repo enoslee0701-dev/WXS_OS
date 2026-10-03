@@ -18,13 +18,14 @@ var TMS = (function () {
   if (api.server && !api.token) { put(K, null); put(KU, null); }
 
   function norm(u) { u = String(u || '').trim().replace(/\/+$/, ''); if (u && !/^https?:\/\//i.test(u)) u = 'http://' + u; return u; }
-  function reqAt(base, method, path, body, token) {
-    var ctl = window.AbortController ? new AbortController() : null, tm = setTimeout(function () { if (ctl) ctl.abort(); }, 15000);
+  function reqAt(base, method, path, body, token, wait) {
+    var ctl = window.AbortController ? new AbortController() : null, tm = setTimeout(function () { if (ctl) ctl.abort(); }, wait || 15000);
     return fetch(base + path, { method: method, signal: ctl && ctl.signal, headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}), body: body ? JSON.stringify(body) : undefined })
       .then(function (r) { clearTimeout(tm); return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { j.status = r.status; throw j; } return j; }); },
         function () { clearTimeout(tm); throw { status: 0, error: '连不上服务器，请检查网络和服务器地址' }; });
   }
-  function req(method, path, body) { return reqAt(api.base, method, path, body, api.token); }
+  function req(method, path, body, wait) { return reqAt(api.base, method, path, body, api.token, wait); }
+  var AI_WAIT = 120000; // AI 生成要几十秒，不能用 15 秒的普通超时（客户端放弃了服务器照样跑完、照样扣次数）
   // iOS 里：localStorage 的删除要先同步到原生备份再刷新，否则刷新后会被当成「丢失」又补回来（退出了又登录回去）
   function reloadSafe() { var done = false, go = function () { if (!done) { done = true; location.reload(); } }; try { if (window.TMN && TMN.native && TMN.flush) { TMN.flush().then(go, go); setTimeout(go, 1500); return; } } catch (e) {} go(); }
   function toast(m, bad) { if (window.__tm && window.__tm.toast) window.__tm.toast(m, bad); }
@@ -161,8 +162,8 @@ var TMS = (function () {
   api.probe = function (server) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'GET', '/api/health').then(function (r) { return { base: b, setup: r.setup }; }); };
   api.login = function (server, login, password) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'POST', '/api/login', { login: login, password: password }).then(function (res) { establish(b, res); }); };
   api.setup = function (server, o) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'POST', '/api/setup', o).then(function (res) { establish(b, res); }); };
-  api.useServer = function (server) { put('tm_server', norm(server) || 'http://'); put(K, null); put(KU, null); location.hash = '#/login'; reloadSafe(); };
-  api.useLocal = function () { ['tm_server', 'tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; reloadSafe(); };
+  api.useServer = function (server) { clearBig(); put('tm_server', norm(server) || 'http://'); put(K, null); put(KU, null); location.hash = '#/login'; reloadSafe(); };
+  api.useLocal = function () { clearBig(); ['tm_server', 'tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; reloadSafe(); };
   api.logout = function () {
     var done = function () { clearBig(); ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; reloadSafe(); };
     var out = function () { req('POST', '/api/logout').then(done, done); };
@@ -171,7 +172,7 @@ var TMS = (function () {
   };
   api.changePassword = function (old, pw) { return req('POST', '/api/password', { old: old, password: pw }).then(function (r) { api.mustChange = false; put('tm_must', null); flush(); pump(); return r; }); };
   api.registerDevice = function (t) { if (api.loggedIn() && t) req('POST', '/api/devices', { token: t, platform: 'ios' }).catch(function () {}); };
-  api.deactivate = function (pw) { return req('POST', '/api/account/deactivate', { password: pw }).then(function (r) { ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); return r; }); };
+  api.deactivate = function (pw) { return req('POST', '/api/account/deactivate', { password: pw }).then(function (r) { clearBig(); ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); return r; }); };
   api.usage = function () { return req('GET', '/api/usage'); };
   api.exportAll = function () { return req('GET', '/api/export'); };
   api.accounts = function () { return req('GET', '/api/accounts'); };
@@ -221,23 +222,24 @@ var TMS = (function () {
   /* ---------- 真实 AI（服务器代理）：未启用或出错时由调用方退回规则模拟 ---------- */
   var aiSt = null;
   api.aiStatus = function () { if (!api.loggedIn()) return Promise.resolve({ enabled: false }); return aiSt || (aiSt = req('GET', '/api/ai/status').catch(function () { aiSt = null; return { enabled: false }; })); };
-  api.aiAsk = function (q, history) { return req('POST', '/api/ai/ask', { q: q, history: history || [] }); };
+  api.aiAsk = function (q, history) { return req('POST', '/api/ai/ask', { q: q, history: history || [] }, AI_WAIT); };
   // 决策弹窗开着时常规同步会推迟，这里直接应用（用户就是在等这份结果）
-  api.aiAdvice = function (id) { return req('POST', '/api/ai/advice', { id: id }).then(function (r) { if (!api.outbox.length && !busy && r.version >= api.version && window.__tm) { api.version = r.version; put('tm_ver', r.version); keepLocal(r.state, window.__tm.S); window.__tm.setState(r.state); } return r; }); };
-  api.aiProject = function (text) { return req('POST', '/api/ai/project', { text: text }); };
-  api.aiDoc = function (name, base64) { return req('POST', '/api/ai/doc', { name: name, data: base64 }); };
-  api.aiKb = function (topic, text) { return req('POST', '/api/ai/kb', { topic: topic, text: text }); };
+  api.aiAdvice = function (id) { return req('POST', '/api/ai/advice', { id: id }, AI_WAIT).then(function (r) { if (!api.outbox.length && !busy && r.version >= api.version && window.__tm) { api.version = r.version; put('tm_ver', r.version); keepLocal(r.state, window.__tm.S); window.__tm.setState(r.state); } return r; }); };
+  api.aiProject = function (text) { return req('POST', '/api/ai/project', { text: text }, AI_WAIT); };
+  api.aiDoc = function (name, base64) { return req('POST', '/api/ai/doc', { name: name, data: base64 }, 300000); };
+  api.aiKb = function (topic, text) { return req('POST', '/api/ai/kb', { topic: topic, text: text }, AI_WAIT); };
   /* ---------- 大缓存：完整数据超过 localStorage 容量时存 IndexedDB ---------- */
   var CDB = null;
   function cdb() { if (CDB) return CDB; CDB = new Promise(function (ok, bad) { try { var r = indexedDB.open('tm_cache', 1); r.onupgradeneeded = function () { r.result.createObjectStore('kv'); }; r.onsuccess = function () { ok(r.result); }; r.onerror = function () { bad(r.error); }; } catch (e) { bad(e); } }); return CDB; }
   function ckv(mode, fn) { return cdb().then(function (db) { return new Promise(function (ok, bad) { var t = db.transaction('kv', mode), st = t.objectStore('kv'), r = fn(st); t.oncomplete = function () { ok(r && r.result); }; t.onerror = function () { bad(t.error); }; }); }); }
-  api.cacheBig = function (json) { put('tm_cache_idb', '1'); return ckv('readwrite', function (st) { return st.put({ uid: g(KU), json: json }, 'state'); }).catch(function () {}); };
+  api.cacheBig = function (json) { put('tm_cache_idb', '1'); return ckv('readwrite', function (st) { return st.put({ uid: g(KU), server: api.serverUrl(), json: json }, 'state'); }).catch(function () {}); };
   function clearBig() { if (g('tm_cache_idb')) { put('tm_cache_idb', null); ckv('readwrite', function (st) { return st.delete('state'); }).catch(function () {}); } }
   // 启动：localStorage 里没有完整缓存、但 IndexedDB 里有（同一个人的）→ 先用它显示（离线也能看），再和服务器同步
-  if (api.loggedIn() && !g(K) && g('tm_cache_idb')) {
+  var noFull = (function () { try { var x = JSON.parse(g(K) || 'null'); return !x || !!x.loading; } catch (e) { return true; } })();
+  if (api.loggedIn() && noFull && g('tm_cache_idb')) {
     window.addEventListener('load', function () {
       ckv('readonly', function (st) { return st.get('state'); }).then(function (x) {
-        if (x && x.json && x.uid === g(KU) && window.__tm && window.__tm.S && window.__tm.S.loading && !api.outbox.length) { try { window.__tm.setState(JSON.parse(x.json)); } catch (e) {} }
+        if (x && x.json && x.uid === g(KU) && x.server === api.serverUrl() && window.__tm && window.__tm.S && window.__tm.S.loading && !api.outbox.length) { try { window.__tm.setState(JSON.parse(x.json)); } catch (e) {} }
       }).catch(function () {});
     });
   }

@@ -541,6 +541,7 @@ ok(sm0.workItems.find(w => w.id === np0.workId).operatorId === 'u_owner', '老�
 let ni0 = must(TM.act(sm0, 'u_owner', 'idea.create', { note: '换打印机' }), '记想法');
 must(TM.act(sm0, 'u_owner', 'idea.submit', { id: ni0.id, path: 'direct' }), '提交');
 ok(sm0.notifications.some(n => n.userId === 'u_owner' && /待认领/.test(n.title)), '待认领通知发给老板');
+ok(TM.caps(sm0, 'u_owner').claimIdeas, '没有运营者时老板有认领能力');
 must(TM.act(sm0, 'u_owner', 'idea.claim', { id: ni0.id }), '老板认领');
 must(TM.act(sm0, 'u_owner', 'idea.route', { id: ni0.id, kind: 'admin', tasks: [{ title: '买新打印机', ownerId: xl, expected: '照片', criteria: '能打印' }] }), '老板派发');
 must(TM.act(sm0, 'u_owner', 'member.add', { name: '小王', title: '运营', role: 'operator', group: '行政运营' }), '后来有了运营者');

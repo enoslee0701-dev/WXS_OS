@@ -23,6 +23,10 @@ let srv = null;
   await c.route('**/api/**', r => r.abort()); await p.reload(); await p.waitForTimeout(1500);
   const off = await p.evaluate(() => ({ me: window.__tm.me, ideas: window.__tm.S.ideas.length, loading: !!window.__tm.S.loading, owner: (window.__tm.S.users.find(u => u.id === 'u_owner') || {}).name }));
   ok(off.me === 'u_owner' && off.ideas > 0 && !off.loading && off.owner === '王老板', '断网重开：从 IndexedDB 缓存显示团队数据 ' + JSON.stringify(off));
+  // 旧版本可能把启动骨架存成了完整缓存：读到时要当作没有缓存，改从 IndexedDB 读
+  await p.evaluate(() => { localStorage.setItem('tm_demo_v3', JSON.stringify({ v: 3, loading: true, users: [], ideas: [], settings: {} })); });
+  await p.reload(); await p.waitForTimeout(1500);
+  ok(await p.evaluate(() => window.__tm.S.ideas.length > 0 && (window.__tm.S.users.find(u => u.id === 'u_owner') || {}).name === '王老板'), '本地存的是启动骨架时，改从 IndexedDB 读完整数据');
   await c.unroute('**/api/**');
   // 退出登录：清掉 IndexedDB 缓存
   await p.goto(URL + '#/me'); await p.waitForTimeout(300); await p.click('[data-do=srvLogout]'); await p.click('.sheet footer button[type=submit]');

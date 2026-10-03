@@ -77,6 +77,11 @@ const c0route = (p) => p.context().route('http://join.test:8787/**', r => r.fulf
   // 3.5 扫老板给的二维码加入：未登录时记下服务器和账号，刷新后登录页自动填好
   await p.evaluate(() => { localStorage.removeItem('tm_user_v3'); });
   await c0route(p);
+  // 不干净的地址直接忽略（不弹确认、不切换）
+  let dlg = 0; const onD = d => { dlg++; d.dismiss(); }; p.on('dialog', onD);
+  for (const bad of ['http://evil.test/api?x=1', 'http://user:pw@evil.test', 'javascript:alert(1)', 'http://evil.test/%0Ahttp://good.test']) await p.evaluate((u) => __fake.emit('App', 'appUrlOpen', { url: 'teamops://join?server=' + encodeURIComponent(u) + '&login=x' }), bad);
+  await p.waitForTimeout(200); p.off('dialog', onD);
+  ok(dlg === 0 && await p.evaluate(() => localStorage.getItem('tm_server')) === null, '带路径 / 账号密码 / 非 http 的加入链接被忽略');
   // 先点「取消」：不切换（防钓鱼）
   p.once('dialog', d => { ok(d.message().includes('http://join.test:8787'), '加入前弹出确认，显示服务器地址'); d.dismiss(); });
   await p.evaluate(() => __fake.emit('App', 'appUrlOpen', { url: 'teamops://join?server=' + encodeURIComponent('http://join.test:8787') + '&login=xiaoli' }));
