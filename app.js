@@ -391,7 +391,9 @@
       case 'draft': return d.status === 'draft'; case 'cocreate': return d.status === 'discussing' || d.status === 'summary_ready';
       case 'triage': return d.status === 'triage'; case 'awaiting': return d.status === 'awaiting_owner';
       case 'planned': return d.status === 'planned' && TM.ideaProgress(S, d.id) !== 1; case 'finished': return d.status === 'planned' && TM.ideaProgress(S, d.id) === 1;
-      case 'closed': return d.status === 'on_hold' || d.status === 'declined'; default: return true;
+      case 'closed': return d.status === 'on_hold' || d.status === 'declined';
+      case 'mine': return S.suggestions.some(function (x) { return x.ideaId === d.id && x.authorId === me; }) || S.workItems.some(function (w) { return w.ideaId === d.id && S.tasks.some(function (t) { return t.workId === w.id && (t.ownerId === me || (t.collabs || []).indexOf(me) >= 0); }); });
+      default: return true;
     }
   }
   var IB = {
@@ -402,7 +404,8 @@
     awaiting: ['等决策', '等老板拍板', '<path d="M6 21V4"/><path d="M6 4.5h11l-2.5 4 2.5 4H6"/>', 'ib-red'],
     planned: ['进行中', '已形成事项', '<circle cx="12" cy="12" r="8.5"/><path d="M10 8.8v6.4l5-3.2z"/>', 'ib-blue'],
     finished: ['已完成', '结果已交付', '<circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.3l2.4 2.4 4.6-5"/>', 'ib-green'],
-    closed: ['暂缓 / 不做', '先放一放', '<circle cx="12" cy="12" r="8.5"/><path d="M10 9v6M14 9v6"/>', 'ib-gray']
+    closed: ['暂缓 / 不做', '先放一放', '<circle cx="12" cy="12" r="8.5"/><path d="M10 9v6M14 9v6"/>', 'ib-gray'],
+    mine: ['我参与的', '提过建议或有我的任务', '<circle cx="10" cy="8" r="3.2"/><path d="M4 19.5c.7-3.1 3-4.8 6-4.8 1.3 0 2.4.3 3.4.9"/><path d="M15 17.2l2 2 3.5-3.7"/>', 'ib-amber']
   };
   function ideaNeedsMe(d) {
     if (d.status === 'awaiting_owner' && isOwner()) return true;
@@ -411,6 +414,8 @@
     if (d.status === 'cocreate' && d.creatorId !== me && !S.suggestions.some(function (x) { return x.ideaId === d.id && x.authorId === me; })) return true;
     return false;
   }
+  /* 执行者不整理、不决策：六宫格换成和自己相关的分类 */
+  var EXEC_TILE = [['all', '全部想法', '从灵感到行动'], ['cocreate', '共创中', '团队一起出主意'], ['mine', '我参与的', '提过建议或有我的任务'], ['planned', '进行中', '正在推进的项目'], ['finished', '已完成', '达成的成果'], ['closed', '暂缓 / 不做', '先放一放']];
   var IDEA_TILE = [['all', '全部想法', '从灵感到行动'], ['cocreate', '共创中', '团队一起出主意'], ['triage', '待整理', '收集与梳理'], ['awaiting', '等决策', '等老板拍板'], ['planned', '进行中', '正在推进的项目'], ['finished', '已完成', '达成的成果'], ['draft', '草稿', '只有自己可见'], ['closed', '暂缓 / 不做', '先放一放']];
   var IST = { discussing: 'ib-violet', summary_ready: 'ib-violet', triage: 'ib-amber', awaiting_owner: 'ib-red', planned: 'ib-blue', draft: 'ib-gray', on_hold: 'ib-gray', declined: 'ib-gray' };
   function ideaRecent(d) {
@@ -423,13 +428,14 @@
     var all = vIdeas().sort(byRecent), f = filt.ideas || 'all';
     var h = projHeader('ideas');
     if (role() === 'admin') return h + emptyBox('管理员看不到想法内容。');
-    var tiles = IDEA_TILE.filter(function (t) { return ['draft', 'closed'].indexOf(t[0]) < 0 || all.some(function (d) { return ideaMatch(d, t[0]); }); }).slice(0, 6);
+    var cp = myCaps(), exec = !cp.recordIdea && !cp.claimIdeas && !cp.decide;
+    var tiles = exec ? EXEC_TILE : IDEA_TILE.filter(function (t) { return ['draft', 'closed'].indexOf(t[0]) < 0 || all.some(function (d) { return ideaMatch(d, t[0]); }); }).slice(0, 6);
     h += '<section class="id-grid">' + tiles.map(function (t) {
       var x = IB[t[0]], n = all.filter(function (d) { return ideaMatch(d, t[0]); }).length, act = t[0] !== 'all' && all.some(function (d) { return ideaMatch(d, t[0]) && ideaNeedsMe(d); });
       return '<button class="ib-tile id-tile it-' + t[0] + ' ' + x[3] + (f === t[0] && filt.ideasOpen ? ' on' : '') + (n ? '' : ' zero') + '" data-do="ideasTile" data-f="' + t[0] + '"><span class="ib-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + (t[0] === 'all' ? '<path d="M9 17.5h6M10 20.5h4"/><path d="M12 3.5a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.4 1.1 2.2v1h5v-1c0-.8.4-1.6 1.1-2.2A6 6 0 0 0 12 3.5z"/>' : x[2]) + '</svg></span>' + (act ? '<i class="ib-dot"></i>' : '') + '<b>' + n + '</b><span class="ib-l">' + t[1] + '</span><small>' + t[2] + '</small></button>';
     }).join('') + '</section>';
     var open = filt.ideasOpen, list2 = open ? all.filter(function (d) { return ideaMatch(d, f); }) : all.slice(0, 5);
-    var title = open ? (IDEA_TILE.find(function (t) { return t[0] === f; }) || IDEA_TILE[0])[1] : '最近动态';
+    var title = open ? (IDEA_TILE.concat(EXEC_TILE).find(function (t) { return t[0] === f; }) || IDEA_TILE[0])[1] : '最近动态';
     h += '<div class="ib-head"><b>' + title + '</b>' + (open ? '<span>' + list2.length + ' 个</span><button class="id-link" data-do="ideasRecent">返回动态</button>' : '<button class="id-link" data-do="ideasTile" data-f="all">查看全部' + hi('chev', 2) + '</button>') + '</div>';
     if (!list2.length) return h + emptyBox('这个分类下还没有想法。');
     return h + '<div class="id-list">' + list2.map(function (d) {

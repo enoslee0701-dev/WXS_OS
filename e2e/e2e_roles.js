@@ -30,6 +30,13 @@ const EXPECT = {
     await p.screenshot({ path: `role-${n}.png` });
     const tabs = await p.$$eval('.tabs a', xs => xs.map(x => x.textContent.replace(/\d+/g, '').trim()));
     ok(JSON.stringify(tabs) === JSON.stringify(e.tabs), `${n} 底部标签 ${tabs.join(',')}`);
+    // 想法页六宫格：执行者看到和自己相关的分类，老板 / 运营者 / 负责人保留待整理、等决策
+    await shut(); await p.goto(URL + '#/ideas'); await p.waitForTimeout(120);
+    if (p.url().endsWith('#/ideas')) {
+      const ts = await p.$$eval('.id-tile', xs => xs.map(x => x.dataset.f));
+      const ex = ['周敏', '何静', '刘洋'].includes(n);
+      ok(ex ? JSON.stringify(ts) === '["all","cocreate","mine","planned","finished","closed"]' : ts.includes('triage') && ts.includes('awaiting'), `${n} 想法页六宫格 ${ts.join(',')}`);
+    }
     // 首页每张卡片都能用
     for (const k of cards) {
       await home(); await p.evaluate(() => window.__toasts.splice(0)); await p.click(`.hm-card[data-do=${k}]`); await p.waitForTimeout(150);
