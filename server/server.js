@@ -226,6 +226,30 @@ const routes = {
     changed(n0);
     return [200, { ok: true, ...stateFor(me.uid) }];
   },
+  /* 使用情况：AI 调用与估算费用、账号、设备、附件空间（老板 / 管理员） */
+  'GET /api/usage': async (req, url, b, me) => {
+    if (!isMgr(me.uid)) return [403, { error: '只有老板或管理员可以查看' }];
+    const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+    const agg = (since) => q('SELECT COUNT(*) AS n, COALESCE(SUM(in_tok),0) AS i, COALESCE(SUM(out_tok),0) AS o FROM ai_log WHERE at>=? AND ok=1').get(since);
+    const today = agg(day0.getTime()), month = agg(Date.now() - 30 * 864e5);
+    // 估算：claude-opus-5-5 每百万 token 输入 $4、输出 $20（不含缓存折扣，按上限估）
+    const usd = (x) => Math.round(((x.i * 4 + x.o * 20) / 1e6) * 100) / 100;
+    const byKind = q('SELECT kind, COUNT(*) AS n FROM ai_log WHERE at>=? AND ok=1 GROUP BY kind').all(Date.now() - 30 * 864e5);
+    return [200, {
+      ai: { enabled: AI.enabled(), model: AI.MODEL, limit: AI.LIMIT, systemLimit: AI.SYSTEM_LIMIT, today: { calls: today.n, usd: usd(today) }, month: { calls: month.n, inTok: month.i, outTok: month.o, usd: usd(month) }, byKind: Object.fromEntries(byKind.map(r => [r.kind, r.n])) },
+      accounts: q('SELECT COUNT(*) AS n FROM creds WHERE disabled=0').get().n,
+      devices: q('SELECT COUNT(*) AS n FROM devices d JOIN sessions s ON s.token=d.session').get().n,
+      push: PUSH.enabled(),
+      files: { count: q('SELECT COUNT(*) AS n FROM files').get().n, bytes: q('SELECT COALESCE(SUM(size),0) AS n FROM files').get().n },
+      version
+    }];
+  },
+  /* 导出全部数据（老板）：完整备份，不含密码 */
+  'GET /api/export': async (req, url, b, me) => {
+    if (!isOwner(me.uid)) return [403, { error: '只有老板可以导出全部数据' }];
+    const accounts = q('SELECT uid,login,disabled,created,last_login FROM creds').all();
+    return [200, { exportedAt: new Date().toISOString(), version, state: S, accounts, files: q('SELECT id,uid,name,type,size,created FROM files').all() }];
+  },
   /* 账号管理：老板 / 管理员给成员分派登录账号；管理员不能管老板和其他管理员 */
   'GET /api/accounts': async (req, url, b, me) => {
     if (!isMgr(me.uid)) return [403, { error: '只有老板或管理员可以管理账号' }];

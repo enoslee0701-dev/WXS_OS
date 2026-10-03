@@ -131,6 +131,8 @@ async function team(api) {
   // 管理员已用 3 次（1 次成功 + 拒答 + 限流），上限 5：并发 3 个请求只能成功 2 个
   const conc = await Promise.all([1, 2, 3].map(() => api('POST', '/api/ai/ask', { q: '并发' }, t.adm)));
   ok(conc.filter(x => x.status === 200).length === 2 && conc.filter(x => x.status === 429).length === 1, '并发请求也不会超过每日上限');
+  const us = await api('GET', '/api/usage', null, t.adm);
+  ok(us.ai.enabled && us.ai.month.calls >= 5 && us.ai.month.usd > 0 && us.ai.byKind.ask >= 1 && us.ai.byKind.analyze >= 1, '使用情况统计 AI 次数和估算费用');
   // 后台 AI 进行中服务器被杀：重启后只补做这一个
   mode = 'slow';
   const ri = await api('POST', '/api/act', { name: 'idea.create', payload: { note: '重启补做测试：会议室换窗帘' } }, t.boss);

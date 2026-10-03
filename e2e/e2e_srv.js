@@ -53,6 +53,12 @@ let srv = null;
   await A.goto(URL + '#/settings'); await A.waitForTimeout(100);
   await A.fill('[data-set=staleDays]', '5'); await A.dispatchEvent('[data-set=staleDays]', 'change');
   ok(await until(async () => (await api('GET', '/api/state', null, bossTok)).state.settings.staleDays === 5), '界面上的设置改动同步到服务器');
+  // 使用情况、导出备份
+  await A.click('[data-do=srvUsage]'); await A.waitForSelector('.sheet .cred');
+  ok((await A.textContent('.sheet .cred')).includes('在用账号'), '设置里能看使用情况');
+  await A.click('.sheet footer button[type=submit]'); await A.waitForTimeout(100);
+  const [dl] = await Promise.all([A.waitForEvent('download'), A.click('[data-do=srvExport]')]);
+  ok(/团队协同备份-.*\.json$/.test(dl.suggestedFilename()), '老板导出全部数据 ' + dl.suggestedFilename());
   // 老板的私人草稿
   const dr = await api('POST', '/api/act', { name: 'idea.create', payload: { note: '老板的私人草稿：明年扩张计划' } }, bossTok);
   ok(dr.ok, '老板记了一条草稿');

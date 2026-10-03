@@ -162,6 +162,13 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   ok((await post('/api/account/deactivate', { password: 'zhao12345' }, zTok)).ok, '成员注销账号（首次改密前也能注销）');
   ok((await get('/api/state', zTok)).status === 401 && (await post('/api/login', { login: 'xiaozhao', password: 'zhao12345' })).status === 403, '注销后会话失效、不能登录');
   ok((await get('/api/state', boss)).state.notifications.some(n => /注销/.test(n.title)), '老板收到注销通知');
+  // 8.9 使用情况、导出
+  let us = await get('/api/usage', boss);
+  ok(us.status === 200 && us.accounts >= 2 && us.files.count >= 1 && us.ai.enabled === false, '老板查看使用情况');
+  ok((await get('/api/usage', liTok2)).status === 403, '执行者不能看使用情况');
+  const ex = await get('/api/export', boss);
+  ok(ex.status === 200 && ex.state.users.length >= 3 && ex.accounts.length >= 2 && !JSON.stringify(ex).includes('"hash"') && !JSON.stringify(ex).includes('"salt"'), '老板导出全部数据（不含密码）');
+  ok((await get('/api/export', liTok2)).status === 403, '执行者不能导出');
   // 9. 重启后数据还在
   srv.kill(); await new Promise(z => setTimeout(z, 200)); srv = await start();
   r = await get('/api/state', boss);

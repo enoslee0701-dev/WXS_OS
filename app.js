@@ -2620,7 +2620,7 @@
       sw('showTiers', '显示一级、二级标签（C4）', '只是界面分组标签，不影响权限。当前映射：运营者、负责人为一级，执行者为二级，待确认。') + '</div>';
     h += sec('公司与提醒') + '<div class="card"><label class="fld"><span>公司方向与长期目标</span><textarea data-set="direction" rows="3"' + (isOwner() ? '' : ' disabled') + '>' + esc(cs.direction) + '</textarea><small>AI 整理时用来判断新想法是否与现有业务形成闭环。由老板填写。</small></label>' +
       '<div class="row2"><label class="fld"><span>无动态提醒（天）</span><input type="number" min="1" max="30" data-set="staleDays" value="' + cs.staleDays + '"' + dis + '></label><label class="fld"><span>超预算阈值（元）</span><input type="number" min="0" step="1000" data-set="budgetThreshold" value="' + (cs.budgetThreshold || '') + '"' + dis + '></label></div></div>';
-    h += SRV ? sec('数据') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">服务器：' + esc(TMS.serverUrl()) + '</p>' + (isOwner() && !S.real ? '<button class="btn danger block" data-do="clearDemo">清理演示数据</button>' : '<p class="muted" style="margin:0;font-size:13.5px">数据每天自动备份在服务器的 backups 目录。</p>') + '</div>' :
+    h += SRV ? sec('数据') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">服务器：' + esc(TMS.serverUrl()) + '</p><button class="btn block" data-do="srvUsage">使用情况（AI 费用、设备、空间）</button>' + (isOwner() ? '<button class="btn block mt" data-do="srvExport">导出全部数据（备份）</button>' : '') + '<div class="mt"></div>' + (isOwner() && !S.real ? '<button class="btn danger block" data-do="clearDemo">清理演示数据</button>' : '<p class="muted" style="margin:0;font-size:13.5px">数据每天自动备份在服务器的 backups 目录。</p>') + '</div>' :
       sec('演示工具') + '<div class="card">' + sw('demoAiFail', '模拟 AI 失败', '用来演示「AI 失败后运营者手写整理稿继续推进」。') +
       '<div class="callout">演示版里：账号是预设的；AI 整理和共创汇总由规则模拟生成，界面都标了「AI 模拟输出」；录音只在本机，不上传、不转写；通知只在 App 内。</div>' +
       (isOwner() ? '<button class="btn block" data-do="clearDemo">清理演示数据（保留成员）</button>' : '') + '<button class="btn danger block mt" data-do="reset">重置全部演示数据</button></div>';
@@ -2924,6 +2924,25 @@
     openSheet('注销账号', '<p style="margin:0 0 8px">注销后你的账号会被停用，<b>不能再登录</b>，老板会收到通知。你记录过的想法、任务和讨论会保留在团队里。</p><div class="callout warn">如果只是换手机或暂时不用，请选择「退出登录」。</div>' + field('输入当前密码确认', '<input type="password" name="password" autocomplete="current-password" required>'), '确认注销', function (o) {
       TMS.deactivate(o.password || '').then(function () { closeSheet(); toast('账号已注销'); setTimeout(function () { location.hash = '#/login'; location.reload(); }, 800); }, function (e) { toast(e.error || '注销失败', true); });
     }, true);
+  };
+  DO.srvUsage = function () {
+    TMS.usage().then(function (u) {
+      var mb = function (n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB'; };
+      var K = { ask: 'AI 助手提问', kb: '口述整理', analyze: '想法整理稿', digest: '讨论总结', advice: '决策建议', project: '新建项目解析' };
+      var row = function (a, b) { return '<div class="cred-r"><span>' + a + '</span><b>' + b + '</b></div>'; };
+      openSheet('使用情况', '<div class="cred">' +
+        row('AI', u.ai.enabled ? '已启用（' + esc(u.ai.model) + '）' : '未启用（规则模拟）') +
+        (u.ai.enabled ? row('今天', u.ai.today.calls + ' 次 · 约 $' + u.ai.today.usd) + row('近 30 天', u.ai.month.calls + ' 次 · 约 $' + u.ai.month.usd) + Object.keys(u.ai.byKind).map(function (k) { return row('　' + (K[k] || k), u.ai.byKind[k] + ' 次'); }).join('') + row('每人每天上限', u.ai.limit + ' 次（后台自动 ' + u.ai.systemLimit + ' 次）') : '') +
+        row('在用账号', u.accounts + ' 个') + row('登录中的手机', u.devices + ' 台' + (u.push ? '' : '（推送未配置）')) + row('附件', u.files.count + ' 个 · ' + mb(u.files.bytes)) +
+        '</div><p class="muted" style="font-size:13px;margin:10px 0 0">费用按模型标价估算（不含缓存折扣），以 Anthropic 账单为准。</p>', '关闭', function () { closeSheet(); });
+    }, function (e) { toast(e.error || '读取失败', true); });
+  };
+  DO.srvExport = function () {
+    TMS.exportAll().then(function (d) {
+      var blob = new Blob([JSON.stringify(d, null, 1)], { type: 'application/json' }), name = '团队协同备份-' + new Date().toISOString().slice(0, 10) + '.json';
+      if (typeof TMN !== 'undefined' && TMN.native && navigator.share) { var f = new File([blob], name, { type: 'application/json' }); navigator.share({ files: [f], title: name }).catch(function () {}); return; }
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000); toast('已导出：' + name);
+    }, function (e) { toast(e.error || '导出失败', true); });
   };
   DO.srvDisable = function (el) { var uid = el.dataset.u, d = el.dataset.d === '1'; TMS.disable(uid, d).then(function () { closeSheet(); toast(d ? '已停用，对方会被立即登出' : '已恢复'); }, function (e) { toast(e.error || '操作失败', true); }); };
   DO.clearDemo = function () { openSheet('清理演示数据', '<p style="margin:0 0 8px">会清空所有想法、项目、任务、待办、通知和示例资料，<b>成员和设置保留</b>，你自己添加的知识库资料也保留。</p><div class="callout warn">清理后无法恢复。</div>', '确认清理', function () { act('data.clearDemo', {}, '演示数据已清理'); location.hash = '#/home'; }, true); };
