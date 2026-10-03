@@ -581,5 +581,14 @@ const ldDraft = must(TM.act(s, LD, 'idea.create', { note: '负责人的私人草
 rej(TM.act(s, O, 'idea.delete', { id: ldDraft.id }), '老板删别人的私人草稿');
 must(TM.act(s, LD, 'idea.delete', { id: ldDraft.id }), '发起人删自己的草稿');
 
+// ===== 老板早报 =====
+s = TM.migrate(fresh());
+rej(TM.act(s, O, 'system.dailyBrief', {}), '老板不能直接调用早报');
+const nb0 = s.notifications.length, br = must(TM.act(s, 'agent', 'system.dailyBrief', { ai: 'Claude：今天先处理年会场地。' }), '发早报');
+const bn = s.notifications.slice(nb0).find(n => n.title === '今日早报');
+ok(br.sent === 1 && bn && bn.userId === O && /等你决策/.test(bn.body) && /Claude/.test(bn.body), '早报发给老板，含待决策和 AI 要点');
+const quiet = TM.blank({ name: '老板' });
+ok(TM.act(quiet, 'agent', 'system.dailyBrief', {}).sent === 0 && !quiet.notifications.length, '没有需要关注的事就不发');
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

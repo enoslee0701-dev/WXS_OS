@@ -1041,6 +1041,34 @@ var TM = (function () {
     ev(s, { ideaId: d.id, actor: 'agent', action: 'ai.analyze.real', text: 'Claude 完成整理 · 建议：' + L.route[np.suggested_route] });
     return {};
   };
+  /* 老板早报：今天需要老板关注的事（服务器每天早上以系统身份发一条通知） */
+  function briefStats(s) {
+    var t = now(s), y = t - DAY, open = function (x) { return ['done', 'cancelled'].indexOf(x.status) < 0; };
+    return {
+      decisions: s.decisions.filter(function (x) { return x.status === 'pending'; }).length,
+      ownerReview: s.tasks.filter(function (x) { return x.status === 'owner_review'; }).length,
+      overdue: s.tasks.filter(function (x) { return isOverdue(s, x); }).length,
+      blocked: s.tasks.filter(function (x) { return x.status === 'blocked'; }).length,
+      stale: s.tasks.filter(function (x) { return open(x) && isStale(s, x); }).length,
+      newIdeas: s.ideas.filter(function (x) { return !x.deleted && x.status !== 'draft' && (x.submittedAt || x.createdAt) >= y; }).length,
+      doneYesterday: s.tasks.filter(function (x) { return x.status === 'done' && x.lastActivity >= y; }).length
+    };
+  }
+  A['system.dailyBrief'] = function (s, uid, p) {
+    need(uid === 'agent', '只有系统可以发早报');
+    var b = briefStats(s), parts = [];
+    if (b.decisions) parts.push(b.decisions + ' 件等你决策');
+    if (b.ownerReview) parts.push(b.ownerReview + ' 个任务等你终验');
+    if (b.overdue) parts.push(b.overdue + ' 个任务逾期');
+    if (b.blocked) parts.push(b.blocked + ' 个任务受阻');
+    if (b.stale) parts.push(b.stale + ' 个任务好几天没动静');
+    if (b.newIdeas) parts.push('昨天新提交 ' + b.newIdeas + ' 个想法');
+    if (b.doneYesterday) parts.push('昨天完成 ' + b.doneYesterday + ' 个任务');
+    if (!parts.length) return { sent: 0 };
+    var body = parts.join('，') + '。' + (p && p.ai ? '\n' + txt(p.ai).slice(0, 300) : '');
+    notify(s, usersWith(s, 'owner'), null, '今日早报', body, '#/inbox');
+    return { sent: 1 };
+  };
   /* 日常清理（服务器每天以系统身份执行）：已读且超过 60 天的通知删掉，未读的保留 */
   A['system.housekeep'] = function (s, uid) {
     need(uid === 'agent', '只有系统可以清理');
@@ -1231,7 +1259,7 @@ var TM = (function () {
 
   return {
     L: L, STAGES: STAGES, TONE: TONE, DAY: DAY, act: act, seed: seed, user: user, name: name, hasRole: hasRole, canInitiate: canInitiate, usersWith: usersWith,
-    primaryRole: primaryRole, followUsers: followUsers, canFollow: canFollow, leadUsers: leadUsers, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
+    primaryRole: primaryRole, followUsers: followUsers, canFollow: canFollow, leadUsers: leadUsers, briefStats: briefStats, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
     latestSummary: latestSummary, deriveAnalysis: deriveAnalysis, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, migrate: migrate, viewFor: viewFor, blank: blank, canCreateProject: canCreateProject, canAssign: canAssign, caps: caps, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
     nextForTask: nextForTask, PTYPE: PTYPE, GROUPS: GROUPS, seedTodos: seedTodos, ensureTodos: ensureTodos, nextForIdea: nextForIdea, ideaProgress: ideaProgress, workProgress: workProgress, TT: TT
   };

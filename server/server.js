@@ -457,11 +457,33 @@ function sweepAi() {
   if (!S) return; const ids = new Set(q('SELECT summary_id FROM ai_jobs WHERE at > ?').all(Date.now() - 2 * 864e5).map(r => r.summary_id)); q('DELETE FROM ai_jobs').run();
   autoAnalyze(S.summaries.filter(x => ids.has(x.id) && x.payload && x.payload.simulated && TM.latestSummary(S, x.ideaId, x.kind) === x));
 }
+/* 老板早报：每天 BRIEF_AT（默认 08:00，服务器时区）发一条；AI 启用时附 Claude 写的要点（AI_DAILY_BRIEF=0 关闭 AI 部分） */
+async function dailyBrief() {
+  if (!S) return;
+  try {
+    let ai = '';
+    const owner = TM.usersWith(S, 'owner')[0], b = TM.briefStats(S);
+    const any = Object.keys(b).some(k => b[k]);
+    if (any && owner && AI.enabled() && process.env.AI_DAILY_BRIEF !== '0') {
+      const [code, out] = await aiRun({ uid: 'agent' }, 'brief', () => AI.ask(S, owner, '请用不超过三句话告诉老板：今天最该关注的事是什么、建议先做什么。只说结论，不要列数字（数字另外显示）。', []), true);
+      if (code === 200) ai = out.text || '';
+    }
+    const n0 = S.notifications.length, r = TM.act(S, 'agent', 'system.dailyBrief', { ai });
+    if (r.ok && r.sent) changed(n0);
+  } catch (e) { console.error('早报出错', e); }
+}
+function scheduleBrief() {
+  const [h, m] = String(process.env.BRIEF_AT || '08:00').split(':').map(Number), t = new Date();
+  t.setHours(h || 0, m || 0, 0, 0); if (t <= new Date()) t.setDate(t.getDate() + 1);
+  setTimeout(() => { dailyBrief(); scheduleBrief(); }, t - Date.now()).unref();
+}
+
 /* 每天清理一次（启动 1 分钟后先跑一次） */
 function housekeep() { if (!S) return; try { const r = TM.act(S, 'agent', 'system.housekeep', {}); if (r.ok && r.removed) { changed(); console.log('日常清理：删掉 ' + r.removed + ' 条旧通知'); } } catch (e) { console.error('日常清理出错', e); } }
 if (require.main === module) server.listen(PORT, HOST, () => {
   setTimeout(sweepAi, 3000);
   setTimeout(housekeep, 60e3).unref(); setInterval(housekeep, 864e5).unref();
+  scheduleBrief(); if (process.env.BRIEF_NOW === '1') setTimeout(dailyBrief, 800);
   console.log(`团队协同服务器已启动：http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  数据目录：${DATA}`);
   if (SETUP_CODE) console.log(`还没有创建团队。创建团队时需要初始化码：${SETUP_CODE}`);
 });

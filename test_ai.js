@@ -55,7 +55,10 @@ async function team(api) {
   s1.kill(); fs.rmSync(s1.DIR, { recursive: true, force: true });
 
   // 2. 配置了密钥（指向模拟服务）
-  const s2 = await start({ ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: MOCK, AI_DAILY_LIMIT: '5' }); api = mkApi(s2.B); t = await team(api);
+  const s2 = await start({ ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: MOCK, AI_DAILY_LIMIT: '5', BRIEF_NOW: '1' }); api = mkApi(s2.B); t = await team(api);
+  // 早报：启动后立即发一次（BRIEF_NOW），附 Claude 要点
+  let brief = null; for (let i = 0; i < 30 && !brief; i++) { brief = ((await api('GET', '/api/state', null, t.boss)).state.notifications || []).find(n => n.title === '今日早报'); if (!brief) await new Promise(z => setTimeout(z, 100)); }
+  ok(brief && /等你决策/.test(brief.body) && /新官网/.test(brief.body), '老板收到早报（数字 + Claude 要点）');
   ok((await api('GET', '/api/ai/status', null, t.boss)).enabled === true, '老板可用真实 AI');
   ok((await api('GET', '/api/ai/status', null, t.adm)).enabled === true, '管理员可用真实 AI');
   ok((await api('GET', '/api/ai/status', null, t.dev)).enabled === false, '执行者默认不用真实 AI（走规则模拟）');
@@ -148,7 +151,7 @@ async function team(api) {
   await api('POST', '/api/act', { name: 'idea.submit', payload: { id: ri.r.id, path: 'direct' } }, t.boss);
   await new Promise(z => setTimeout(z, 200)); s2.kill('SIGKILL'); await new Promise(z => setTimeout(z, 300));
   mode = 'ok'; const c0 = seen.length;
-  const s3 = await start(s2.env, s2.DIR); const api3 = mkApi(s3.B);
+  const s3 = await start({ ...s2.env, BRIEF_NOW: '' }, s2.DIR); const api3 = mkApi(s3.B);
   let fixed = null; for (let i = 0; i < 80 && !fixed; i++) { const st4 = await api3('GET', '/api/state', null, t.boss); const x = st4.state && st4.state.summaries.filter(y => y.ideaId === ri.r.id && y.kind === 'analysis').pop(); if (x && x.payload.simulated === false) fixed = x; else await new Promise(z => setTimeout(z, 100)); }
   ok(!!fixed, '重启后补做没做完的后台整理');
   ok(seen.slice(c0).length === 1, '只补做没做完的那一个（不会去整理其他规则版内容）');
