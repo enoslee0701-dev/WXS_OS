@@ -198,4 +198,31 @@ async function digestDiscussion(S, ideaId) {
   return { payload: o, usage: r.usage };
 }
 
-module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, snapshot, MODEL, LIMIT };
+/* 新建项目：把一段口述 / 文字解析成项目草稿（老板核对后再建） */
+async function parseProject(S, uid, text) {
+  const L = TM.L, PT = TM.PTYPE;
+  const schema = {
+    type: 'object', additionalProperties: false, required: ['title', 'summary', 'ptype', 'lead', 'tasks', 'people', 'tags'],
+    properties: {
+      title: { type: 'string', description: '项目名称，20 字以内' },
+      summary: { type: 'string', description: '项目概要：背景、要解决的问题、目标，3–5 句' },
+      ptype: { type: 'string', enum: Object.keys(PT), description: Object.keys(PT).map(k => k + '=' + PT[k][0]).join('，') },
+      lead: { type: 'string', description: '项目负责人的姓名（必须是团队成员；没提到就留空）' },
+      tasks: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'owner', 'expected', 'criteria'], properties: { title: { type: 'string' }, owner: { type: 'string', description: '执行人姓名，没提到留空' }, expected: { type: 'string', description: '预期成果' }, criteria: { type: 'string', description: '验收标准' } } }, description: '首批任务，最多 6 个' },
+      people: { type: 'array', items: { type: 'string' }, description: '提到的团队成员姓名' },
+      tags: { type: 'array', items: { type: 'string' }, description: '2–4 个关键词' }
+    }
+  };
+  const team = S.users.map(u => u.name + '（' + (u.title || '') + '；' + u.roles.map(r => L.role[r.role]).join('、') + '；' + (u.group || '') + '）').join('，');
+  const system = [{ type: 'text', text: `你把老板口述或贴进来的一段话，整理成一个可以直接创建的项目草稿。用简体中文；不编造原文没有的事实；人名只用团队成员里的。\n团队成员：${team}` }];
+  const r = await call({ system, messages: [{ role: 'user', content: String(text).slice(0, 12000) }], schema, effort: 'medium', maxTokens: 8000 });
+  let o; try { o = JSON.parse(r.text); } catch (e) { throw { status: 502, error: 'AI 返回的格式不对' }; }
+  const id = (n) => { const u = S.users.find(x => x.name === String(n || '').trim()); return u ? u.id : ''; };
+  return {
+    title: String(o.title || '').slice(0, 50), summary: String(o.summary || '').slice(0, 1000), ptype: PT[o.ptype] ? o.ptype : 'other', leadId: id(o.lead),
+    tasks: (o.tasks || []).slice(0, 6).map(t => ({ title: String(t.title || '').slice(0, 50), ownerId: id(t.owner), expected: String(t.expected || '').slice(0, 100), criteria: String(t.criteria || '').slice(0, 100) })).filter(t => t.title),
+    people: [...new Set((o.people || []).map(id).filter(Boolean))], tags: (o.tags || []).map(x => String(x).slice(0, 8)).slice(0, 4), usage: r.usage
+  };
+}
+
+module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, parseProject, snapshot, MODEL, LIMIT };

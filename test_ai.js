@@ -11,6 +11,7 @@ const mock = http.createServer((req, res) => {
     const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
     if (mode === '429') return reply(429, { type: 'error', error: { type: 'rate_limit_error', message: 'slow down' } });
     const fmt = body.output_config && body.output_config.format;
+    if (fmt && fmt.schema.properties.ptype) return reply(200, { id: 'msg_p', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ title: '年底感恩聚会', summary: '十二月办一次全队感恩聚会。', ptype: 'event', lead: '林晓', tasks: [{ title: '订场地', owner: '周敏', expected: '场地确认单', criteria: '老板确认' }, { title: '做海报', owner: '没这个人', expected: '海报', criteria: '好看' }], people: ['林晓', '周敏', '外人'], tags: ['聚会'] }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 300, output_tokens: 80 } });
     if (fmt && fmt.schema.properties.divergences) return setTimeout(() => reply(200, { id: 'msg_g', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ people: [{ name: '何静', points: ['内容成本高'] }, { name: '路人甲', points: ['x'] }], consensus: [{ point: '值得做', who: ['何静', '不存在的人'] }], divergences: [{ point: '先做哪个', sides: [{ view: '先做语音', who: ['刘洋'] }] }], risks: [], questions: [], next: ['Claude：先小范围试点'] }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 400, output_tokens: 120 } }), 30);
     if (fmt && fmt.schema.properties.verdict) return setTimeout(() => reply(200, { id: 'msg_d', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ verdict: 'needs_info', label: '建议先补充信息', reasons: ['原文没有写预算'], risks: ['招错人代价高'], checks: ['每月预算上限'], note: '请先出招聘方案再报我。' }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 600, output_tokens: 90 } }), 30);
     if (fmt && fmt.schema.properties.suggested_route) return setTimeout(() => reply(200, { id: 'msg_a', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ title: '全队退修会', summary: '十二月办退修会', background: '团队需要休整', problem: '日期未定', goal: '定下日期和场地', overview: 'Claude：建议十二月中旬办两天一夜的退修会。', issues: ['场地未定'], directions: ['先定日期', '再订场地'], category: 'admin', relation_to_direction: '无', open_questions: ['具体日期？'], exception_flags: ['over_budget'], suggested_route: 'to_owner', suggested_tasks: [{ title: '找三个场地', expected_output: '候选清单', acceptance_criteria: '老板选定', suggested_due_days: 7 }], confidence: 0.8 }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 500, output_tokens: 200 } }), mode === 'slow' ? 1500 : 50);
@@ -52,7 +53,7 @@ async function team(api) {
   s1.kill(); fs.rmSync(s1.DIR, { recursive: true, force: true });
 
   // 2. 配置了密钥（指向模拟服务）
-  const s2 = await start({ ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: MOCK, AI_DAILY_LIMIT: '4' }); api = mkApi(s2.B); t = await team(api);
+  const s2 = await start({ ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: MOCK, AI_DAILY_LIMIT: '5' }); api = mkApi(s2.B); t = await team(api);
   ok((await api('GET', '/api/ai/status', null, t.boss)).enabled === true, '老板可用真实 AI');
   ok((await api('GET', '/api/ai/status', null, t.adm)).enabled === true, '管理员可用真实 AI');
   ok((await api('GET', '/api/ai/status', null, t.dev)).enabled === false, '执行者默认不用真实 AI（走规则模拟）');
@@ -94,7 +95,12 @@ async function team(api) {
   mode = '429'; r = await api('POST', '/api/ai/ask', { q: 'x' }, t.adm);
   ok(r.status === 429 && /太忙/.test(r.error), '限流有友好提示');
   mode = 'ok';
-  r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 200, '老板第 4 次');
+  // 新建项目解析
+  r = await api('POST', '/api/ai/project', { text: '年底想办个感恩聚会，林晓负责，周敏去订场地' }, t.adm);
+  ok(r.status === 403, '纯管理员不能新建项目，也不能用项目解析');
+  r = await api('POST', '/api/ai/project', { text: '年底想办个感恩聚会，林晓负责，周敏去订场地' }, t.boss);
+  ok(r.status === 200 && r.title === '年底感恩聚会' && r.ptype === 'event' && r.leadId === 'u_op' && r.tasks[0].ownerId === 'u_admin_ex' && r.tasks[1].ownerId === '' && JSON.stringify(r.people) === '["u_op","u_admin_ex"]', 'Claude 解析项目草稿，人名转成成员 ID（不存在的人被忽略）');
+  r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 200, '老板第 5 次');
   r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 429 && /用完/.test(r.error), '超过每日上限');
   // 后台整理稿：提交想法后规则稿立刻出现，随后换成 Claude 稿
   let idea = await api('POST', '/api/act', { name: 'idea.create', payload: { note: '想办一次全队退修会，预算两万元' } }, t.boss);
@@ -122,9 +128,9 @@ async function team(api) {
   await new Promise(z => setTimeout(z, 2200)); mode = 'ok';
   const last = (await api('GET', '/api/state', null, t.boss)).state.summaries.filter(x => x.ideaId === idea.r.id && x.kind === 'analysis').pop();
   ok(last.payload.overview === '运营者手写的整理稿', '人工改过的整理稿不被 AI 覆盖');
-  // 管理员已用 3 次（1 次成功 + 拒答 + 限流），上限 4：并发 3 个请求只能成功 1 个
+  // 管理员已用 3 次（1 次成功 + 拒答 + 限流），上限 5：并发 3 个请求只能成功 2 个
   const conc = await Promise.all([1, 2, 3].map(() => api('POST', '/api/ai/ask', { q: '并发' }, t.adm)));
-  ok(conc.filter(x => x.status === 200).length === 1 && conc.filter(x => x.status === 429).length === 2, '并发请求也不会超过每日上限');
+  ok(conc.filter(x => x.status === 200).length === 2 && conc.filter(x => x.status === 429).length === 1, '并发请求也不会超过每日上限');
   s2.kill(); fs.rmSync(s2.DIR, { recursive: true, force: true }); mock.close();
   console.log(`\nAI 代理 通过 ${pass}，失败 ${fail}`); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -667,6 +667,15 @@
     return { title: title, summary: sents.slice(0, 2).join('。') + '。', ptype: ptype, leadId: lead ? lead.id : '', tasks: tasks, people: users.map(function (u) { return u.id; }), tags: tags, transcript: text };
   }
   function runParse(text, label) {
+    if (AI_ON && !ai.ruleOnly) {
+      openSheet('AI 正在解析', '<p class="muted" style="font-size:14px">' + esc(label) + '</p><ol class="a-prog"><li class="ok">读取内容</li><li>Claude 正在整理项目名称、概要和首批任务…</li></ol>', '请稍候', function () {});
+      var b0 = document.querySelector('.sheet footer button[type=submit]'); if (b0) b0.disabled = true;
+      TMS.aiProject(text).then(function (r) {
+        r.transcript = text; r.real = true; if (!r.tasks.length) r.tasks = []; r.tasks.forEach(function (t) { if (!t.ownerId) t.ownerId = TM.usersWith(S, 'executor')[0]; });
+        showResult(r);
+      }, function (e) { closeSheet(); toast(((e && e.error) || 'AI 暂时不可用') + '，已改用规则解析', true); ai.ruleOnly = true; runParse(text, label); ai.ruleOnly = false; });
+      return;
+    }
     var steps = ['转写文字', '提取要点', '生成项目草稿'];
     openSheet('AI 正在解析', '<p class="muted" style="font-size:14px">' + esc(label) + '</p><ol class="a-prog">' + steps.map(function (s, i) { return '<li id="ap' + i + '">' + s + '</li>'; }).join('') + '</ol><div class="callout">演示版：解析由规则模拟完成，不调用真实大模型。</div>', '请稍候', function () {});
     var btn = document.querySelector('.sheet footer button[type=submit]'); if (btn) btn.disabled = true;
@@ -675,7 +684,7 @@
   }
   function showResult(r) {
     var T = TM.PTYPE;
-    openSheet('AI 解析结果', '<span class="tag sim">AI 模拟输出，可直接修改</span>' +
+    openSheet('AI 解析结果', (r.real ? '<span class="tag ai-real-tag">Claude 解析，可直接修改</span>' : '<span class="tag sim">AI 模拟输出，可直接修改</span>') +
       field('项目名称', '<input type="text" name="title" maxlength="50" value="' + esc(r.title) + '">') +
       field('项目概要', '<textarea name="summary" rows="3">' + esc(r.summary) + '</textarea>') +
       field('项目类型', '<select name="ptype">' + Object.keys(T).map(function (k) { return '<option value="' + k + '"' + (k === r.ptype ? ' selected' : '') + '>' + T[k][0] + '</option>'; }).join('') + '</select>') +

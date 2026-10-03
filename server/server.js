@@ -204,6 +204,11 @@ const routes = {
     if (!TM.kbCan(S, me.uid)) return [403, { error: '只有老板或管理员可以整理知识库' }];
     return aiRun(me, 'kb', () => AI.kbOrganize(S, me.uid, String(b.topic || ''), String(b.text || '')));
   },
+  'POST /api/ai/project': async (req, url, b, me) => {
+    if (!TM.canCreateProject(S, me.uid)) return [403, { error: '你不能新建项目' }];
+    const text = String(b.text || '').trim(); if (text.length < 6) return [400, { error: '内容太少' }];
+    return aiRun(me, 'project', () => AI.parseProject(S, me.uid, text));
+  },
   'POST /api/ai/advice': async (req, url, b, me) => {
     if (!isOwner(me.uid)) return [403, { error: '决策建议只给老板' }];
     const id = String(b.id || ''); if (!S.decisions.some(x => x.id === id)) return [404, { error: '决策不存在' }];
