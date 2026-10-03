@@ -110,11 +110,46 @@
     u_lead: '发起想法、规划产品事项、派执行人、验收', u_admin_ex: '行政执行：接收、执行、交付', u_design: '产品执行：原型与 UI',
     u_dev: '产品执行：开发', u_sys: '管理成员与配置，看不到想法内容'
   };
+  /* ---------- 服务器模式：登录 / 创建团队 ---------- */
+  var SRV = typeof TMS !== 'undefined' && TMS.server, srvL = { probed: false, setup: false, err: '', busy: false, url: SRV ? TMS.serverUrl() : '' };
+  function srvProbe() {
+    if (!srvL.url || /^https?:\/\/$/.test(srvL.url)) { srvL.probed = true; srvL.err = '请先填写服务器地址'; return; }
+    TMS.probe(srvL.url).then(function (r) { srvL.probed = true; srvL.setup = !r.setup; srvL.err = ''; render(); }, function (e) { srvL.probed = true; srvL.err = e.error || '连不上服务器'; render(); });
+  }
+  function viewSrvLogin() {
+    if (!srvL.probed) { srvProbe(); }
+    var urlF = TMS.sameOrigin ? '' : field('服务器地址', '<input type="url" name="server" value="' + esc(srvL.url) + '" placeholder="例如：http://192.168.1.20:8787" autocapitalize="off" autocorrect="off" required>', srvL.err ? '<span class="srv-err">' + esc(srvL.err) + '</span>' : '');
+    var h = '<div class="login srv-login"><div class="mark" aria-hidden="true">协同</div>';
+    if (srvL.probed && srvL.setup && !srvL.err) {
+      h += '<h1>创建你的团队</h1><p>第一次使用：先建立老板账号。之后由你给每位成员分派登录账号。</p><form class="srv-form" data-form="srvSetup">' + urlF +
+        field('你的姓名', '<input type="text" name="name" maxlength="20" required>') + field('职位（可选）', '<input type="text" name="title" maxlength="20" placeholder="例如：创始人">') +
+        field('登录账号', '<input type="text" name="login" autocapitalize="off" autocorrect="off" autocomplete="username" required>', '3–32 位字母、数字或 _ . @ -') +
+        field('密码', '<input type="password" name="password" minlength="6" autocomplete="new-password" required>', '至少 6 位') +
+        '<label class="sw"><span><b>带上演示数据</b><small>先看看完整的样子；以后可以在设置里一键清理</small></span><input type="checkbox" name="demo" value="1"></label>' +
+        '<button class="btn pri block" type="submit"' + (srvL.busy ? ' disabled' : '') + '>' + (srvL.busy ? '正在创建…' : '创建团队') + '</button></form>';
+    } else {
+      h += '<h1>登录</h1><p>使用老板或管理员分派给你的账号登录。</p><form class="srv-form" data-form="srvLogin">' + urlF +
+        field('账号', '<input type="text" name="login" autocapitalize="off" autocorrect="off" autocomplete="username" required>') +
+        field('密码', '<input type="password" name="password" autocomplete="current-password" required>') +
+        (srvL.probed && srvL.err && TMS.sameOrigin ? '<p class="srv-err">' + esc(srvL.err) + '</p>' : '') +
+        '<button class="btn pri block" type="submit"' + (srvL.busy ? ' disabled' : '') + '>' + (srvL.busy ? '正在登录…' : '登录') + '</button></form>' +
+        '<p class="muted srv-tip">没有账号？请找老板或管理员为你开通。</p>';
+    }
+    if (!TMS.sameOrigin) h += '<button class="srv-local" data-do="srvLocal">不连服务器，用演示模式看看</button>';
+    return h + '</div>';
+  }
+  // 只切换按钮状态，不重绘表单（重绘会清掉已经填好的账号）
+  function srvBusy(b) { srvL.busy = b; var x = document.querySelector('.srv-form button[type=submit]'); if (x) { x.disabled = b; if (!x.dataset.t) x.dataset.t = x.textContent; x.textContent = b ? (x.closest('[data-form=srvSetup]') ? '正在创建…' : '正在登录…') : x.dataset.t; } }
+  var SRVF = {
+    srvLogin: function (o) { srvL.url = o.server || srvL.url; srvBusy(true); TMS.login(srvL.url, (o.login || '').trim(), o.password || '').then(null, function (e) { srvBusy(false); if (e.needsSetup) { srvL.setup = true; srvL.err = ''; render(); } toast(e.error || '登录失败', true); }); },
+    srvSetup: function (o) { srvL.url = o.server || srvL.url; srvBusy(true); TMS.setup(srvL.url, { name: (o.name || '').trim(), title: (o.title || '').trim(), login: (o.login || '').trim(), password: o.password || '', demo: !!o.demo }).then(null, function (e) { srvBusy(false); toast(e.error || '创建失败', true); }); }
+  };
   function viewLogin() {
+    if (SRV) return viewSrvLogin();
     return '<div class="login"><div class="mark" aria-hidden="true">协同</div><h1>以谁的身份进入？</h1><p>每个账号按角色和权限看到不同内容。切换账号，可以把一件事从想法一路走到验收。</p>' +
       '<div class="list">' + S.users.map(function (u) {
         return '<div class="acct" role="button" tabindex="0" data-do="login" data-id="' + u.id + '">' + av(u.id) + '<div><b>' + esc(u.name) + '　<span class="muted" style="font-weight:400;font-size:14px">' + esc(u.title) + '</span></b><small>' + esc(ROLE_DESC[u.id] || '') + '</small></div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></div>';
-      }).join('') + '</div><p class="muted" style="font-size:13.5px;margin-top:18px">演示环境：没有真实登录，数据只存在这台设备的浏览器里。正式版会接入账号、云端数据库和权限控制。</p></div>';
+      }).join('') + '</div><p class="muted" style="font-size:13.5px;margin-top:18px">演示环境：没有真实登录，数据只存在这台设备的浏览器里。正式版会接入账号、云端数据库和权限控制。</p><button class="srv-local" data-do="srvConnect">连接团队服务器 →</button></div>';
   }
 
   /* ---------- 页面：首页 ---------- */
@@ -215,7 +250,7 @@
   function viewHome() {
     var u = TM.user(S, me), nU = unread(), p = PRES[u.presence || 'offline'];
     return '<section class="hm">' +
-      '<header class="hm-top"><button class="hm-me" data-do="switch" aria-label="切换账号，当前 ' + esc(u.name) + '">' + av(me) + '<i style="background:' + p[1] + '"></i></button><span class="hm-demo">演示版</span><a class="hm-bell" href="#/inbox" aria-label="通知 ' + nU + ' 条未读">' + hi('bell', 1.8) + (nU ? '<i>' + nU + '</i>' : '') + '</a></header>' +
+      '<header class="hm-top"><button class="hm-me" data-do="switch" aria-label="切换账号，当前 ' + esc(u.name) + '">' + av(me) + '<i style="background:' + p[1] + '"></i></button>' + (SRV ? '<span></span>' : '<span class="hm-demo">演示版</span>') + '<a class="hm-bell" href="#/inbox" aria-label="通知 ' + nU + ' 条未读">' + hi('bell', 1.8) + (nU ? '<i>' + nU + '</i>' : '') + '</a></header>' +
       '<div class="hm-copy"><small>FOR A GREATER MISSION</small><h1>用科技<br>让福音走得更远</h1>' +
       '<button class="hm-verse" data-do="hmVerse"><svg class="hm-q" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18v-5.5C4 8.4 6.2 6 10 5.5V8c-2 .4-3 1.7-3 4h3v6zm9.5 0v-5.5c0-4.1 2.2-6.5 6-7V8c-2 .4-3 1.7-3 4h3v6z" fill="currentColor"/></svg><span><b>' + esc(VERSES[hmV % VERSES.length][0]).replace('，', '，<br>') + '</b><small>— ' + VERSES[hmV % VERSES.length][1] + '</small></span>' + hi('chev', 2) + '</button></div>' +
       '<div class="hm-cards"><div class="hm-script" aria-hidden="true">Better<br>&nbsp;&nbsp;Together<svg viewBox="0 0 180 40"><path d="M4 38C60 22 120 10 176 2" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></div>' + homeCards().map(function (k, i) { return '<button class="hm-card c' + (i + 1) + ' hc-' + k[0] + '" data-do="' + k[0] + '"><span class="hm-ic">' + k[1] + '</span><i class="hm-go">' + hi('chev', 2.2) + '</i><b>' + k[2] + '</b><small>' + k[3] + '</small></button>'; }).join('') + '</div>' +
@@ -967,7 +1002,9 @@
     fiRecentAll: function () { var rf = recentFiles(); openSheet('最近文件', rf.map(function (f, i) { return fileRow(f, hi('chev', 2), 'data-do="fiRecent" data-i="' + i + '"'); }).join(''), '关闭', function () { closeSheet(); }); },
     txRmFile: function (el) { tx.files.splice(+el.dataset.i, 1); render(); }
   };
+  var mustAsked = false;
   function afterRender() {
+    if (SRV && me && TMS.mustChange && !mustAsked && !document.querySelector('#layer .sheet')) { mustAsked = true; setTimeout(function () { DO.srvPassword(); }, 300); }
     var strip = document.getElementById('tkdays');
     if (strip) { if (td.stripScroll != null) strip.scrollLeft = td.stripScroll; else { var tg = strip.querySelector('.today') || strip.querySelector('.on'); if (tg) strip.scrollLeft = tg.offsetLeft - strip.firstElementChild.offsetLeft; } strip.onscroll = function () { td.stripScroll = strip.scrollLeft; }; }
     document.querySelectorAll('video[data-vmeta]').forEach(function (v) { v.onloadedmetadata = function () { var m = cam.clips[+v.dataset.vmeta]; if (m && !m.durationSec && isFinite(v.duration)) { m.durationSec = Math.round(v.duration); render(); } }; });
@@ -1552,7 +1589,8 @@
         (mg ? field('一句话', '<input type="text" name="motto" maxlength="30" value="' + esc(u.motto || '') + '">') + field('擅长领域（最多 3 个，用顿号分隔）', '<input type="text" name="skills" value="' + esc((u.skills || []).join('、')) + '">') +
           '<div class="fld"><span>状态</span><div class="opts tdpr">' + Object.keys(PRES).map(function (k) { return opt('presence', k, PRES[k][0], '', (u.presence || 'offline') === k); }).join('') + '</div></div>' : '<p class="tm-motto">“' + esc(u.motto || '') + '”</p>') +
         '<div class="fld"><span>手上的任务（' + c.prog + ' 项进行中，你能看到 ' + ts.length + ' 项）</span>' + (ts.length ? '<div class="list">' + ts.map(function (t) { return taskRow(t); }).join('') + '</div>' : '<p class="muted" style="font-size:13.5px">没有你能看到的进行中任务。</p>') + '</div>' +
-        (canAssign() && !TM.user(S, u.id).roles.every(function (a) { return a.role === 'admin' || a.role === 'owner'; }) ? '<button type="button" class="btn block mt" data-do="tmAssignTo" data-u="' + u.id + '">给 ' + esc(u.name) + ' 分配任务</button>' : ''),
+        (canAssign() && !TM.user(S, u.id).roles.every(function (a) { return a.role === 'admin' || a.role === 'owner'; }) ? '<button type="button" class="btn block mt" data-do="tmAssignTo" data-u="' + u.id + '">给 ' + esc(u.name) + ' 分配任务</button>' : '') +
+        (SRV && TMS.loggedIn() && (isOwner() || TM.hasRole(S, me, 'admin')) && (!TM.hasRole(S, u.id, 'owner') || u.id === me) ? '<button type="button" class="btn block mt" data-do="srvAccount" data-u="' + u.id + '">登录账号与密码</button>' : ''),
         mg ? '保存' : '关闭', function (o) { if (!mg) return closeSheet(); act('member.update', { id: u.id, motto: o.motto, skills: (o.skills || '').split(/[、,，\s]+/), presence: o.presence }, '资料已更新'); });
     },
     tmAssignTo: function (el) { asg = freshAsg(); asg.ownerId = el.dataset.u; closeSheet(); location.hash = '#/assign'; },
@@ -1561,8 +1599,8 @@
       openSheet('邀请新成员', field('姓名', '<input type="text" name="name" maxlength="20" placeholder="例如：王五">') + field('职位', '<input type="text" name="title" maxlength="12" placeholder="例如：摄影师">') +
         '<div class="fld"><span>角色</span><div class="opts">' + opt('role', 'executor', '执行者', '接收并完成任务', true) + opt('role', 'lead', '负责人', '可发起想法、规划项目、验收') + opt('role', 'operator', '运营者', '认领想法、派发、跟进') + '</div></div>' +
         field('分组', '<select name="group">' + TM.GROUPS.map(function (g) { return '<option' + (g === '行政运营' ? ' selected' : '') + '>' + g + '</option>'; }).join('') + '</select>') +
-        field('擅长领域（可选）', '<input type="text" name="skills" placeholder="用顿号分隔，例如：摄影、剪辑">') + field('联系方式（可选）', '<input type="text" name="contact" placeholder="手机号或邮箱">', '演示版不会真的发送邀请。正式版会通过短信或邮件邀请对方登录。'), '添加成员',
-        function (o) { act('member.add', { name: o.name, title: o.title, role: o.role, group: o.group, skills: (o.skills || '').split(/[、,，\s]+/), contact: o.contact }, '已添加成员'); });
+        field('擅长领域（可选）', '<input type="text" name="skills" placeholder="用顿号分隔，例如：摄影、剪辑">') + field('联系方式（可选）', '<input type="text" name="contact" placeholder="手机号或邮箱">', (SRV ? '添加后为 TA 分派登录账号和初始密码。' : '演示版不会真的发送邀请。正式版会通过短信或邮件邀请对方登录。')), '添加成员',
+        function (o) { var n0 = S.users.length, r = act('member.add', { name: o.name, title: o.title, role: o.role, group: o.group, skills: (o.skills || '').split(/[、,，\s]+/), contact: o.contact }, '已添加成员'); if (r.ok && SRV && S.users.length > n0) setTimeout(function () { DO.srvAccount(S.users[S.users.length - 1].id); }, 400); });
     }
   };
   /* ---------- 我的 ---------- */
@@ -1591,7 +1629,7 @@
       '<div class="tm-stats me-stats">' + tiles.map(function (t) { return '<a class="tm-stat" href="' + t[4] + '"><span class="tm-si sq ' + t[0] + '">' + t[1] + '</span><b>' + t[2] + '</b><small>' + t[3] + '</small></a>'; }).join('') + '</div>' +
       '<a class="me-team" href="#/team"><span class="me-ic blue">' + ti('team', 1.8) + '</span><span class="me-tt"><b>我的团队</b><small>' + S.users.length + ' 位伙伴 · ' + TM.GROUPS.filter(function (g) { return S.users.some(function (u) { return u.group === g; }); }).length + ' 个分组</small></span><span class="h-stack">' + S.users.slice(0, 4).map(function (u) { return av(u.id, true); }).join('') + (S.users.length > 4 ? '<i class="w-more-n">+' + (S.users.length - 4) + '</i>' : '') + '</span>' + hi('chev', 2) + '</a>' +
       '<a class="me-team me-kb" href="#/kb"><span class="me-ic kbic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/><path d="M9 8h7M9 11.5h5"/></svg></span><span class="me-tt"><b>AI 知识库</b><small>' + TM.kbVisible(S, me).filter(function (k) { return k.on; }).length + ' 份资料 · 让 AI 了解公司和老板的想法</small></span>' + hi('chev', 2) + '</a>' +
-      '<button class="me-team me-demo" data-do="demoStart"><span class="me-ic dk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg></span><span class="me-tt"><b>演示向导</b><small>一键走完 想法 → 整理 → 事项 → 执行 → 验收</small></span>' + hi('chev', 2) + '</button>' +
+      (SRV ? '' : '<button class="me-team me-demo" data-do="demoStart"><span class="me-ic dk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg></span><span class="me-tt"><b>演示向导</b><small>一键走完 想法 → 整理 → 事项 → 执行 → 验收</small></span>' + hi('chev', 2) + '</button>') +
       '<section class="me-sec"><div class="me-sh">' + ic(ai2('ops', 1.8)).replace('me-ic', 'me-ic blue') + '<b>工作概览</b></div>' + homeStats().map(function (x) { return '<a class="me-info me-ov" href="#/stat/' + x.k + '">' + hi(x.icon, 1.7).replace('<svg ', '<svg class="' + x.cls + '" ') + '<span>' + esc(x.label) + '</span><b><strong>' + x.n + '</strong></b>' + hi('chev', 2) + '</a>'; }).join('') + '</section>' +
       (can ? '<section class="me-sec"><a class="me-sh" href="#/settings">' + ic('<svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z" fill="#fff"/><path d="M19.4 13.5l1.6 1.2-1.8 3.2-1.9-.7a7 7 0 0 1-1.8 1l-.3 2h-3.6l-.3-2a7 7 0 0 1-1.8-1l-1.9.7-1.8-3.2 1.6-1.2a7 7 0 0 1 0-2.1L4.6 10.3 6.4 7l1.9.8a7 7 0 0 1 1.8-1l.3-2h3.6l.3 2a7 7 0 0 1 1.8 1l1.9-.8 1.8 3.3-1.6 1.1a7 7 0 0 1 0 2.1z" fill="currentColor"/><circle cx="12" cy="12" r="2.6" fill="#E8F0FF"/></svg>').replace('me-ic', 'me-ic blue') + '<b>流程开关（第 3 节待拍板）</b><small>根据团队需要灵活设置</small>' + hi('chev', 2) + '</a>' +
       
@@ -1607,6 +1645,10 @@
       info('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></svg>', '手机', u.phone, 'phone', true) +
       info(ai2('pin', 1.7), '所在地', u.location, 'location', true) +
       info('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H10l-4 3v-3H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z"/></svg>', '个人签名', u.bio, 'bio', true) + '</section>' +
+      (SRV && TMS.loggedIn() ? '<section class="me-sec me-acct"><div class="me-sh">' + ic(ti('person', 1.8)).replace('me-ic', 'me-ic blue') + '<b>账号与安全</b></div>' +
+        '<button class="me-info" data-do="srvPassword">' + hi('flag', 1.7) + '<span>修改密码</span><b>' + (TMS.mustChange ? '请修改初始密码' : '') + '</b>' + hi('chev', 2) + '</button>' +
+        '<div class="me-info">' + hi('pie', 1.7) + '<span>服务器</span><b>' + esc(TMS.serverUrl()) + '</b><i></i></div>' +
+        '<button class="me-info me-out" data-do="srvLogout">' + hi('chev', 1.7) + '<span>退出登录</span><b></b>' + hi('chev', 2) + '</button></section>' : '') +
       '<section class="me-sec"><div class="me-sh">' + ic(ti('more', 1.6)).replace('me-ic', 'me-ic blue') + '<b>通用</b></div>' +
       '<button class="me-info" data-do="quickAI">' + hi('spark', 1.7) + '<span>AI 助手</span><b>整理、分析、建议、创作</b>' + hi('chev', 2) + '</button>' +
       '<a class="me-info" href="#/inbox">' + hi('bell', 1.7) + '<span>通知中心</span><b>' + (nU ? nU + ' 条未读' : '全部已读') + '</b>' + hi('chev', 2) + '</a>' +
@@ -2496,9 +2538,10 @@
       sw('showTiers', '显示一级、二级标签（C4）', '只是界面分组标签，不影响权限。当前映射：运营者、负责人为一级，执行者为二级，待确认。') + '</div>';
     h += sec('公司与提醒') + '<div class="card"><label class="fld"><span>公司方向与长期目标</span><textarea data-set="direction" rows="3"' + (isOwner() ? '' : ' disabled') + '>' + esc(cs.direction) + '</textarea><small>AI 整理时用来判断新想法是否与现有业务形成闭环。由老板填写。</small></label>' +
       '<div class="row2"><label class="fld"><span>无动态提醒（天）</span><input type="number" min="1" max="30" data-set="staleDays" value="' + cs.staleDays + '"' + dis + '></label><label class="fld"><span>超预算阈值（元）</span><input type="number" min="0" step="1000" data-set="budgetThreshold" value="' + (cs.budgetThreshold || '') + '"' + dis + '></label></div></div>';
-    h += sec('演示工具') + '<div class="card">' + sw('demoAiFail', '模拟 AI 失败', '用来演示「AI 失败后运营者手写整理稿继续推进」。') +
+    h += SRV ? sec('数据') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">服务器：' + esc(TMS.serverUrl()) + '</p><button class="btn danger block" data-do="clearDemo">清理演示数据</button></div>' :
+      sec('演示工具') + '<div class="card">' + sw('demoAiFail', '模拟 AI 失败', '用来演示「AI 失败后运营者手写整理稿继续推进」。') +
       '<div class="callout">演示版里：账号是预设的；AI 整理和共创汇总由规则模拟生成，界面都标了「AI 模拟输出」；录音只在本机，不上传、不转写；通知只在 App 内。</div>' +
-      '<button class="btn danger block" data-do="reset">重置全部演示数据</button></div>';
+      '<button class="btn block" data-do="clearDemo">清理演示数据（保留成员）</button><button class="btn danger block mt" data-do="reset">重置全部演示数据</button></div>';
     if (TM.hasRole(S, me, 'admin') || isOwner()) h += membersHTML();
     h += '</div>';
     return h;
@@ -2530,7 +2573,8 @@
 
   var DO = {
     login: function (el) { me = el.dataset.id; try { localStorage.setItem(KU, me); } catch (e) {} filt = { ideas: 'all', work: null }; location.hash = '#/home'; render(); },
-    switch: function () { me = null; try { localStorage.removeItem(KU); } catch (e) {} location.hash = '#/login'; render(); },
+    switch: function () { if (SRV) return DO.srvLogout();
+      me = null; try { localStorage.removeItem(KU); } catch (e) {} location.hash = '#/login'; render(); },
     closeSheet: closeSheet,
     ideasFilter: function (el) { filt.ideas = el.dataset.f; if (location.hash !== '#/ideas') location.hash = '#/ideas'; else render(); },
     workFilter: function (el) { filt.work = el.dataset.f; if (location.hash !== '#/work') location.hash = '#/work'; else render(); },
@@ -2696,7 +2740,7 @@
     team: '<circle cx="9.5" cy="8.5" r="3.2" fill="currentColor"/><path d="M3.8 19.5c.8-3.1 2.9-4.7 5.7-4.7s4.9 1.6 5.7 4.7z" fill="currentColor"/><path d="M15.8 5.6a3.2 3.2 0 0 1 0 5.8M17.4 15c1.6.6 2.6 2.1 3.1 4.5"/>',
     me: '<circle cx="12" cy="12" r="8.5" fill="currentColor"/><circle cx="12" cy="10" r="2.9" fill="#fff" stroke="none"/><path d="M6.8 18.3c1.2-2.2 3-3.3 5.2-3.3s4 1.1 5.2 3.3" stroke="#fff"/>'
   };
-  var DEMO = '<div class="demo"><span><b>演示版</b>示例数据只存本机，AI 为模拟输出</span></div>';
+  var DEMO = SRV ? '' : '<div class="demo"><span><b>演示版</b>示例数据只存本机，AI 为模拟输出</span></div>';
   var TITLES = { home: '首页', ideas: '项目', new: '记录想法', idea: '想法', work: '项目', inbox: '通知', me: '我的', task: '任务', tasks: '任务', team: '团队', todo: '今日待办' };
   function render() {
     setTimeout(function () { if (typeof dmPanel === 'function') dmPanel(); }, 0);
@@ -2761,6 +2805,35 @@
   };
   DO.expandNote = function () { draft.big = !draft.big; render(); };
   DO.hmVerse = function () { hmV++; render(); };
+  DO.srvConnect = function () { openSheet('连接团队服务器', field('服务器地址', '<input type="url" name="server" placeholder="例如：http://192.168.1.20:8787" autocapitalize="off" autocorrect="off" required>', '由老板在电脑或服务器上运行 npm run server 后得到的地址。'), '连接', function (o) { TMS.useServer(o.server); }); };
+  DO.srvLocal = function () { TMS.useLocal(); };
+  DO.srvLogout = function () { var n = TMS.outbox.length; openSheet('退出登录', '<p style="margin:0">' + (n ? '还有 <b>' + n + '</b> 项改动没同步到服务器，退出后会丢失。建议联网同步完再退出。' : '退出后需要重新输入账号密码。') + '</p>', '退出登录', function () { TMS.logout(); }, true); };
+  DO.srvPassword = function (el) { var must = TMS.mustChange;
+    openSheet(must ? '请先修改初始密码' : '修改密码', (must ? '<p class="muted" style="margin:0 0 10px;font-size:14px">你正在使用别人帮你设置的初始密码，改成只有你知道的密码。</p>' : field('原密码', '<input type="password" name="old" autocomplete="current-password" required>')) +
+      field('新密码', '<input type="password" name="password" minlength="6" autocomplete="new-password" required>', '至少 6 位') + field('再输一次', '<input type="password" name="again" minlength="6" autocomplete="new-password" required>'), '保存', function (o) {
+      if (o.password !== o.again) return toast('两次输入的新密码不一样', true);
+      TMS.changePassword(o.old || '', o.password).then(function () { closeSheet(); toast('密码已修改'); }, function (e) { toast(e.error || '修改失败', true); });
+    }); };
+  function showCred(u, login, pw) {
+    openSheet('账号已就绪', '<p style="margin:0 0 10px">把下面的信息发给 <b>' + esc(u.name) + '</b>：</p><div class="cred"><div><span>服务器</span><b>' + esc(TMS.serverUrl()) + '</b></div><div><span>账号</span><b id="cred-l">' + esc(login) + '</b></div><div><span>初始密码</span><b id="cred-p">' + esc(pw) + '</b></div></div><p class="muted" style="font-size:13.5px;margin:10px 0 0">密码只显示这一次。对方首次登录后需要改成自己的密码。</p>', '复制并关闭', function () {
+      var t = '团队协同 登录信息\n服务器：' + TMS.serverUrl() + '\n账号：' + login + '\n初始密码：' + pw;
+      try { navigator.clipboard.writeText(t).then(function () { toast('已复制，可以发给对方'); }, function () { toast('请手动记下账号和密码'); }); } catch (e) { toast('请手动记下账号和密码'); }
+      closeSheet(); });
+  }
+  DO.srvAccount = function (el) { var uid = el.dataset ? el.dataset.u : el, u = TM.user(S, uid); if (!u) return;
+    TMS.accounts().then(function (res) { var a = res.accounts.find(function (x) { return x.uid === uid; });
+      openSheet(a ? '登录账号 · ' + u.name : '给 ' + u.name + ' 分派登录账号',
+        (a ? '<div class="callout">当前账号 <b>' + esc(a.login) + '</b>' + (a.disabled ? '（已停用）' : '') + (a.mustChange ? ' · 还没改初始密码' : '') + (a.lastLogin ? ' · 最近登录 ' + ago(a.lastLogin) : ' · 还没登录过') + '</div>' : '<p class="muted" style="margin:0 0 10px;font-size:14px">' + esc(u.name) + ' 还没有登录账号。设置后把账号和初始密码告诉对方，对方首次登录时需要修改密码。</p>') +
+        field('登录账号', '<input type="text" name="login" value="' + esc(a ? a.login : '') + '" placeholder="例如：xiaoli 或手机号" autocapitalize="off" autocorrect="off" autocomplete="off" required>', '3–32 位字母、数字或 _ . @ -') +
+        field(a ? '新密码（可选）' : '初始密码（可选）', '<input type="text" name="password" placeholder="留空自动生成" autocomplete="off" autocapitalize="off">', a ? '填写后旧密码立即失效' : '') +
+        (a ? '<label class="sw"><span><b>重置密码</b><small>自动生成新密码，旧密码立即失效</small></span><input type="checkbox" name="reset" value="1"></label>' + (uid !== me && !TM.hasRole(S, uid, 'owner') ? '<button type="button" class="btn block mt' + (a.disabled ? '' : ' danger') + '" data-do="srvDisable" data-u="' + uid + '" data-d="' + (a.disabled ? '0' : '1') + '">' + (a.disabled ? '恢复这个账号' : '停用这个账号') + '</button>' : '') : ''),
+        a ? '保存' : '创建账号', function (o) {
+          TMS.setAccount({ uid: uid, login: (o.login || '').trim(), password: o.password || undefined, reset: !!o.reset }).then(function (r) { if (r.password) showCred(u, r.login, r.password); else { closeSheet(); toast('已保存'); } }, function (e) { toast(e.error || '保存失败', true); });
+        });
+    }, function (e) { toast(e.error || '连不上服务器', true); });
+  };
+  DO.srvDisable = function (el) { var uid = el.dataset.u, d = el.dataset.d === '1'; TMS.disable(uid, d).then(function () { closeSheet(); toast(d ? '已停用，对方会被立即登出' : '已恢复'); }, function (e) { toast(e.error || '操作失败', true); }); };
+  DO.clearDemo = function () { openSheet('清理演示数据', '<p style="margin:0 0 8px">会清空所有想法、项目、任务、待办、通知和示例资料，<b>成员和设置保留</b>，你自己添加的知识库资料也保留。</p><div class="callout warn">清理后无法恢复。</div>', '确认清理', function () { act('data.clearDemo', {}, '演示数据已清理'); location.hash = '#/home'; }, true); };
   DO.hmTriage = function () { filt.ideas = 'triage'; filt.ideasOpen = true; location.hash = '#/ideas'; };
   DO.hmTasks = function () { location.hash = '#/tasks'; };
   DO.hmTodo = function () { location.hash = '#/todo/new'; };
@@ -3078,6 +3151,7 @@
     if (f.dataset && f.dataset.aiform) { var q = (f.q.value || '').trim(); aiS.input = ''; if (!q) return toast('先输入点内容', true); aiHandle(q); renderAI(); return; }
     if (f.classList.contains('sheet')) { if (sheetHandler) sheetHandler(fd(f)); return; }
     var o = fd(f), name = f.dataset.form, c = cur();
+    if (SRVF[name]) { if (f.server && !f.server.checkValidity()) return toast('服务器地址格式不对', true); return SRVF[name](o, f); }
     if (name === 'newIdea') {
       if (rec) { toast('请先停止录音', true); return; }
       var go = e.submitter ? e.submitter.value : 'draft';
@@ -3093,5 +3167,5 @@
   window.addEventListener('hashchange', function () { if (aiS.open) { aiS.open = false; renderAI(); } if (ai.recording && cur().id !== 'ai') aiStop(); if (ta.recording && cur().sub !== 'ai') taStop(); var cc0 = cur(); if (!(cc0.name === 'new' && cc0.id === 'voice') && (vo.state === 'rec' || vo.state === 'pause')) VO.voStop(); closeSheet(); render(); window.scrollTo(0, 0); });
   if (!me) location.hash = '#/login';
   render();
-  window.__tm = { get S() { return S; }, get me() { return me; } };
+  window.__tm = { get S() { return S; }, get me() { return me; }, setState: function (ns) { S = TM.migrate(ns); save(); if (me && !TM.user(S, me)) { me = null; } render(); }, toast: toast };
 })();

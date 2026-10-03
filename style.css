@@ -2949,3 +2949,20 @@ textarea{min-height:76px;padding:9px 12px;font-size:15px;border-radius:12px}
 
 /* 角色化：标签数量随角色变化（管理员只有 3 个），按实际数量均分 */
 .tabs{grid-template-columns:none!important;grid-auto-flow:column;grid-auto-columns:1fr}
+
+/* ---------- 服务器模式：登录、同步状态、账号卡 ---------- */
+.srv-login .srv-form{display:flex;flex-direction:column;gap:12px;margin-top:18px}
+.srv-login .srv-form .fld{margin:0}
+.srv-login .srv-form .sw{padding:12px 14px;border-radius:16px;background:#F4F6FA}
+.srv-login .srv-form .btn{height:46px;margin-top:6px}
+.srv-err{color:var(--bad,#D93A3A);font-size:13px}
+.srv-tip{font-size:13.5px;margin-top:14px;text-align:center}
+.srv-local{display:block;margin:22px auto 0;padding:10px 14px;border:0;background:none;color:#2148C0;font-size:14px;font-weight:600}
+#sync-pill{position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 6px);transform:translateX(-50%);z-index:60;padding:5px 12px;border-radius:14px;font-size:12.5px;font-weight:600;background:rgba(20,27,45,.82);color:#fff;pointer-events:none;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+#sync-pill:empty,#sync-pill:not(.off):not(.busy){display:none}
+#sync-pill.off{background:rgba(180,83,9,.9)}
+.cred{display:flex;flex-direction:column;gap:2px;padding:12px 14px;border-radius:16px;background:#F4F6FA}
+.cred div{display:flex;justify-content:space-between;gap:12px;padding:6px 0;font-size:14px}
+.cred span{color:#5B6475}
+.cred b{font-family:ui-monospace,Menlo,monospace;font-size:15px;word-break:break-all;text-align:right;user-select:all;-webkit-user-select:all}
+.me-acct .me-out span{color:var(--bad,#D93A3A)}
