@@ -49,13 +49,24 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
 8. **清理演示数据**（原待办 1）：引擎 `data.clearDemo`（老板/管理员），清空内容、保留成员设置和自己加的资料；新团队 `TM.blank`。
 9. 测试：业务 322 项；新增 `test_server.js`（40 项，纳入 npm test）；端到端新增 e2e_native（22）、e2e_roles（81，7 个账号逐个点遍入口确认无「无权限」提示）、e2e_srv（30，双浏览器 + 真实服务器）。共 22 组。
 
+10. **附件上传**：服务器 `PUT/GET /api/files/:id`（客户端的 localId 即文件 ID；上传人才能覆盖；Range 分段读取供 iPhone 播放视频；大小上限 MAX_FILE_MB）；客户端 `keepBlob`/`blobUrl` 统一（本机 blob 优先，没有就从服务器取）；`sync.js` 用 IndexedDB 排队上传（断网、App 被关都不丢）；所有类型文件都有 localId。
+11. **App 图标与启动屏**：`gen/icon.js` 用 Playwright 渲染生成（深蓝底「协同」+ 日出光弧），写入 iOS Assets；副本 `img/app-icon.png`。
+12. **iOS 安全区修复**：`.is-new main` 有 `zoom:.8`、首页 `zoom:.86`，安全区负外边距/内边距按比例补偿；根元素透明（画布用 body 背景）；首页锁定滚动时不要根元素安全区内边距。新增 `e2e_safe.js`（把 env(safe-area-inset-*) 替换成 59/34 后在 Chromium 里检查）。
+13. **数据持久化加强**：WKWebView 的 localStorage 异步写盘，App 刚写完被杀会丢；native.js 启动时把备份清单里有、本机缺的键（如登录令牌）补回。
+14. **真实 AI**（`server/ai.js`，官方 SDK）：claude-opus-5-5，`fallbacks:"default"` 拒答回退，稳定部分提示缓存，只把提问人能看到的数据（viewFor）给模型；默认只有老板和管理员可用（AI_FOR_ALL=1 全员），每人每日上限；AI 助手里周报/进度/负载/优先/方案/自由提问交给 Claude（纪要、拆待办、拆任务仍走规则版按钮），口述整理用结构化输出；出错自动退回规则。`test_ai.js` 用本地模拟的 Anthropic API 测试（不花钱）。
+15. **员工体验修复**：任务页「今天」显示所有等我处理的任务（之前执行者/负责人看不到下周才截止的新任务，红点和页面对不上）。
+16. **部署**：`DEPLOY.md`；`scripts/server-mac.sh install`（launchd 常驻）；`Dockerfile`（构建步骤已在干净目录模拟验证，镜像本身未构建：本机 Docker 守护进程没开）。
+17. **iOS 调试辅助**（仅 Debug）：模拟器启动环境变量 `SIMCTL_CHILD_TM_SERVER` / `TM_AUTOLOGIN=账号:密码` / `TM_HASH=ideas`。已验证 App 通过局域网 IP（http://192.168.1.108:8787）登录服务器。
+
+测试现状：业务 322 + 服务器 52 + AI 代理 23；端到端 24 组（新增 e2e_safe、e2e_aireal）。
+
 ## 待办
-1. 附件上传到服务器（现在服务器模式下附件仍只存本机：需要 /api/files + media 引用 fileId）
-2. iOS 真机：需要 Apple 开发者账号（用户说最后再说）；推送通知（APNs）同样依赖它
-3. 真实大模型：服务端代理 + 开关，无 Key 时保持规则模拟（需要用户提供 API Key）
-4. 服务器部署到公网（https）后，App 里填 https 地址即可；局域网 http 已在 Info.plist 允许本地网络
-5. Android：装 SDK 后 `npx cap add android`
-6. app.js 按页面拆模块（函数同名覆盖隐患）
+1. **需要老板提供**：`ANTHROPIC_API_KEY`（真实 AI）；Apple 开发者账号（真机安装、TestFlight、推送）
+2. 推送通知（APNs，依赖开发者账号）；现在只有 App 内通知 + 打开 App 时实时同步
+3. 想法整理（deriveAnalysis）、AI 拟题、讨论总结等引擎内同步的「AI」仍是规则：要接真实 AI 需改成异步（服务器在 act 后补写 AI 结果）
+4. Android：装 SDK 后 `npx cap add android`
+5. app.js 按页面拆模块（函数同名覆盖隐患）
+6. 文件读取用 `?token=` 放在 URL 里（img/video 需要），以后可换成短期签名链接
 
 ## 命令（新增）
 - `npm run server`：启动服务器（PORT / HOST / DATA_DIR 可配）
