@@ -77,6 +77,10 @@ const EXPECT = {
     const badge = +(await p.evaluate(() => { const b = document.querySelector('.tabs .badge'); return b ? b.textContent : '0'; }));
     const sysOnPage = await p.evaluate(() => document.querySelectorAll('main a[href^="#/task/"], main [href^="#/task/"]').length);
     ok(sysOnPage >= badge, `${n} 任务页能看到红点提示的 ${badge} 件任务（页面上 ${sysOnPage} 件）`);
+    // 「我的」统计块：执行者看自己的（待接收、已逾期），其他角色看团队的
+    await shut(); await p.goto(URL + '#/me'); await p.waitForTimeout(120);
+    const st = await p.$$eval('.me-stats .tm-stat small', xs => xs.map(x => x.textContent));
+    ok(['周敏', '何静', '刘洋'].includes(n) ? st[0] === '待接收' && st[3] === '已逾期' : st[0] === '团队成员' && st[3] === '团队效率', `${n} 我的统计块 ${st.join(',')}`);
     // 设置与重置入口
     await shut(); await p.goto(URL + '#/me'); await p.waitForTimeout(80);
     const canSet = n === 'Enos' || n === '孙磊';

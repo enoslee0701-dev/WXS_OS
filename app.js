@@ -1678,6 +1678,8 @@
       ['tm-green', '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M8 12.3l2.8 2.8 5.2-5.6" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>', open, '进行中任务', '#/tasks'],
       ['tm-orange', '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M12 7.5V12l3 2" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg>', Object.keys(weekDone).length, '本周完成', '#/stat/rate'],
       ['tm-purple', '<svg viewBox="0 0 24 24"><rect x="4" y="13" width="4" height="7" rx="1.5" fill="currentColor" opacity=".55"/><rect x="10" y="9" width="4" height="11" rx="1.5" fill="currentColor" opacity=".8"/><rect x="16" y="5" width="4" height="15" rx="1.5" fill="currentColor"/></svg>', wr.rate == null ? '—' : wr.rate + '%', '团队效率', '#/stat/rate']];
+    // 执行者看自己的：待接收、已逾期（团队规模、团队效率是管理者关心的）
+    var cpM = myCaps(); if (!cpM.recordIdea && !cpM.claimIdeas && !cpM.decide && !cpM.members) { var mineT = sc.filter(function (t) { return t.ownerId === me; }); tiles[0] = [tiles[0][0], tiles[0][1], mineT.filter(function (t) { return t.status === 'assigned'; }).length, '待接收', '#/tasks']; tiles[3] = [tiles[3][0], tiles[3][1], mineT.filter(function (t) { return TM.isOverdue(S, t); }).length, '已逾期', '#/stat/due']; }
     var ic = function (k) { return '<span class="me-ic">' + k + '</span>'; };
     var row = function (iconSvg, title, desc, ctrl) { return '<div class="me-sw">' + ic(iconSvg) + '<div><b>' + title + '</b><small>' + desc + '</small></div>' + ctrl + '</div>'; };
     var tog = function (k, on, d) { return '<input type="checkbox" class="me-tog" ' + k + (on ? ' checked' : '') + (d || '') + '>'; };
