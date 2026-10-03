@@ -1,5 +1,8 @@
 const fs=require('fs'),path=require('path');
 process.chdir(__dirname);
+// app.js 里同名函数会被后定义的悄悄覆盖（曾因此把 W(id) 覆盖掉）：构建时直接拦下
+{ const seen={}, dup=[]; for (const m of fs.readFileSync('app.js','utf8').matchAll(/^\s*function ([A-Za-z_$][\w$]*)\s*\(/gm)) { if (seen[m[1]]) dup.push(m[1]); seen[m[1]]=1; }
+  if (dup.length) { console.error('app.js 有同名函数（后定义的会覆盖前面的）：' + [...new Set(dup)].join('、')); process.exit(1); } }
 const OUT=process.env.OUT_DIR?path.resolve(process.env.OUT_DIR):path.join(__dirname,'dist');
 let h=fs.readFileSync('shell.html','utf8');
 const hero='data:image/jpeg;base64,'+fs.readFileSync('img/hero.jpg').toString('base64');

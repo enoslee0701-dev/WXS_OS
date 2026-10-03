@@ -54,7 +54,7 @@
   function unread() { return S.notifications.filter(function (n) { return n.userId === me && !n.read; }).length; }
 
   var toastT;
-  function toast(msg, bad) { var el = document.getElementById('toast'); el.textContent = msg; el.className = 'toast on' + (bad ? ' bad' : ''); clearTimeout(toastT); toastT = setTimeout(function () { el.className = 'toast' + (bad ? ' bad' : ''); }, bad ? 3600 : 2200); }
+  function toast(msg, bad) { var el = document.getElementById('toast'); el.textContent = wordsFix(msg); el.className = 'toast on' + (bad ? ' bad' : ''); clearTimeout(toastT); toastT = setTimeout(function () { el.className = 'toast' + (bad ? ' bad' : ''); }, bad ? 3600 : 2200); }
   function act(a, p, okMsg) {
     var r = TM.act(S, me, a, p);
     if (!r.ok) { toast(r.error, true); return r; }
@@ -148,6 +148,35 @@
     return h + '</div>';
   }
   // 只切换按钮状态，不重绘表单（重绘会清掉已经填好的账号）
+  /* 正式模式（连服务器）下的措辞：去掉「演示版」，已经不对的说法（不上传等）换成实际情况；演示模式原样 */
+  var SRV_WORDS = [
+    [/演示版（阶段 1）/g, '正式版'],
+    [/终验、标签、提醒、演示工具/g, '终验、标签、提醒、数据'], [/流程开关、提醒与演示工具/g, '流程开关、提醒与数据'],
+    [/演示版里：账号是预设的；[^<'"]*/g, '账号由老板分派；数据保存在团队服务器。'],
+    [/演示版的输出由规则模拟，正式版接入真实大模型。/g, '这部分目前由规则生成，结果请核对。'],
+    [/演示版：整理由规则模拟完成，不调用真实大模型。/g, '这部分目前由规则整理，结果请核对。'],
+    [/演示版：解析由规则模拟完成，不调用真实大模型。/g, '这部分目前由规则解析，结果请核对。'],
+    [/（演示版为模拟整理）/g, '（规则整理）'], [/演示版为模拟整理/g, '规则整理'],
+    [/（演示版为规则模拟）/g, ''], [/（演示：规则模拟）/g, '（规则生成）'], [/演示：规则模拟/g, '规则生成'],
+    [/演示版只有 App 内通知。/g, '目前只有 App 内通知。'],
+    [/演示版还没接入云盘，正式版会支持 Google Drive、OneDrive 等/g, '暂不支持直接连接云盘，可以贴分享链接'],
+    [/演示版暂不支持识别图片内容，正式版接入后可识别白板和纸质记录/g, '暂不支持识别图片内容'],
+    [/演示版不会上传视频，也无法读取视频里的语音。正式版会提取音轨并自动转写。/g, '视频会作为附件上传，暂时无法读取视频里的语音。'],
+    [/演示版无法读取视频里的语音。正式版会提取音轨并自动转写。/g, '暂时无法读取视频里的语音。'],
+    [/演示版不会上传，也不会转写。正式版接入后会断点续传并自动转写。/g, '录音会作为附件上传到团队服务器。'],
+    [/（演示版不上传）。?/g, ''], [/演示版不会上传。/g, '会上传到团队服务器。'], [/演示版不上传/g, '会上传到团队服务器'],
+    [/演示版没有上传，这个文件只在添加它的设备上、刷新前能打开/g, '这个文件还没上传完，或者已被删除'],
+    [/演示版只能读取/g, '目前只能读取'],
+    [/演示版：AI 按关键词匹配资料段落，不是真正读懂全文。接入大模型（阶段 3）后，AI 会通读这些资料来理解公司和老板的思路。/g, '老板和管理员用 AI 时，Claude 会通读这些资料来理解公司和老板的思路。'],
+    [/演示版能做这些：/g, '我能做这些：'], [/演示版推荐由规则计算/g, '推荐由规则计算'], [/演示版会把链接记进说明/g, '会把链接记进说明'],
+    [/演示版为模板化建议；接入大模型后会结合你的公司方向和历史项目给出具体方案。/g, '目前为模板化建议。'],
+    [/演示版不支持上传文件，可贴链接或写说明。/g, '可以贴链接或写说明。'],
+    [/演示版：录音不上传，AI 为模拟/g, '录音会上传到团队服务器'],
+    [/演示版：语音转文字用的是浏览器自带的识别（安卓 Chrome 支持）；/g, '语音转文字用手机自带的识别；'], [/拆解由规则模拟，不调用真实大模型；/g, '拆解由规则生成；'],
+    [/演示版的汇总由规则模拟生成/g, '汇总由规则生成'],
+    [/演示版：附件只保存在这台设备，刷新后只保留文件名。/g, '附件会上传到团队服务器。']
+  ];
+  function wordsFix(h) { return SRV && typeof h === 'string' ? SRV_WORDS.reduce(function (x, r) { return x.replace(r[0], r[1]); }, h) : h; }
   function srvBusy(b) { srvL.busy = b; var x = document.querySelector('.srv-form button[type=submit]'); if (x) { x.disabled = b; if (!x.dataset.t) x.dataset.t = x.textContent; x.textContent = b ? (x.closest('[data-form=srvSetup]') ? '正在创建…' : '正在登录…') : x.dataset.t; } }
   var SRVF = {
     srvLogin: function (o) { srvL.url = o.server || srvL.url; srvBusy(true); TMS.login(srvL.url, (o.login || '').trim(), o.password || '').then(null, function (e) { srvBusy(false); if (e.needsSetup) { srvL.setup = true; srvL.err = ''; render(); } toast(e.error || '登录失败', true); }); },
@@ -1721,10 +1750,10 @@
     } else {
       body = '<div class="ai-chathead">' + hi('spark', 1.4).replace('<svg ', '<svg class="ai-star" ') + '<b>AI 助手</b><button data-do="aiReset">新对话</button></div><div class="ai-msgs" id="aimsgs">' + aiS.msgs.map(function (m) { return '<div class="ai-m ' + m.who + '">' + (m.who === 'bot' ? '<span class="ai-av">' + hi('spark', 1.6) + '</span>' : '') + '<div class="ai-b">' + m.html + '</div></div>'; }).join('') + '</div>';
     }
-    L3.innerHTML = '<div class="ai-scrim" data-do="aiClose"></div><section class="ai-panel' + (chat ? ' chat' : '') + '" role="dialog" aria-modal="true" aria-label="AI 助手">' + head + '<div class="ai-scroll">' + body + '</div>' +
+    L3.innerHTML = wordsFix('<div class="ai-scrim" data-do="aiClose"></div><section class="ai-panel' + (chat ? ' chat' : '') + '" role="dialog" aria-modal="true" aria-label="AI 助手">' + head + '<div class="ai-scroll">' + body + '</div>' +
       '<form class="ai-input" data-aiform="1"><div class="ai-field">' + hi('spark', 1.5) + '<input type="text" name="q" autocomplete="off" placeholder="' + (aiS.mode === 'recall' ? '想找什么？说个关键词或时间，比如「上周的录音」' : aiS.mode ? esc(CAPS[aiS.mode] ? '粘贴或输入内容，用于「' + CAPS[aiS.mode][0] + '」' : '输入内容') : '有什么想法？尽管告诉我…') + '" value="' + esc(aiS.input) + '"><button type="submit" class="ai-send" aria-label="发送">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/></svg></button></div>' +
       '<div class="ai-tools"><label>' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>' + '上传文件<input type="file" accept=".txt,.md,text/plain,text/markdown" data-aifile="1"></label><button type="button" data-do="aiVoice"' + (aiS.listening ? ' class="on"' : '') + '>' + ni('mic', 1.7) + (aiS.listening ? '正在听…' : '语音输入') + '</button><button type="button" data-do="aiPhoto">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6L16.5 7h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.5"/></svg>' + '拍照识别</button></div></form>' +
-      '<p class="ai-disc">AI 可能会生成不准确的信息，请结合实际情况判断' + (AI_ON ? '（由 Claude 回答）' : '（演示版为规则模拟）') + '</p></section>';
+      '<p class="ai-disc">AI 可能会生成不准确的信息，请结合实际情况判断' + (AI_ON ? '（由 Claude 回答）' : '（演示版为规则模拟）') + '</p></section>');
     requestAnimationFrame(function () { var p = L3.querySelector('.ai-panel'); if (p) p.classList.add('on'); var m = document.getElementById('aimsgs'); if (m) m.scrollTop = m.scrollHeight; });
   }
   function botSay(html, real) { aiS.msgs.push({ who: 'bot', html: html + (real === 'ai' ? '<span class="ai-sim ai-real">Claude 回答 · 依据你能看到的数据</span>' : real ? '<span class="ai-sim">检索自你能看到的真实数据</span>' : '<span class="ai-sim">模拟输出</span>') }); }
@@ -2574,7 +2603,7 @@
       sw('showTiers', '显示一级、二级标签（C4）', '只是界面分组标签，不影响权限。当前映射：运营者、负责人为一级，执行者为二级，待确认。') + '</div>';
     h += sec('公司与提醒') + '<div class="card"><label class="fld"><span>公司方向与长期目标</span><textarea data-set="direction" rows="3"' + (isOwner() ? '' : ' disabled') + '>' + esc(cs.direction) + '</textarea><small>AI 整理时用来判断新想法是否与现有业务形成闭环。由老板填写。</small></label>' +
       '<div class="row2"><label class="fld"><span>无动态提醒（天）</span><input type="number" min="1" max="30" data-set="staleDays" value="' + cs.staleDays + '"' + dis + '></label><label class="fld"><span>超预算阈值（元）</span><input type="number" min="0" step="1000" data-set="budgetThreshold" value="' + (cs.budgetThreshold || '') + '"' + dis + '></label></div></div>';
-    h += SRV ? sec('数据') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">服务器：' + esc(TMS.serverUrl()) + '</p>' + (isOwner() ? '<button class="btn danger block" data-do="clearDemo">清理演示数据</button>' : '') + '</div>' :
+    h += SRV ? sec('数据') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">服务器：' + esc(TMS.serverUrl()) + '</p>' + (isOwner() && !S.real ? '<button class="btn danger block" data-do="clearDemo">清理演示数据</button>' : '<p class="muted" style="margin:0;font-size:13.5px">数据每天自动备份在服务器的 backups 目录。</p>') + '</div>' :
       sec('演示工具') + '<div class="card">' + sw('demoAiFail', '模拟 AI 失败', '用来演示「AI 失败后运营者手写整理稿继续推进」。') +
       '<div class="callout">演示版里：账号是预设的；AI 整理和共创汇总由规则模拟生成，界面都标了「AI 模拟输出」；录音只在本机，不上传、不转写；通知只在 App 内。</div>' +
       (isOwner() ? '<button class="btn block" data-do="clearDemo">清理演示数据（保留成员）</button>' : '') + '<button class="btn danger block mt" data-do="reset">重置全部演示数据</button></div>';
@@ -2587,7 +2616,7 @@
   var sheetHandler = null;
   function openSheet(title, body, submitLabel, onSubmit, danger) {
     var layer = document.getElementById('layer');
-    layer.innerHTML = '<div class="scrim" data-do="closeSheet"></div><form class="sheet" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><header><h2>' + esc(title) + '</h2><button type="button" class="circle" data-do="closeSheet" aria-label="关闭">×</button></header><div class="body">' + body + '</div>' +
+    layer.innerHTML = '<div class="scrim" data-do="closeSheet"></div><form class="sheet" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><header><h2>' + esc(title) + '</h2><button type="button" class="circle" data-do="closeSheet" aria-label="关闭">×</button></header><div class="body">' + wordsFix(body) + '</div>' +
       '<footer><button type="button" class="btn" data-do="closeSheet">取消</button><button type="submit" class="btn ' + (danger ? 'danger' : 'pri') + '">' + esc(submitLabel) + '</button></footer></form>';
     sheetHandler = onSubmit;
     requestAnimationFrame(function () { var sc = layer.querySelector('.scrim'), sh = layer.querySelector('.sheet'); if (!sc || !sh) return; sc.classList.add('on'); sh.classList.add('on'); var f = layer.querySelector('.sheet .body input:not([type=hidden]):not([type=radio]):not([type=checkbox]),.sheet .body textarea'); if (f && window.innerWidth > 700) f.focus(); });
@@ -2822,11 +2851,11 @@
     document.body.classList.toggle('no-dock', c.name === 'inbox' || c.name === 'stat' || c.name === 'project' || c.name === 'assign' || (c.name === 'new' && !!c.id) || (c.name === 'todo' && !!c.sub));
     var actHTML = acts.length ? '<div class="actions">' + acts.map(function (a) { return '<button class="btn ' + (a[2] || '') + '" data-do="' + a[1] + '"' + (a[3] ? ' data-arg="' + a[3] + '"' : '') + '>' + esc(a[0]) + '</button>'; }).join('') + '</div>' : '';
     document.body.classList.toggle('has-actions', !!acts.length);
-    app.innerHTML = (home ? '' : DEMO +
+    app.innerHTML = wordsFix((home ? '' : DEMO +
       '<div class="top' + (back ? ' detail' : '') + '">' + (back ? '<button class="circle back" data-do="back" aria-label="返回"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>' : '') +
       '<h1>' + esc(title) + '</h1><button class="me-chip" data-do="switch" aria-label="切换账号，当前 ' + esc(u.name) + '">' + av(me) + '<span>' + esc(u.name) + '　' + esc(L.role[role()]) + '</span></button></div>') +
       '<main>' + body + '</main>' + actHTML +
-      '<div class="dock"><nav class="tabs" aria-label="主导航">' + TABS.filter(function (t) { var cp = myCaps(); return t[0] === 'ideas' ? cp.ideas : t[0] === 'work' ? cp.work : true; }).map(function (t) { return '<a href="#/' + t[0] + '" class="' + (tabKey === t[0] ? 'on' : '') + '"' + (tabKey === t[0] ? ' aria-current="page"' : '') + '><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (tabKey === t[0] && TAB_ON[t[0]] ? TAB_ON[t[0]] : t[2]) + '</svg></span>' + t[1] + (t[0] === 'tasks' && nT ? '<span class="badge">' + nT + '</span>' : '') + '</a>'; }).join('') + '</nav></div>';
+      '<div class="dock"><nav class="tabs" aria-label="主导航">' + TABS.filter(function (t) { var cp = myCaps(); return t[0] === 'ideas' ? cp.ideas : t[0] === 'work' ? cp.work : true; }).map(function (t) { return '<a href="#/' + t[0] + '" class="' + (tabKey === t[0] ? 'on' : '') + '"' + (tabKey === t[0] ? ' aria-current="page"' : '') + '><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (tabKey === t[0] && TAB_ON[t[0]] ? TAB_ON[t[0]] : t[2]) + '</svg></span>' + t[1] + (t[0] === 'tasks' && nT ? '<span class="badge">' + nT + '</span>' : '') + '</a>'; }).join('') + '</nav></div>');
     afterRender();
   }
   Object.keys(QUICK).forEach(function (k) { DO[k] = QUICK[k]; });

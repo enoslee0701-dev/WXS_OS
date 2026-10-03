@@ -25,6 +25,17 @@ let srv = null;
   const bossTok = await A.evaluate(() => localStorage.getItem('tm_token'));
   ok((await api('GET', '/api/state', null, bossTok)).state.users.length === 1, '新团队只有老板');
 
+  // ---- 正式模式下界面不出现「演示」字样
+  const demoWords = [];
+  for (const r of ['home', 'ideas', 'tasks', 'work', 'me', 'settings', 'team', 'kb', 'new', 'new/voice', 'new/video', 'new/text', 'new/file', 'project', 'todo/new', 'inbox']) {
+    await A.goto(URL + '#/' + r); await A.waitForTimeout(120);
+    const t = await A.evaluate(() => document.body.innerText); if (/演示/.test(t)) demoWords.push(r + '：' + t.match(/.{0,12}演示.{0,16}/)[0]);
+  }
+  await A.goto(URL + '#/me'); await A.waitForTimeout(100); await A.click('.me-info[data-do=quickAI]'); await A.waitForSelector('.ai-panel');
+  if (/演示/.test(await A.evaluate(() => document.body.innerText))) demoWords.push('AI 面板');
+  await A.evaluate(() => document.querySelectorAll('.ai-scrim').forEach(x => x.click())); await A.waitForTimeout(150);
+  ok(demoWords.length === 0, '正式模式不出现「演示」字样 ' + demoWords.join(' | '));
+
   // ---- 老板：添加成员 → 自动弹出分派账号
   await A.goto(URL + '#/team'); await A.waitForTimeout(150);
   await A.click('.tm-invite'); await A.fill('.sheet input[name=name]', '小李'); await A.fill('.sheet input[name=title]', '设计');
@@ -71,7 +82,8 @@ let srv = null;
   const pj = await api('POST', '/api/act', { name: 'project.create', payload: { title: '新官网', ptype: 'tech', operatorId: wang, goal: '上线', tasks: [{ title: '画首页', ownerId: li, expected: '设计稿', criteria: '老板认可' }] } }, bossTok);
   ok(pj.ok && pj.r.workId, '建了一个有小李任务的项目 ' + (pj.error || ''));
   const wid = pj.r.workId;
-  await A.goto(URL + '#/work/' + wid); await A.waitForTimeout(300); await A.click('[data-do=wTab][data-t=files]'); await A.waitForTimeout(150);
+  await A.goto(URL + '#/work/' + wid); await A.waitForTimeout(300);
+  await A.click('[data-do=wTab][data-t=files]'); await A.waitForTimeout(150);
   await A.click('.wf-up'); await A.waitForSelector('.sheet.on');
   await A.setInputFiles('.sheet input[data-wfile]:not([accept]):not([capture])', path.join(__dirname, 'fixtures', 'pic.jpg')); await A.waitForTimeout(300);
   const lid = await A.evaluate((w) => { const x = window.__tm.S.workItems.find(v => v.id === w); return x && (x.files || []).map(f => f.localId).filter(Boolean).pop(); }, wid);
