@@ -130,6 +130,13 @@ let srv = null;
     await A.waitForTimeout(800);
     ok(nOpen >= 1 && await A.locator('.ix2-fold.open').count() === nOpen, '同步刷新后展开的内容保持展开');
   }
+  // ---- 头像：员工换头像，老板在团队页看到
+  await B.goto(URL + '#/me'); await B.waitForTimeout(200);
+  await B.setInputFiles('input[data-avatar]', path.join(__dirname, 'fixtures', 'pic.jpg'));
+  ok(await until(async () => !!(await api('GET', '/api/state', null, bossTok)).state.users.find(u => u.id === li).avatar, 8000), '员工换了头像，同步到服务器');
+  await A.goto(URL + '#/team'); await A.waitForTimeout(300);
+  ok(await until(async () => A.evaluate((u) => { const card = [...document.querySelectorAll('.tm-card')].find(x => x.textContent.includes('小李')); const im = card && card.querySelector('.av img'); return !!(im && im.complete && im.naturalWidth === 256); }, li), 8000), '老板在团队页看到员工的新头像（256 像素）');
+
   // ---- 离线：员工记待办，联网后自动补发
   await B.context().setOffline(true);
   await B.goto(URL + '#/todo/new/manual').catch(() => {}); await B.waitForTimeout(200);

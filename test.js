@@ -566,5 +566,13 @@ rej(TM.act(s, O, 'system.housekeep', {}), '老板不能直接调用清理');
 const hk = must(TM.act(s, 'agent', 'system.housekeep', {}), '系统清理');
 ok(hk.removed >= 1 && !s.notifications.some(n => n.id === 'Nold1') && s.notifications.some(n => n.id === 'Nold2'), '删掉 60 天前已读的通知，未读的保留');
 
+// ===== 头像 =====
+s = TM.migrate(fresh());
+must(TM.act(s, DS, 'member.update', { id: DS, avatar: 'a1b2c3d4e5' }), '换自己的头像');
+ok(TM.user(s, DS).avatar === 'a1b2c3d4e5', '头像已保存');
+rej(TM.act(s, DS, 'member.update', { id: DS, avatar: '../etc/passwd' }), '头像 ID 格式不对');
+rej(TM.act(s, O, 'member.update', { id: DS, avatar: 'zzzz1234' }), '别人不能换我的头像');
+must(TM.act(s, DS, 'member.update', { id: DS, avatar: '' }), '移除头像'); ok(!TM.user(s, DS).avatar, '已移除');
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

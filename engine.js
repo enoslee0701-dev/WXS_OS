@@ -695,6 +695,7 @@ var TM = (function () {
     if ('phone' in p) { var ph = txt(p.phone); need(!ph || /^[+\d][\d\s-]{5,19}$/.test(ph), '手机号格式不正确'); u.phone = ph; }
     if ('location' in p) u.location = txt(p.location).slice(0, 20);
     if ('bio' in p) u.bio = txt(p.bio).slice(0, 30);
+    if ('avatar' in p) { var av = txt(p.avatar); need(!av || /^[A-Za-z0-9_-]{4,64}$/.test(av), '头像格式不对'); need(p.id === uid, '头像只能自己换'); u.avatar = av || null; }
     if ('prefs' in p) {
       // 偏好只收白名单里的布尔开关（防止往全局状态里塞任意数据）
       var PREFS = ['notifyImportant'], np = Object.assign({}, u.prefs || {});

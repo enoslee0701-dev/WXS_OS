@@ -28,6 +28,18 @@
   /* 真实 AI：服务器模式下老板 / 管理员可用（服务器配置了密钥时）；否则一律规则模拟 */
   var AI_ON = false;
   if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.aiStatus().then(function (r) { AI_ON = !!(r && r.enabled); if (AI_ON && aiS && aiS.open) renderAI(); });
+  /* 头像：裁成正方形、压到 256 像素再上传（服务器模式）；演示模式只存在本机 */
+  function avatarPick(f) {
+    if (!/^image\//.test(f.type)) return toast('请选一张图片', true);
+    var img = new Image(), url = URL.createObjectURL(f);
+    img.onload = function () {
+      var n = Math.min(img.width, img.height), c = document.createElement('canvas'); c.width = c.height = 256;
+      c.getContext('2d').drawImage(img, (img.width - n) / 2, (img.height - n) / 2, n, n, 0, 0, 256, 256); URL.revokeObjectURL(url);
+      c.toBlob(function (bl) { if (!bl) return toast('图片处理失败', true); var id = rid('a'); blobs[id] = keepBlob(id, new File([bl], 'avatar.jpg', { type: 'image/jpeg' })); act('member.update', { id: me, avatar: id }, '头像已更新'); }, 'image/jpeg', 0.85);
+    };
+    img.onerror = function () { toast('这张图片打不开', true); };
+    img.src = url;
+  }
   /* 附件 ID：加密随机（服务器按 ID 存文件，不能被猜到或抢注） */
   function rid(p) { var a = new Uint8Array(12); try { crypto.getRandomValues(a); } catch (e) { for (var i = 0; i < 12; i++) a[i] = Math.random() * 256; } return p + Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
   /* 附件：本机预览用 blob URL；服务器模式下同时在后台上传（localId 即服务器文件 ID），别的设备从服务器读取 */
@@ -43,7 +55,9 @@
   function av(uid, sm) {
     if (uid === 'agent') return '<span class="av agent' + (sm ? ' sm' : '') + '" aria-hidden="true">AI</span>';
     if (uid === 'system') return '<span class="av agent' + (sm ? ' sm' : '') + '" aria-hidden="true">系</span>';
-    var n = TM.name(S, uid); if (PHOTOS[uid] && !S.real && n === 'Enos') return '<span class="av ph' + (sm ? ' sm' : '') + '" aria-hidden="true"><img src="' + PHOTOS[uid] + '" alt=""></span>'; return '<span class="av' + (sm ? ' sm' : '') + '" style="background:' + color(uid) + '" aria-hidden="true">' + esc(/^[A-Za-z]/.test(n) ? n.charAt(0) : n.slice(-1)) + '</span>';
+    var n = TM.name(S, uid), uu = TM.user(S, uid), au = uu && uu.avatar && blobUrl(uu.avatar);
+    if (au) return '<span class="av ph' + (sm ? ' sm' : '') + '" aria-hidden="true"><img src="' + esc(au) + '" alt="" loading="lazy"></span>';
+    if (PHOTOS[uid] && !S.real && n === 'Enos') return '<span class="av ph' + (sm ? ' sm' : '') + '" aria-hidden="true"><img src="' + PHOTOS[uid] + '" alt=""></span>'; return '<span class="av' + (sm ? ' sm' : '') + '" style="background:' + color(uid) + '" aria-hidden="true">' + esc(/^[A-Za-z]/.test(n) ? n.charAt(0) : n.slice(-1)) + '</span>';
   }
   function nm(uid) { var u = TM.user(S, uid); var n = TM.name(S, uid); return u && S.settings.showTiers && u.tier ? n + '（' + u.tier + '）' : n; }
   function pill(group, st) { return '<span class="pill t-' + TM.TONE[group][st] + '">' + esc(L[group === 'decision' ? 'decisionStatus' : group][st]) + '</span>'; }
@@ -1722,7 +1736,7 @@
     return stdHero({ title: '我的', bg: 'var(--homebg)', pos: '50% 62%', sub: '管理账号与个性化设置，让团队协作更高效。', verse: ['凡你们所做的都要凭爱心而做。', '哥林多前书 16:14'], script: 'Serve<br>&nbsp;with Love',
       actions: '<a class="tk-ic me-round" href="#/inbox" aria-label="通知 ' + nU + ' 条未读">' + hi('bell', 1.8) + (nU ? '<i>' + nU + '</i>' : '') + '</a>' + (can ? '<a class="tk-ic me-round" href="#/settings" aria-label="更多设置">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>' + '</a>' : '') + '',
       pill: '<button class="tk-month" data-do="switch">' + av(me, true) + esc(u.name) + ' · ' + ROLE_BADGE[r] + ai2('downc', 1.8) + '</button>' }) +
-      '<section class="me-card"><span class="tm-av me-av">' + av(me) + '<i style="background:' + p[1] + '"></i></span><div class="me-who"><div class="me-nm"><b>' + esc(u.name) + '</b><span class="me-badge">' + (r === 'owner' ? '<svg viewBox="0 0 24 24"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z" fill="currentColor"/></svg>' : '') + ROLE_BADGE[r] + '</span></div><p>' + esc(u.bio || u.motto || '') + '</p>' +
+      '<section class="me-card"><label class="tm-av me-av me-avbtn" aria-label="换头像">' + av(me) + '<input type="file" accept="image/*" data-avatar="1" hidden>' + '<i style="background:' + p[1] + '"></i></label><div class="me-who"><div class="me-nm"><b>' + esc(u.name) + '</b><span class="me-badge">' + (r === 'owner' ? '<svg viewBox="0 0 24 24"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z" fill="currentColor"/></svg>' : '') + ROLE_BADGE[r] + '</span></div><p>' + esc(u.bio || u.motto || '') + '</p>' +
       '<div class="me-meta"><span>' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 10h4a1 1 0 0 1 1 1v10M3 21h18M8 8h3M8 12h3M8 16h3"/></svg>' + ROLE_DUTY[r] + '</span>' + (u.location ? '<i></i><span>' + ai2('pin', 1.7) + esc(u.location) + '</span>' : '') + '</div></div>' +
       '<div class="me-script" aria-hidden="true">Better<br>&nbsp;Together</div></section>' +
       '<div class="tm-stats me-stats">' + tiles.map(function (t) { return '<a class="tm-stat" href="' + t[4] + '"><span class="tm-si sq ' + t[0] + '">' + t[1] + '</span><b>' + t[2] + '</b><small>' + t[3] + '</small></a>'; }).join('') + '</div>' +
@@ -3298,6 +3312,7 @@
     if (el.dataset && el.dataset.aifile && el.files[0]) { var af = el.files[0]; if (!/\.(txt|md)$/i.test(af.name) && !/^text\//.test(af.type)) { toast('演示版只能读取 TXT、Markdown 文本文件', true); return; } var rd = new FileReader(); rd.onload = function () { var tx2 = String(rd.result).slice(0, 4000); if (!aiS.mode) aiS.mode = 'minutes'; aiHandle(tx2); renderAI(); }; rd.readAsText(af); return; }
     if (el.dataset && el.dataset.pref) { var pp = {}; pp[el.dataset.pref] = el.checked; act('member.update', { id: me, prefs: pp }, el.checked ? '已开启' : '已关闭'); return; }
     if (el.dataset && el.dataset.kbfile && el.files.length) { var fs = Array.prototype.slice.call(el.files), n = 0, bad = []; var next = function () { var f = fs.shift(); if (!f) { save(); render(); toast(n ? '已添加 ' + n + ' 份资料' + (bad.length ? '；' + bad.join('、') + ' 没读到内容' : '') : '没有添加成功：' + bad.join('、'), !n); return; } if (f.size > 600000) { bad.push(f.name + '（太大）'); return next(); } var rd = new FileReader(); rd.onload = function () { var body = String(rd.result || ''); var r = TM.act(S, me, 'kb.add', { title: f.name.replace(/\.(md|markdown|txt)$/i, ''), body: body, scope: 'team' }); if (r.ok) n++; else bad.push(f.name + '（' + r.error + '）'); next(); }; rd.onerror = function () { bad.push(f.name); next(); }; rd.readAsText(f); }; next(); el.value = ''; return; }
+    if (el.dataset && el.dataset.avatar && el.files.length) { avatarPick(el.files[0]); el.value = ''; return; }
     if (el.dataset && el.dataset.wfile && el.files.length) { var wm = Array.prototype.map.call(el.files, function (f) { var o = { kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, size: fmtSize(f.size) }; o.localId = rid('w'); blobs[o.localId] = keepBlob(o.localId, f); return o; }); act('work.attach', { id: el.dataset.wfile, media: wm }, '已上传 ' + wm.length + ' 个文件' + (SRV ? '' : '（演示版不上传）')); return; }
     if (el.dataset && el.dataset.ixfile && el.files.length) { var media = Array.prototype.map.call(el.files, function (f) { var o = { kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, size: fmtSize(f.size) }; o.localId = rid('x'); blobs[o.localId] = keepBlob(o.localId, f); return o; }); act('idea.attach', { id: el.dataset.ixfile, media: media }, '已添加 ' + media.length + ' 个附件' + (SRV ? '' : '（演示版不上传）')); return; }
     if (el.dataset && el.dataset.speriod) { st.period = +el.value; render(); return; }
