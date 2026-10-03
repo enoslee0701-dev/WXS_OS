@@ -160,6 +160,17 @@ const routes = {
     dropSessions('uid=? AND token<>?', me.uid, me.token);
     return [200, { ok: true }];
   },
+  /* 在 App 里注销自己的账号（App Store 要求）：需要当前密码；老板不能注销（团队会没人管） */
+  'POST /api/account/deactivate': async (req, url, b, me) => {
+    if (isOwner(me.uid)) return [400, { error: '老板的账号不能注销。如需交接团队，请联系开发者' }];
+    const c = q('SELECT * FROM creds WHERE uid=?').get(me.uid);
+    if (!checkPw(c, b.password || '')) return [400, { error: '密码不对' }];
+    q('UPDATE creds SET disabled=1 WHERE uid=?').run(me.uid);
+    dropSessions('uid=?', me.uid);
+    const r = TM.act(S, 'agent', 'account.deactivated', { id: me.uid });
+    if (r.ok) { version++; persist(); broadcast(); }
+    return [200, { ok: true }];
+  },
   /* 真实 AI：没配置密钥或没有权限时 enabled=false，客户端用规则模拟 */
   'GET /api/ai/status': async (req, url, b, me) => [200, { enabled: AI.enabled() && AI.allowed(S, me.uid), configured: AI.enabled(), model: AI.MODEL }],
   'POST /api/ai/ask': async (req, url, b, me) => aiRun(me, 'ask', () => AI.ask(S, me.uid, String(b.q || ''), b.history)),
@@ -202,7 +213,7 @@ const routes = {
   }
 };
 /* 没改初始密码前只能做这些 */
-const MUST_OK = new Set(['GET /api/me', 'GET /api/state', 'POST /api/password', 'POST /api/logout', 'GET /api/ai/status']);
+const MUST_OK = new Set(['POST /api/account/deactivate', 'GET /api/me', 'GET /api/state', 'POST /api/password', 'POST /api/logout', 'GET /api/ai/status']);
 
 /* ---------- 附件 ---------- */
 const FILE_ID = /^[A-Za-z0-9_-]{4,64}$/;

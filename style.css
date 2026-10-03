@@ -2999,3 +2999,4 @@ body.home-lock .hm{min-height:calc(100vh / .86)}
 /* App（原生）里的手感：去掉网页式点按高亮和长按菜单 */
 html.native{-webkit-tap-highlight-color:transparent}
 html.native a,html.native button,html.native img,html.native .hm-card,html.native .tabs a{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.me-acct .me-del span{color:var(--bad,#D93A3A)}

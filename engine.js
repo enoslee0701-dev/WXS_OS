@@ -1026,6 +1026,14 @@ var TM = (function () {
     ev(s, { ideaId: d.id, actor: 'agent', action: 'ai.analyze.real', text: 'Claude 完成整理 · 建议：' + L.route[np.suggested_route] });
     return {};
   };
+  /* 成员在 App 里注销账号（服务器以系统身份调用）：通知老板 */
+  A['account.deactivated'] = function (s, uid, p) {
+    need(uid === 'agent', '只有系统可以记录注销');
+    var u = user(s, p.id); need(u, '找不到该成员');
+    notify(s, usersWith(s, 'owner'), null, '成员注销了账号', u.name + ' 在 App 里注销了自己的账号，已无法登录。需要时可以在成员资料里恢复。', '#/team');
+    ev(s, { actor: 'agent', action: 'account.deactivated', text: u.name + ' 注销了账号' });
+    return {};
+  };
   /* 清理演示数据：保留成员、设置和自己添加的知识库资料，其余示例内容全部清空 */
   A['data.clearDemo'] = function (s, uid) {
     need(hasRole(s, uid, 'owner'), '只有老板可以清理数据');

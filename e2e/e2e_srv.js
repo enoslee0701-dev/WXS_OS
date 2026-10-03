@@ -22,6 +22,7 @@ let srv = null;
   await A.click('form[data-form=srvSetup] button[type=submit]'); await A.waitForSelector('.hm-card');
   ok(JSON.stringify(await A.$$eval('.hm-card', xs => xs.map(x => x.dataset.do))) === '["quickIdea","quickProject"]', '老板进入首页');
   ok(await A.locator('.hm-demo').count() === 0, '首页没有演示版标记');
+  await A.goto(URL + '#/me'); await A.waitForTimeout(120); ok(await A.locator('[data-do=srvDeactivate]').count() === 0, '老板没有注销入口'); await A.goto(URL + '#/home'); await A.waitForTimeout(100);
   const bossTok = await A.evaluate(() => localStorage.getItem('tm_token'));
   ok((await api('GET', '/api/state', null, bossTok)).state.users.length === 1, '新团队只有老板');
 
@@ -69,6 +70,7 @@ let srv = null;
   ok(!(await B.evaluate(() => JSON.stringify(window.__tm.S))).includes('明年扩张计划'), '员工拿不到老板的草稿');
   await B.goto(URL + '#/me'); await B.waitForTimeout(150);
   ok(await B.locator('.me-acct').count() === 1 && await B.locator('[data-do=demoStart]').count() === 0, '我的：账号与安全，没有演示向导');
+  ok(await B.locator('[data-do=srvDeactivate]').count() === 1, '成员能在 App 里注销账号');
 
   // ---- 实时同步：老板改了员工的资料，员工不用刷新就能看到
   await B.goto(URL + '#/team'); await B.waitForTimeout(150);

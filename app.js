@@ -1702,7 +1702,7 @@
       (SRV && TMS.loggedIn() ? '<section class="me-sec me-acct"><div class="me-sh">' + ic(ti('person', 1.8)).replace('me-ic', 'me-ic blue') + '<b>账号与安全</b></div>' +
         '<button class="me-info" data-do="srvPassword">' + hi('flag', 1.7) + '<span>修改密码</span><b>' + (TMS.mustChange ? '请修改初始密码' : '') + '</b>' + hi('chev', 2) + '</button>' +
         '<div class="me-info">' + hi('pie', 1.7) + '<span>服务器</span><b>' + esc(TMS.serverUrl()) + '</b><i></i></div>' +
-        '<button class="me-info me-out" data-do="srvLogout">' + hi('chev', 1.7) + '<span>退出登录</span><b></b>' + hi('chev', 2) + '</button></section>' : '') +
+        '<button class="me-info me-out" data-do="srvLogout">' + hi('chev', 1.7) + '<span>退出登录</span><b></b>' + hi('chev', 2) + '</button>' + (isOwner() ? '' : '<button class="me-info me-del" data-do="srvDeactivate">' + hi('chev', 1.7) + '<span>注销账号</span><b>停用后无法登录</b>' + hi('chev', 2) + '</button>') + '</section>' : '') +
       '<section class="me-sec"><div class="me-sh">' + ic(ti('more', 1.6)).replace('me-ic', 'me-ic blue') + '<b>通用</b></div>' +
       '<button class="me-info" data-do="quickAI">' + hi('spark', 1.7) + '<span>AI 助手</span><b>整理、分析、建议、创作</b>' + hi('chev', 2) + '</button>' +
       '<a class="me-info" href="#/inbox">' + hi('bell', 1.7) + '<span>通知中心</span><b>' + (nU ? nU + ' 条未读' : '全部已读') + '</b>' + hi('chev', 2) + '</a>' +
@@ -2903,6 +2903,11 @@
           TMS.setAccount({ uid: uid, login: (o.login || '').trim(), password: o.password || undefined, reset: !!o.reset }).then(function (r) { if (r.password) showCred(u, r.login, r.password); else { closeSheet(); toast('已保存'); } }, function (e) { toast(e.error || '保存失败', true); });
         });
     }, function (e) { toast(e.error || '连不上服务器', true); });
+  };
+  DO.srvDeactivate = function () {
+    openSheet('注销账号', '<p style="margin:0 0 8px">注销后你的账号会被停用，<b>不能再登录</b>，老板会收到通知。你记录过的想法、任务和讨论会保留在团队里。</p><div class="callout warn">如果只是换手机或暂时不用，请选择「退出登录」。</div>' + field('输入当前密码确认', '<input type="password" name="password" autocomplete="current-password" required>'), '确认注销', function (o) {
+      TMS.deactivate(o.password || '').then(function () { closeSheet(); toast('账号已注销'); setTimeout(function () { location.hash = '#/login'; location.reload(); }, 800); }, function (e) { toast(e.error || '注销失败', true); });
+    }, true);
   };
   DO.srvDisable = function (el) { var uid = el.dataset.u, d = el.dataset.d === '1'; TMS.disable(uid, d).then(function () { closeSheet(); toast(d ? '已停用，对方会被立即登出' : '已恢复'); }, function (e) { toast(e.error || '操作失败', true); }); };
   DO.clearDemo = function () { openSheet('清理演示数据', '<p style="margin:0 0 8px">会清空所有想法、项目、任务、待办、通知和示例资料，<b>成员和设置保留</b>，你自己添加的知识库资料也保留。</p><div class="callout warn">清理后无法恢复。</div>', '确认清理', function () { act('data.clearDemo', {}, '演示数据已清理'); location.hash = '#/home'; }, true); };

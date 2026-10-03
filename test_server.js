@@ -153,6 +153,15 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
 
   ok((await up('f_big001', Buffer.alloc(1.5 * 1024 * 1024), boss, 'application/octet-stream')).status === 413, '超过大小上限被拒');
   ok(!fs.readdirSync(path.join(DIR, 'files')).some(f => f.includes('.part-') || f === 'f_big001'), '被拒的文件不留残片');
+  // 8.8 在 App 里注销账号
+  ok((await post('/api/account/deactivate', { password: 'boss123' }, boss)).status === 400, '老板不能注销');
+  const zt = await post('/api/accounts', { uid: zhao, password: 'zhao12345' }, boss);
+  await post('/api/accounts/disable', { uid: zhao, disabled: false }, boss);
+  const zTok = (await post('/api/login', { login: 'xiaozhao', password: 'zhao12345' })).token;
+  ok((await post('/api/account/deactivate', { password: 'wrong' }, zTok)).status === 400, '注销要输对密码');
+  ok((await post('/api/account/deactivate', { password: 'zhao12345' }, zTok)).ok, '成员注销账号（首次改密前也能注销）');
+  ok((await get('/api/state', zTok)).status === 401 && (await post('/api/login', { login: 'xiaozhao', password: 'zhao12345' })).status === 403, '注销后会话失效、不能登录');
+  ok((await get('/api/state', boss)).state.notifications.some(n => /注销/.test(n.title)), '老板收到注销通知');
   // 9. 重启后数据还在
   srv.kill(); await new Promise(z => setTimeout(z, 200)); srv = await start();
   r = await get('/api/state', boss);
