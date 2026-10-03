@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, uid TEXT, created IN
 CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY, uid TEXT, name TEXT, type TEXT, size INTEGER, created INTEGER);
 CREATE TABLE IF NOT EXISTS ai_log(at INTEGER, uid TEXT, kind TEXT, in_tok INTEGER, out_tok INTEGER, ok INTEGER);
 CREATE TABLE IF NOT EXISTS devices(token TEXT PRIMARY KEY, uid TEXT, platform TEXT, created INTEGER);
+CREATE TABLE IF NOT EXISTS ai_jobs(summary_id TEXT PRIMARY KEY, at INTEGER);
 CREATE TABLE IF NOT EXISTS ops(seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, uid TEXT, action TEXT, payload TEXT, ok INTEGER, error TEXT);`);
 if (!db.prepare('PRAGMA table_info(sessions)').all().some(c => c.name === 'ft')) db.exec('ALTER TABLE sessions ADD COLUMN ft TEXT');
 if (!db.prepare('PRAGMA table_info(devices)').all().some(c => c.name === 'session')) db.exec('ALTER TABLE devices ADD COLUMN session TEXT');
@@ -326,10 +327,10 @@ function autoAnalyze(added) {
     if (analyzing.has(sm.id)) return;
     // 同一个想法 10 分钟内只自动跑一次（防止反复「重新整理」刷掉全队的 AI 额度）
     const k = sm.kind + '|' + sm.ideaId; if (lastAuto.get(k) > Date.now() - 10 * 60e3) return; lastAuto.set(k, Date.now());
-    analyzing.add(sm.id);
+    analyzing.add(sm.id); q('INSERT OR REPLACE INTO ai_jobs VALUES(?,?)').run(sm.id, Date.now());
     const dig = sm.kind === 'digest';
     aiRun({ uid: 'agent' }, dig ? 'digest' : 'analyze', () => dig ? AI.digestDiscussion(S, sm.ideaId) : AI.analyzeIdea(S, sm.ideaId), true).then(([code, out]) => {
-      analyzing.delete(sm.id);
+      analyzing.delete(sm.id); q('DELETE FROM ai_jobs WHERE summary_id=?').run(sm.id);
       if (code !== 200 || !S) return;
       const snap = JSON.stringify(S), n0 = S.notifications.length;
       try {
@@ -404,8 +405,11 @@ const server = http.createServer(async (req, res) => {
   }
 });
 process.on('unhandledRejection', (e) => console.error('未处理的异步错误（已忽略，服务继续运行）', e));
-/* 重启后补做：最近 2 天还停在规则版、想法仍待整理的整理稿 / 总结，重新交给 Claude */
-function sweepAi() { if (!S) return; const t = Date.now() - 2 * 864e5; autoAnalyze(S.summaries.filter(x => x.at > t && x.payload && x.payload.simulated && x.authorType === 'agent' && (x.kind === 'digest' || (S.ideas.find(d => d.id === x.ideaId) || {}).status === 'triage') && TM.latestSummary(S, x.ideaId, x.kind) === x)); }
+/* 重启后补做：只补「发起过、但因为重启没做完」的后台任务（记录在 ai_jobs 里），不会去动其他规则版内容 */
+function sweepAi() {
+  if (!S) return; const ids = new Set(q('SELECT summary_id FROM ai_jobs WHERE at > ?').all(Date.now() - 2 * 864e5).map(r => r.summary_id)); q('DELETE FROM ai_jobs').run();
+  autoAnalyze(S.summaries.filter(x => ids.has(x.id) && x.payload && x.payload.simulated && TM.latestSummary(S, x.ideaId, x.kind) === x));
+}
 if (require.main === module) server.listen(PORT, HOST, () => {
   setTimeout(sweepAi, 3000);
   console.log(`团队协同服务器已启动：http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  数据目录：${DATA}`);

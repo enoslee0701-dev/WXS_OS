@@ -20,11 +20,11 @@ const mock = http.createServer((req, res) => {
     reply(200, { id: 'msg_1', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text }], stop_reason: mode === 'refusal' ? 'refusal' : 'end_turn', stop_sequence: null, stop_details: mode === 'refusal' ? { type: 'refusal', category: null, explanation: '' } : null, usage: { input_tokens: 1200, output_tokens: 80 } });
   });
 });
-function start(env) {
-  const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-ai-')), PORT = rnd();
+function start(env, dir) {
+  const DIR = dir || fs.mkdtempSync(path.join(os.tmpdir(), 'tm-ai-')), PORT = rnd();
   const p = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env: { ...process.env, ANTHROPIC_API_KEY: '', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'code-1234', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   p.stderr.on('data', d => { if (!/ExperimentalWarning|AI 出错/.test(String(d))) process.stderr.write(d); });
-  p.B = 'http://127.0.0.1:' + PORT; p.DIR = DIR;
+  p.B = 'http://127.0.0.1:' + PORT; p.DIR = DIR; p.env = env;
   return new Promise(r => p.stdout.on('data', d => { if (/已启动/.test(String(d))) r(p); }));
 }
 const mkApi = (B) => async (method, u, body, tok) => { const r = await fetch(B + u, { method, headers: { 'Content-Type': 'application/json', ...(tok ? { Authorization: 'Bearer ' + tok } : {}) }, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, ...(await r.json()) }; };
@@ -131,6 +131,17 @@ async function team(api) {
   // 管理员已用 3 次（1 次成功 + 拒答 + 限流），上限 5：并发 3 个请求只能成功 2 个
   const conc = await Promise.all([1, 2, 3].map(() => api('POST', '/api/ai/ask', { q: '并发' }, t.adm)));
   ok(conc.filter(x => x.status === 200).length === 2 && conc.filter(x => x.status === 429).length === 1, '并发请求也不会超过每日上限');
+  // 后台 AI 进行中服务器被杀：重启后只补做这一个
+  mode = 'slow';
+  const ri = await api('POST', '/api/act', { name: 'idea.create', payload: { note: '重启补做测试：会议室换窗帘' } }, t.boss);
+  await api('POST', '/api/act', { name: 'idea.submit', payload: { id: ri.r.id, path: 'direct' } }, t.boss);
+  await new Promise(z => setTimeout(z, 200)); s2.kill('SIGKILL'); await new Promise(z => setTimeout(z, 300));
+  mode = 'ok'; const c0 = seen.length;
+  const s3 = await start(s2.env, s2.DIR); const api3 = mkApi(s3.B);
+  let fixed = null; for (let i = 0; i < 80 && !fixed; i++) { const st4 = await api3('GET', '/api/state', null, t.boss); const x = st4.state && st4.state.summaries.filter(y => y.ideaId === ri.r.id && y.kind === 'analysis').pop(); if (x && x.payload.simulated === false) fixed = x; else await new Promise(z => setTimeout(z, 100)); }
+  ok(!!fixed, '重启后补做没做完的后台整理');
+  ok(seen.slice(c0).length === 1, '只补做没做完的那一个（不会去整理其他规则版内容）');
+  s3.kill();
   s2.kill(); fs.rmSync(s2.DIR, { recursive: true, force: true }); mock.close();
   console.log(`\nAI 代理 通过 ${pass}，失败 ${fail}`); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
