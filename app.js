@@ -2816,7 +2816,7 @@
   function render() {
     setTimeout(function () { if (typeof dmPanel === 'function') dmPanel(); }, 0);
     var app = document.getElementById('app'), c = cur();
-    if (!me) { document.body.classList.remove('has-actions'); app.innerHTML = DEMO + viewLogin(); return; }
+    if (!me) { document.body.classList.remove('has-actions'); var lg = viewLogin(); app.innerHTML = (/class="login welcome"/.test(lg) ? '' : DEMO) + lg; return; }
     if (c.name === 'login') { location.hash = '#/home'; return; }
     var cp = myCaps(), to = null;
     if (c.name === 'new' && !cp.recordIdea) to = '#/home';
