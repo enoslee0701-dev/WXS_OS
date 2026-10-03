@@ -1350,11 +1350,18 @@
     });
     return out;
   }
-  function taShowResult() {
-    var items = parseTodos(ta.text);
+  function taShowResult(given) {
+    // 老板 / 管理员且 AI 启用：交给 Claude 拆待办，失败退回规则
+    if (!given && AI_ON && (ta.text || '').trim().length >= 4) {
+      toast('Claude 正在拆分待办…');
+      TMS.aiTodos(ta.text).then(function (r) { if (!r.items.length) return taShowResult(parseTodos(ta.text)); ta.real = true; taShowResult(r.items); }, function (e) { toast(((e && e.error) || 'AI 暂时不可用') + '，已改用规则拆分', true); taShowResult(parseTodos(ta.text)); });
+      return;
+    }
+    var items = given || parseTodos(ta.text);
     if (!items.length) return toast('没有识别出待办，试着用「明天上午10点和陈立开会」这样的句子', true);
     var PR = { hi: '高', mid: '中', lo: '低' };
-    openSheet('AI 生成的待办', '<span class="tag sim">AI 模拟输出，可修改后添加</span>' + items.map(function (x, i) {
+    var real = !!(given && ta.real); ta.real = false;
+    openSheet('AI 生成的待办', (real ? '<span class="tag ai-real-tag">Claude 拆分，可修改后添加</span>' : '<span class="tag sim">AI 模拟输出，可修改后添加</span>') + items.map(function (x, i) {
       return '<div class="t-res"><label class="t-res-h"><input type="checkbox" name="on' + i + '" checked><input type="text" name="title' + i + '" value="' + esc(x.title) + '" maxlength="50"></label><div class="t-res-m"><input type="date" name="date' + i + '" value="' + x.date + '"><input type="time" name="time' + i + '" value="' + x.time + '"><select name="pr' + i + '">' + ['hi', 'mid', 'lo'].map(function (p) { return '<option value="' + p + '"' + (p === x.priority ? ' selected' : '') + '>' + PR[p] + '优先级</option>'; }).join('') + '</select></div>' +
         '<div class="t-res-t"><i class="k-gray">' + esc(x.tags[0]) + '</i>' + x.people.map(function (u) { return av(u, true) + '<span>' + esc(nm(u)) + '</span>'; }).join('') + '</div></div>';
     }).join(''), '添加到待办', function (o) {

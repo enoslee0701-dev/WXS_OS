@@ -227,6 +227,24 @@ async function parseProject(S, uid, text) {
   };
 }
 
+/* 一段话 → 待办（日期、时间、优先级、相关人） */
+const TAGS = ['工作', '沟通', '会议', '数据', '事工', '运维', '学习'];
+async function parseTodos(S, uid, text) {
+  const today = TM.todayStr(S), wd = '日一二三四五六'[new Date(today + 'T00:00:00').getDay()];
+  const schema = { type: 'object', additionalProperties: false, required: ['items'], properties: { items: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'date', 'time', 'priority', 'people', 'tag'], properties: {
+    title: { type: 'string', description: '去掉时间词后的待办内容，20 字以内' }, date: { type: 'string', description: 'YYYY-MM-DD；没说日期就是今天' }, time: { type: 'string', description: 'HH:MM，24 小时制；没说就留空' },
+    priority: { type: 'string', enum: ['hi', 'mid', 'lo'], description: '紧急 / 重要为 hi，不急为 lo' }, people: { type: 'array', items: { type: 'string' }, description: '提到的团队成员姓名' }, tag: { type: 'string', enum: TAGS } } } } } };
+  const others = S.users.filter(u => u.id !== uid).map(u => u.name).join('、');
+  const r = await call({ system: [{ type: 'text', text: `你把一段话拆成待办清单。今天是 ${today}（星期${wd}）。「周五」指本周或下一个周五；「下周一」指下周的周一。每件事一条，最多 8 条；不编造原文没有的事。团队成员：${others}` }], messages: [{ role: 'user', content: String(text).slice(0, 4000) }], schema, effort: 'low', maxTokens: 4000 });
+  let o; try { o = JSON.parse(r.text); } catch (e) { throw { status: 502, error: 'AI 返回的格式不对' }; }
+  const byName = (n) => { const u = S.users.find(x => x.name === String(n || '').trim() && x.id !== uid); return u ? u.id : null; };
+  const items = (o.items || []).slice(0, 8).map(x => {
+    const people = [...new Set((x.people || []).map(byName).filter(Boolean))];
+    return { title: String(x.title || '').slice(0, 50), date: /^\d{4}-\d{2}-\d{2}$/.test(x.date) ? x.date : today, time: /^([01]\d|2[0-3]):[0-5]\d$/.test(x.time) ? x.time : '', priority: ['hi', 'mid', 'lo'].includes(x.priority) ? x.priority : 'mid', people, tags: [TAGS.includes(x.tag) ? x.tag : '工作'], scope: people.length ? 'team' : 'mine', on: true };
+  }).filter(x => x.title);
+  return { items, usage: r.usage };
+}
+
 /* PDF → Markdown（知识库上传 PDF）：Claude 读文档，整理出正文 */
 async function pdfToMarkdown(base64, name) {
   const r = await call({
@@ -237,4 +255,4 @@ async function pdfToMarkdown(base64, name) {
   return { text: r.text, truncated: r.truncated, usage: r.usage };
 }
 
-module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, parseProject, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };
+module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, parseProject, parseTodos, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };

@@ -228,6 +228,10 @@ const routes = {
     const text = String(b.text || '').trim(); if (text.length < 6) return [400, { error: '内容太少' }];
     return aiRun(me, 'project', () => AI.parseProject(S, me.uid, text));
   },
+  'POST /api/ai/todos': async (req, url, b, me) => {
+    const text = String(b.text || '').trim(); if (text.length < 4) return [400, { error: '内容太少' }];
+    return aiRun(me, 'todos', () => AI.parseTodos(S, me.uid, text));
+  },
   'POST /api/ai/doc': async (req, url, b, me) => {
     if (!TM.kbCan(S, me.uid)) return [403, { error: '只有老板或管理员可以整理知识库' }];
     const data = String(b.data || ''); if (!/^[A-Za-z0-9+/=]+$/.test(data) || data.length < 16) return [400, { error: '文件格式不对' }];

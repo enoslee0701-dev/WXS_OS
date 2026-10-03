@@ -10,6 +10,8 @@ const mock = http.createServer((req, res) => {
     const body = JSON.parse(b || '{}'); seen.push({ url: req.url, headers: req.headers, body });
     const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
     if (mode === '429') return reply(429, { type: 'error', error: { type: 'rate_limit_error', message: 'slow down' } });
+    const fmt0 = body.output_config && body.output_config.format;
+    if (fmt0 && fmt0.schema.properties.items) return reply(200, { id: 'msg_t', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ items: [{ title: '和林晓开会', date: '2026-10-04', time: '15:00', priority: 'mid', people: ['林晓', '外人', 'Enos'], tag: '会议' }, { title: '发报价', date: 'next friday', time: '25:00', priority: 'urgent', people: [], tag: '其他' }] }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 100, output_tokens: 50 } });
     const hasDoc = (body.messages || []).some(m => Array.isArray(m.content) && m.content.some(c => c.type === 'document'));
     if (hasDoc) return reply(200, { id: 'msg_pdf', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: '# 年度计划\n- 第一季度：试点' }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 900, output_tokens: 30 } });
     const fmt = body.output_config && body.output_config.format;
@@ -55,7 +57,7 @@ async function team(api) {
   s1.kill(); fs.rmSync(s1.DIR, { recursive: true, force: true });
 
   // 2. 配置了密钥（指向模拟服务）
-  const s2 = await start({ ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: MOCK, AI_DAILY_LIMIT: '5', BRIEF_NOW: '1' }); api = mkApi(s2.B); t = await team(api);
+  const s2 = await start({ ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: MOCK, AI_DAILY_LIMIT: '6', BRIEF_NOW: '1' }); api = mkApi(s2.B); t = await team(api);
   // 早报：启动后立即发一次（BRIEF_NOW），附 Claude 要点
   let brief = null; for (let i = 0; i < 30 && !brief; i++) { brief = ((await api('GET', '/api/state', null, t.boss)).state.notifications || []).find(n => n.title === '今日早报'); if (!brief) await new Promise(z => setTimeout(z, 100)); }
   ok(brief && /等你决策/.test(brief.body) && /新官网/.test(brief.body), '老板收到早报（数字 + Claude 要点）');
@@ -106,6 +108,7 @@ async function team(api) {
   r = await api('POST', '/api/ai/project', { text: '年底想办个感恩聚会，林晓负责，周敏去订场地' }, t.boss);
   ok(r.status === 200 && r.title === '年底感恩聚会' && r.ptype === 'event' && r.leadId === 'u_op' && r.tasks[0].ownerId === 'u_admin_ex' && r.tasks[1].ownerId === '' && JSON.stringify(r.people) === '["u_op","u_admin_ex"]', 'Claude 解析项目草稿，人名转成成员 ID（不存在的人被忽略）');
   r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 200, '老板第 5 次');
+  r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 200, '老板第 6 次');
   r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 429 && /用完/.test(r.error), '超过每日上限');
   // 后台整理稿：提交想法后规则稿立刻出现，随后换成 Claude 稿
   let idea = await api('POST', '/api/act', { name: 'idea.create', payload: { note: '想办一次全队退修会，预算两万元' } }, t.boss);
@@ -117,6 +120,11 @@ async function team(api) {
   ok(w.x && /Claude/.test(w.x.payload.overview) && w.x.payload.suggested_route === 'to_owner', '后台换成 Claude 整理稿');
   ok(w.st2 && w.st2.state.ideas.find(d => d.id === idea.r.id).title === '全队退修会', 'Claude 拟的标题生效');
   ok(w.st2 && w.st2.state.events.some(e => e.action === 'ai.analyze.real'), '动态里记录 Claude 完成整理');
+  // 一段话 → 待办
+  r = await api('POST', '/api/ai/todos', { text: '明天下午三点和林晓开会，周五前发报价' }, t.adm);
+  const tq = seen[seen.length - 1];
+  ok(r.status === 200 && r.items.length === 2 && r.items[0].time === '15:00' && JSON.stringify(r.items[0].people) === '["u_op","u_owner"]' && r.items[1].time === '' && r.items[1].priority === 'mid' && /^\d{4}-\d{2}-\d{2}$/.test(r.items[1].date) && r.items[1].tags[0] === '工作', 'Claude 拆待办：人名转 ID、非法日期时间优先级被纠正');
+  ok(/今天是 \d{4}-\d{2}-\d{2}（星期/.test(tq.body.system[0].text), '提示里带今天的日期和星期');
   // PDF → 知识库正文
   const pdf = require('fs').readFileSync(require('path').join(__dirname, 'e2e', 'fixtures', 'plan.pdf')).toString('base64');
   ok((await api('POST', '/api/ai/doc', { name: 'plan.pdf', data: pdf }, t.dev)).status === 403, '执行者不能让 AI 读 PDF');
@@ -140,7 +148,7 @@ async function team(api) {
   await new Promise(z => setTimeout(z, 2200)); mode = 'ok';
   const last = (await api('GET', '/api/state', null, t.boss)).state.summaries.filter(x => x.ideaId === idea.r.id && x.kind === 'analysis').pop();
   ok(last.payload.overview === '运营者手写的整理稿', '人工改过的整理稿不被 AI 覆盖');
-  // 管理员已用 4 次（1 次提问 + 拒答 + 限流 + 读 PDF），上限 5：并发 3 个请求只能成功 1 个
+  // 管理员已用 5 次（提问 + 拒答 + 限流 + 读 PDF + 拆待办），上限 6：并发 3 个请求只能成功 1 个
   const conc = await Promise.all([1, 2, 3].map(() => api('POST', '/api/ai/ask', { q: '并发' }, t.adm)));
   ok(conc.filter(x => x.status === 200).length === 1 && conc.filter(x => x.status === 429).length === 2, '并发请求也不会超过每日上限');
   const us = await api('GET', '/api/usage', null, t.adm);

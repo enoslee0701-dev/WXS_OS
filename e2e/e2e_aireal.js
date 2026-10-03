@@ -9,7 +9,7 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', d => b
   if ((body.messages || []).some(m => Array.isArray(m.content) && m.content.some(c => c.type === 'document'))) { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ id: 'p', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: '# 年度计划\n- Claude 读出的要点' }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 } })); }
   if (mode === 'down') { res.writeHead(500, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ type: 'error', error: { type: 'api_error', message: 'x' } })); }
   const kb = body.output_config && body.output_config.format;
-  const text = kb && kb.schema.properties.ptype ? JSON.stringify({ title: 'Claude 拟的项目', summary: '概要', ptype: 'event', lead: '林晓', tasks: [{ title: '订场地', owner: '周敏', expected: '确认单', criteria: '老板确认' }], people: ['林晓'], tags: ['聚会'] }) : kb && kb.schema.properties.verdict ? JSON.stringify({ verdict: 'needs_info', label: '建议先补充信息', reasons: ['没写预算'], risks: ['成本高'], checks: ['预算上限'], note: '先出方案再报我。' }) : kb && kb.schema.properties.suggested_route ? JSON.stringify({ title: '整理', summary: 's', background: 'b', problem: 'p', goal: 'g', overview: 'o', issues: [], directions: [], category: 'other', relation_to_direction: '', open_questions: [], exception_flags: [], suggested_route: 'operator_direct', suggested_tasks: [], confidence: 0.5 }) : kb ? JSON.stringify({ title: '老板口述：做决定', secs: [{ key: 'decide', items: ['新想法先小步试点两周，看反馈再决定。'] }, { key: 'money', items: ['单笔超过五千元的支出要先问老板。'] }] })
+  const text = kb && kb.schema.properties.items ? JSON.stringify({ items: [{ title: 'Claude 拆的待办', date: '2026-10-04', time: '10:00', priority: 'hi', people: ['林晓'], tag: '会议' }] }) : kb && kb.schema.properties.ptype ? JSON.stringify({ title: 'Claude 拟的项目', summary: '概要', ptype: 'event', lead: '林晓', tasks: [{ title: '订场地', owner: '周敏', expected: '确认单', criteria: '老板确认' }], people: ['林晓'], tags: ['聚会'] }) : kb && kb.schema.properties.verdict ? JSON.stringify({ verdict: 'needs_info', label: '建议先补充信息', reasons: ['没写预算'], risks: ['成本高'], checks: ['预算上限'], note: '先出方案再报我。' }) : kb && kb.schema.properties.suggested_route ? JSON.stringify({ title: '整理', summary: 's', background: 'b', problem: 'p', goal: 'g', overview: 'o', issues: [], directions: [], category: 'other', relation_to_direction: '', open_questions: [], exception_flags: [], suggested_route: 'operator_direct', suggested_tasks: [], confidence: 0.5 }) : kb ? JSON.stringify({ title: '老板口述：做决定', secs: [{ key: 'decide', items: ['新想法先小步试点两周，看反馈再决定。'] }, { key: 'money', items: ['单笔超过五千元的支出要先问老板。'] }] })
     : '**结论**：本周最需要关注的是「清醒」App 原型。\n\n- 负责人陈立，进度 0%\n- 建议今天和何静对一下首页设计';
   setTimeout(() => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ id: 'm', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 } })); }, 300);
 }); });
@@ -83,6 +83,13 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', d => b
   const n5 = calls, t0n = await p.locator('.np-task').count(); await p.click('[data-do=pTasksAI]');
   ok(await until(async () => (await p.textContent('#toast')).includes('Claude 拆出')), 'AI 拆任务走 Claude');
   ok(calls === n5 + 1 && await p.locator('.np-task').count() > t0n, '拆出的任务加进列表');
+
+  // ---- AI 生成待办：交给 Claude 拆
+  await p.goto(URL + '#/todo/new/ai'); await p.waitForTimeout(200); await p.click('[data-do=taTab][data-t=file]'); await p.waitForTimeout(100);
+  await p.setInputFiles('[data-tafile]', { name: '周会.txt', mimeType: 'text/plain', buffer: Buffer.from('明天上午10点和林晓开周会，紧急') }); await p.waitForTimeout(300);
+  const n7 = calls; await p.click('[data-do=taGen]'); await p.waitForSelector('.sheet h2:has-text("AI 生成的待办")', { timeout: 8000 });
+  ok(calls === n7 + 1 && (await p.textContent('.sheet')).includes('Claude 拆分') && (await p.inputValue('.sheet input[name=title0]')) === 'Claude 拆的待办', 'AI 生成待办走 Claude');
+  await p.evaluate(() => document.querySelectorAll('.scrim.on').forEach(x => x.click())); await p.waitForTimeout(150);
 
   // ---- 口述整理成规则：Claude 结构化输出
   await p.goto(URL + '#/kb/voice'); await p.waitForTimeout(200);
