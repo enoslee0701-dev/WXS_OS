@@ -228,6 +228,11 @@ const routes = {
     const text = String(b.text || '').trim(); if (text.length < 6) return [400, { error: '内容太少' }];
     return aiRun(me, 'project', () => AI.parseProject(S, me.uid, text));
   },
+  'POST /api/ai/write': async (req, url, b, me) => {
+    const kind = b.kind === 'goal' ? 'goal' : 'optimize';
+    if (!String(b.title || b.note || '').trim()) return [400, { error: '先写项目名称或描述' }];
+    return aiRun(me, 'write', () => AI.writeHelper(kind, b.title, b.note, b.due));
+  },
   'POST /api/ai/todos': async (req, url, b, me) => {
     const text = String(b.text || '').trim(); if (text.length < 4) return [400, { error: '内容太少' }];
     return aiRun(me, 'todos', () => AI.parseTodos(S, me.uid, text));

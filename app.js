@@ -772,6 +772,7 @@
     if (!pd.title && !pd.note) { location.hash = '#/project/ai'; return toast('先说一说或上传视频，AI 帮你生成项目'); }
     var n = pd.note.trim();
     if (/【背景】/.test(n)) return toast('描述已经是结构化格式了');
+    if (AI_ON && !pd.aiRule) { toast('Claude 正在整理描述…'); TMS.aiWrite('optimize', pd.title, n, pd.due).then(function (r) { if (r.text) { pd.note = r.text; render(); toast('Claude 已按「背景、问题、目标、要点」整理，可以再改'); } }, function (e) { toast(((e && e.error) || 'AI 暂时不可用') + '，已改用规则整理', true); pd.aiRule = true; optimize(); pd.aiRule = false; }); return; }
     pd.note = ('【背景】' + (n || pd.title) + '\n【要解决的问题】待补充\n【目标】' + (pd.title || '待补充') + '顺利完成并通过验收\n【关键要点】时间、预算、负责人待确认').slice(0, 500);
     render(); toast('已按「背景、问题、目标、要点」整理（演示：规则模拟）');
   }
@@ -799,7 +800,8 @@
       npPick('选择执行人', ids, pd.tasks[i].ownerId, '', function (v) { if (v) pd.tasks[i].ownerId = v; }); },
     pDue: function (el) { pd.due = TM.dateAdd(S, +el.dataset.d); render(); },
     pPri: function (el) { pd.priority = el.dataset.v; render(); },
-    pGoalAI: function () { var n = (pd.note || '').replace(/【[^】]*】/g, ' ').split(/[。\n！!；;]/).map(function (x) { return x.trim(); }).filter(function (x) { return x.length > 3; })[0] || pd.title; pd.goal = ((pd.due ? mdTxt(pd.due) + '前' : '') + (n || '').replace(/^(我想|我们想|希望|打算|准备)/, '') + '，并通过验收').slice(0, 200); render(); toast('已按描述拟了目标（演示：规则模拟），可以再改'); },
+    pGoalAI: function () { if (AI_ON && !pd.aiRule && (pd.title || pd.note)) { toast('Claude 正在拟目标…'); TMS.aiWrite('goal', pd.title, pd.note, pd.due).then(function (r) { if (r.text) { pd.goal = r.text; render(); toast('Claude 拟了目标，可以再改'); } }, function (e) { toast(((e && e.error) || 'AI 暂时不可用') + '，已改用规则', true); pd.aiRule = true; DO.pGoalAI(); pd.aiRule = false; }); return; }
+      var n = (pd.note || '').replace(/【[^】]*】/g, ' ').split(/[。\n！!；;]/).map(function (x) { return x.trim(); }).filter(function (x) { return x.length > 3; })[0] || pd.title; pd.goal = ((pd.due ? mdTxt(pd.due) + '前' : '') + (n || '').replace(/^(我想|我们想|希望|打算|准备)/, '') + '，并通过验收').slice(0, 200); render(); toast('已按描述拟了目标（演示：规则模拟），可以再改'); },
     pTasksAI: function (el) {
       // 老板 / 管理员且 AI 已启用：交给 Claude 按名称、类型和描述拆任务；失败退回规则
       if (AI_ON && !pd.aiRule && (pd.title || pd.note)) {

@@ -227,6 +227,15 @@ async function parseProject(S, uid, text) {
   };
 }
 
+/* 新建项目的小帮手：整理描述 / 拟写目标（只用这个项目自己的文字，不带团队数据，省 token） */
+async function writeHelper(kind, title, note, due) {
+  const sys = kind === 'goal'
+    ? '根据项目名称和描述，拟一句可以验收的项目目标：做成什么样、到什么时候、怎么算完成。60 字以内，只输出这一句。'
+    : '把项目描述整理成四段，格式严格是：\n【背景】…\n【要解决的问题】…\n【目标】…\n【关键要点】…\n忠于原文，原文没说的写「待补充」，总共不超过 400 字，只输出这四段。';
+  const r = await call({ system: [{ type: 'text', text: sys }], messages: [{ role: 'user', content: `项目名称：${String(title || '').slice(0, 50)}\n截止：${due || '未定'}\n描述：${String(note || '').slice(0, 2000)}` }], effort: 'low', maxTokens: 2000 });
+  return { text: r.text.trim().slice(0, kind === 'goal' ? 200 : 500), usage: r.usage };
+}
+
 /* 一段话 → 待办（日期、时间、优先级、相关人） */
 const TAGS = ['工作', '沟通', '会议', '数据', '事工', '运维', '学习'];
 async function parseTodos(S, uid, text) {
@@ -255,4 +264,4 @@ async function pdfToMarkdown(base64, name) {
   return { text: r.text, truncated: r.truncated, usage: r.usage };
 }
 
-module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, parseProject, parseTodos, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };
+module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, parseProject, parseTodos, writeHelper, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };

@@ -78,6 +78,9 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', d => b
   // ---- 新建项目第 2 步：AI 拆任务走 Claude
   await p.goto(URL + '#/project'); await p.waitForTimeout(250);
   await p.fill('[data-pd=title]', '年底感恩聚会'); await p.fill('[data-pd=note]', '十二月中旬全队感恩聚会，要订场地、做海报');
+  const n8 = calls; await p.click('[data-do=pOptimize]');
+  ok(await until(async () => (await p.inputValue('[data-pd=note]')).includes('结论')) && calls === n8 + 1, '优化描述走 Claude');
+  await p.fill('[data-pd=note]', '十二月中旬全队感恩聚会，要订场地、做海报');
   await p.click('[data-do=pTypeOther]'); await p.click('.np-more [data-k=event]');
   await p.click('[data-do=pNext]'); await p.waitForTimeout(200);
   const n5 = calls, t0n = await p.locator('.np-task').count(); await p.click('[data-do=pTasksAI]');

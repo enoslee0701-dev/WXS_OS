@@ -57,7 +57,7 @@ async function team(api) {
   s1.kill(); fs.rmSync(s1.DIR, { recursive: true, force: true });
 
   // 2. 配置了密钥（指向模拟服务）
-  const s2 = await start({ ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: MOCK, AI_DAILY_LIMIT: '6', BRIEF_NOW: '1' }); api = mkApi(s2.B); t = await team(api);
+  const s2 = await start({ ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: MOCK, AI_DAILY_LIMIT: '7', BRIEF_NOW: '1' }); api = mkApi(s2.B); t = await team(api);
   // 早报：启动后立即发一次（BRIEF_NOW），附 Claude 要点
   let brief = null; for (let i = 0; i < 30 && !brief; i++) { brief = ((await api('GET', '/api/state', null, t.boss)).state.notifications || []).find(n => n.title === '今日早报'); if (!brief) await new Promise(z => setTimeout(z, 100)); }
   ok(brief && /等你决策/.test(brief.body) && /新官网/.test(brief.body), '老板收到早报（数字 + Claude 要点）');
@@ -109,6 +109,7 @@ async function team(api) {
   ok(r.status === 200 && r.title === '年底感恩聚会' && r.ptype === 'event' && r.leadId === 'u_op' && r.tasks[0].ownerId === 'u_admin_ex' && r.tasks[1].ownerId === '' && JSON.stringify(r.people) === '["u_op","u_admin_ex"]', 'Claude 解析项目草稿，人名转成成员 ID（不存在的人被忽略）');
   r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 200, '老板第 5 次');
   r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 200, '老板第 6 次');
+  r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 200, '老板第 7 次');
   r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 429 && /用完/.test(r.error), '超过每日上限');
   // 后台整理稿：提交想法后规则稿立刻出现，随后换成 Claude 稿
   let idea = await api('POST', '/api/act', { name: 'idea.create', payload: { note: '想办一次全队退修会，预算两万元' } }, t.boss);
@@ -120,6 +121,10 @@ async function team(api) {
   ok(w.x && /Claude/.test(w.x.payload.overview) && w.x.payload.suggested_route === 'to_owner', '后台换成 Claude 整理稿');
   ok(w.st2 && w.st2.state.ideas.find(d => d.id === idea.r.id).title === '全队退修会', 'Claude 拟的标题生效');
   ok(w.st2 && w.st2.state.events.some(e => e.action === 'ai.analyze.real'), '动态里记录 Claude 完成整理');
+  // 新建项目小帮手：不带团队数据
+  r = await api('POST', '/api/ai/write', { kind: 'goal', title: '年底感恩聚会', note: '十二月办' }, t.adm);
+  const wq = seen[seen.length - 1];
+  ok(r.status === 200 && r.text && wq.body.system.length === 1 && !/团队快照/.test(JSON.stringify(wq.body)) && /可以验收/.test(wq.body.system[0].text), '拟目标只用项目自己的文字');
   // 一段话 → 待办
   r = await api('POST', '/api/ai/todos', { text: '明天下午三点和林晓开会，周五前发报价' }, t.adm);
   const tq = seen[seen.length - 1];
@@ -148,7 +153,7 @@ async function team(api) {
   await new Promise(z => setTimeout(z, 2200)); mode = 'ok';
   const last = (await api('GET', '/api/state', null, t.boss)).state.summaries.filter(x => x.ideaId === idea.r.id && x.kind === 'analysis').pop();
   ok(last.payload.overview === '运营者手写的整理稿', '人工改过的整理稿不被 AI 覆盖');
-  // 管理员已用 5 次（提问 + 拒答 + 限流 + 读 PDF + 拆待办），上限 6：并发 3 个请求只能成功 1 个
+  // 管理员已用 6 次（提问 + 拒答 + 限流 + 读 PDF + 拆待办 + 拟目标），上限 7：并发 3 个请求只能成功 1 个
   const conc = await Promise.all([1, 2, 3].map(() => api('POST', '/api/ai/ask', { q: '并发' }, t.adm)));
   ok(conc.filter(x => x.status === 200).length === 1 && conc.filter(x => x.status === 429).length === 2, '并发请求也不会超过每日上限');
   const us = await api('GET', '/api/usage', null, t.adm);

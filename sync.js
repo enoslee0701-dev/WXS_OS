@@ -227,6 +227,7 @@ var TMS = (function () {
   api.aiAdvice = function (id) { return req('POST', '/api/ai/advice', { id: id }, AI_WAIT).then(function (r) { if (!api.outbox.length && !busy && r.version >= api.version && window.__tm) { api.version = r.version; put('tm_ver', r.version); keepLocal(r.state, window.__tm.S); window.__tm.setState(r.state); } return r; }); };
   api.aiProject = function (text) { return req('POST', '/api/ai/project', { text: text }, AI_WAIT); };
   api.aiDoc = function (name, base64) { return req('POST', '/api/ai/doc', { name: name, data: base64 }, 300000); };
+  api.aiWrite = function (kind, title, note, due) { return req('POST', '/api/ai/write', { kind: kind, title: title, note: note, due: due }, AI_WAIT); };
   api.aiTodos = function (text) { return req('POST', '/api/ai/todos', { text: text }, AI_WAIT); };
   api.aiKb = function (topic, text) { return req('POST', '/api/ai/kb', { topic: topic, text: text }, AI_WAIT); };
   /* ---------- 大缓存：完整数据超过 localStorage 容量时存 IndexedDB ---------- */
