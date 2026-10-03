@@ -143,13 +143,13 @@ const routes = {
   /* 执行业务操作：权限全部由 engine.js 按登录身份判断 */
   'POST /api/act': async (req, url, b, me) => {
     const name = String(b.name || '').slice(0, 64), payload = b.payload && typeof b.payload === 'object' && !Array.isArray(b.payload) ? b.payload : {};
-    const snap = JSON.stringify(S); let r;
+    const snap = JSON.stringify(S), nSum = S.summaries.length; let r;
     // 清理数据前留一份完整备份
     if (name === 'data.clearDemo' && isOwner(me.uid)) fs.writeFileSync(path.join(DATA, 'backups', 'before-clear-' + Date.now() + '.json'), snap);
     try { r = TM.act(S, me.uid, name, payload); }
     catch (e) { S = JSON.parse(snap); console.error('act 异常', name, e); r = { ok: false, error: '服务器处理出错，已回滚' }; }
     q('INSERT INTO ops(at,uid,action,payload,ok,error) VALUES(?,?,?,?,?,?)').run(Date.now(), me.uid, name, JSON.stringify(payload).slice(0, 20000), r.ok ? 1 : 0, r.ok ? null : String(r.error || '').slice(0, 200));
-    if (r.ok) { version++; persist(); broadcast(); }
+    if (r.ok) { version++; persist(); broadcast(); autoAnalyze(S.summaries.slice(nSum)); }
     return [200, { ok: !!r.ok, error: r.ok ? undefined : r.error, r: pickR(r), ...stateFor(me.uid) }];
   },
   'POST /api/password': async (req, url, b, me) => {
@@ -260,10 +260,25 @@ function getFile(req, res, id, me) {
   res.writeHead(200, { ...h, 'Content-Length': size }); stream();
 }
 
+/* 后台：新生成的规则版整理稿交给 Claude 升级（AI_AUTO_ANALYZE=0 关闭）；写回时整理稿已被人工改过就放弃 */
+const analyzing = new Set();
+function autoAnalyze(added) {
+  if (!AI.enabled() || process.env.AI_AUTO_ANALYZE === '0') return;
+  added.filter(x => x.kind === 'analysis' && x.authorType === 'agent' && x.payload && x.payload.simulated).forEach(sm => {
+    if (analyzing.has(sm.id)) return; analyzing.add(sm.id);
+    aiRun({ uid: 'agent' }, 'analyze', () => AI.analyzeIdea(S, sm.ideaId), true).then(([code, out]) => {
+      analyzing.delete(sm.id);
+      if (code !== 200 || !S) return;
+      const r = TM.act(S, 'agent', 'idea.aiResult', { id: sm.ideaId, summaryId: sm.id, model: AI.MODEL, payload: out.payload });
+      if (r.ok) { version++; persist(); broadcast(); }
+    }, () => analyzing.delete(sm.id));
+  });
+}
+
 /* AI：先占名额再调用（并发请求也不会超过每日上限） */
-async function aiRun(me, kind, fn) {
+async function aiRun(me, kind, fn, system) {
   if (!AI.enabled()) return [503, { error: 'AI 还没有配置（服务器缺少 ANTHROPIC_API_KEY）' }];
-  if (!AI.allowed(S, me.uid)) return [403, { error: 'AI 目前只对老板和管理员开放' }];
+  if (!system && !AI.allowed(S, me.uid)) return [403, { error: 'AI 目前只对老板和管理员开放' }];
   const since = new Date(); since.setHours(0, 0, 0, 0);
   const n = q('SELECT COUNT(*) AS n FROM ai_log WHERE uid=? AND at>=?').get(me.uid, since.getTime()).n;
   if (n >= AI.LIMIT) return [429, { error: '今天的 AI 使用次数已用完（' + AI.LIMIT + ' 次）' }];

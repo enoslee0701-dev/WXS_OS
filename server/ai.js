@@ -107,4 +107,42 @@ async function kbOrganize(S, uid, topic, text) {
   return { title: String(o.title || '老板口述').slice(0, 40), secs, count: secs.reduce((n, x) => n + x.items.length, 0), usage: r.usage };
 }
 
-module.exports = { enabled, allowed, ask, kbOrganize, snapshot, MODEL, LIMIT };
+/* 想法整理稿（后台自动）：和规则版同样的字段，服务器以系统身份写回 */
+const ANALYSIS_SCHEMA = {
+  type: 'object', additionalProperties: false,
+  required: ['title', 'summary', 'background', 'problem', 'goal', 'overview', 'issues', 'directions', 'category', 'relation_to_direction', 'open_questions', 'exception_flags', 'suggested_route', 'suggested_tasks', 'confidence'],
+  properties: {
+    title: { type: 'string', description: '一眼能看出是什么事的标题，20 字以内，不要照抄原文开头' },
+    summary: { type: 'string', description: '一句话摘要，60 字以内' },
+    background: { type: 'string' }, problem: { type: 'string' }, goal: { type: 'string', description: '要达成的结果，可验收' },
+    overview: { type: 'string', description: '核心概述，2–3 句' },
+    issues: { type: 'array', items: { type: 'string' }, description: '目前的问题或没说清楚的地方，最多 5 条' },
+    directions: { type: 'array', items: { type: 'string' }, description: '推进的步骤或方向，最多 5 条' },
+    category: { type: 'string', enum: ['admin', 'product', 'other'], description: 'admin=行政事务，product=产品开发，other=其他' },
+    relation_to_direction: { type: 'string', description: '和公司方向、老板资料的关系；没有就说没有' },
+    open_questions: { type: 'array', items: { type: 'string' }, description: '需要发起人补充的问题' },
+    exception_flags: { type: 'array', items: { type: 'string', enum: ['strategy_change', 'over_budget', 'personnel', 'major_release'] }, description: '需要老板决策的例外：战略调整、超预算、人事、重要对外发布' },
+    suggested_route: { type: 'string', enum: ['operator_direct', 'to_lead', 'to_owner'], description: '有例外送老板；产品开发交负责人；其余运营直接派发' },
+    suggested_tasks: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'expected_output', 'acceptance_criteria', 'suggested_due_days'], properties: { title: { type: 'string' }, expected_output: { type: 'string' }, acceptance_criteria: { type: 'string' }, suggested_due_days: { type: 'integer' } } } },
+    confidence: { type: 'number' }
+  }
+};
+async function analyzeIdea(S, ideaId) {
+  const d = S.ideas.find(x => x.id === ideaId); if (!d) throw { status: 404, error: '想法不存在' };
+  const owner = TM.usersWith(S, 'owner')[0];
+  const view = TM.viewFor(S, owner); // 系统整理按老板视角取资料（含仅 AI 可见的老板资料）
+  const L = TM.L;
+  const system = [
+    { type: 'text', text: `你是团队协同 App 的 AI 助理，负责把成员提交的想法整理成清楚的「整理稿」，交给运营者跟进、老板决策。
+要求：用简体中文；忠于原文，不编造人名、金额、日期；原文没说的写进 open_questions；预算超过 ${S.settings.budgetThreshold || '（未设置）'} 元算 over_budget。
+团队成员：${S.users.map(u => u.name + '（' + u.roles.map(r => L.role[r.role]).join('、') + '）').join('，')}。
+公司方向：${S.settings.direction || '（未填写）'}` + kbBlock(view, owner, S), cache_control: { type: 'ephemeral' } }
+  ];
+  const media = (d.media || []).map(m => m.name).filter(Boolean).join('、');
+  const msg = `想法标题：${d.title || '（无）'}\n发起人：${TM.name(S, d.creatorId)}\n标签：${(d.tags || []).join('、') || '无'}\n附件：${media || '无'}\n原文：\n${String(d.note || '').slice(0, 8000)}`;
+  const r = await call({ system, messages: [{ role: 'user', content: msg }], schema: ANALYSIS_SCHEMA, effort: 'medium', maxTokens: 8000 });
+  let o; try { o = JSON.parse(r.text); } catch (e) { throw { status: 502, error: 'AI 返回的格式不对' }; }
+  return { payload: o, usage: r.usage };
+}
+
+module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, snapshot, MODEL, LIMIT };

@@ -10,7 +10,9 @@ const mock = http.createServer((req, res) => {
     const body = JSON.parse(b || '{}'); seen.push({ url: req.url, headers: req.headers, body });
     const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
     if (mode === '429') return reply(429, { type: 'error', error: { type: 'rate_limit_error', message: 'slow down' } });
-    const isKb = body.output_config && body.output_config.format;
+    const fmt = body.output_config && body.output_config.format;
+    if (fmt && fmt.schema.properties.suggested_route) return setTimeout(() => reply(200, { id: 'msg_a', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ title: '全队退修会', summary: '十二月办退修会', background: '团队需要休整', problem: '日期未定', goal: '定下日期和场地', overview: 'Claude：建议十二月中旬办两天一夜的退修会。', issues: ['场地未定'], directions: ['先定日期', '再订场地'], category: 'admin', relation_to_direction: '无', open_questions: ['具体日期？'], exception_flags: ['over_budget'], suggested_route: 'to_owner', suggested_tasks: [{ title: '找三个场地', expected_output: '候选清单', acceptance_criteria: '老板选定', suggested_due_days: 7 }], confidence: 0.8 }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 500, output_tokens: 200 } }), mode === 'slow' ? 1500 : 50);
+    const isKb = fmt;
     const text = isKb ? JSON.stringify({ title: '老板口述：做决定、钱和预算', secs: [{ key: 'decide', items: ['新想法先试点两周，再决定是否推开。'] }, { key: 'money', items: ['单笔超过五千元的支出要先问老板。'] }, { key: 'bogus', items: ['x'] }] }) : '结论：「新官网」进度落后，建议本周和小李对一下首页设计。';
     reply(200, { id: 'msg_1', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text }], stop_reason: mode === 'refusal' ? 'refusal' : 'end_turn', stop_sequence: null, stop_details: mode === 'refusal' ? { type: 'refusal', category: null, explanation: '' } : null, usage: { input_tokens: 1200, output_tokens: 80 } });
   });
@@ -83,6 +85,26 @@ async function team(api) {
   r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 200, '老板第 3 次');
   r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 200, '老板第 4 次');
   r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 429 && /用完/.test(r.error), '超过每日上限');
+  // 后台整理稿：提交想法后规则稿立刻出现，随后换成 Claude 稿
+  let idea = await api('POST', '/api/act', { name: 'idea.create', payload: { note: '想办一次全队退修会，预算两万元' } }, t.boss);
+  r = await api('POST', '/api/act', { name: 'idea.submit', payload: { id: idea.r.id, path: 'direct' } }, t.boss);
+  const sum0 = r.state.summaries.filter(x => x.ideaId === idea.r.id && x.kind === 'analysis').pop();
+  ok(sum0 && sum0.payload.simulated === true, '提交后立刻有规则版整理稿（不用等 AI）');
+  const waitSum = async (id) => { for (let i = 0; i < 40; i++) { const st2 = await api('GET', '/api/state', null, t.boss); const x = st2.state.summaries.filter(y => y.ideaId === id && y.kind === 'analysis').pop(); if (x && x.payload.simulated === false) return { x, st2 }; await new Promise(z => setTimeout(z, 100)); } return {}; };
+  let w = await waitSum(idea.r.id);
+  ok(w.x && /Claude/.test(w.x.payload.overview) && w.x.payload.suggested_route === 'to_owner', '后台换成 Claude 整理稿');
+  ok(w.st2 && w.st2.state.ideas.find(d => d.id === idea.r.id).title === '全队退修会', 'Claude 拟的标题生效');
+  ok(w.st2 && w.st2.state.events.some(e => e.action === 'ai.analyze.real'), '动态里记录 Claude 完成整理');
+  // 人工先改了整理稿：AI 结果不覆盖
+  mode = 'slow';
+  idea = await api('POST', '/api/act', { name: 'idea.create', payload: { note: '会议室投影仪坏了，换一台' } }, t.boss);
+  r = await api('POST', '/api/act', { name: 'idea.submit', payload: { id: idea.r.id, path: 'direct' } }, t.boss);
+  const sm1 = r.state.summaries.filter(x => x.ideaId === idea.r.id && x.kind === 'analysis').pop();
+  r = await api('POST', '/api/act', { name: 'idea.saveSummary', payload: { id: idea.r.id, payload: Object.assign({}, sm1.payload, { overview: '运营者手写的整理稿' }) } }, t.boss);
+  ok(r.ok, '人工改写整理稿 ' + (r.error || ''));
+  await new Promise(z => setTimeout(z, 2200)); mode = 'ok';
+  const last = (await api('GET', '/api/state', null, t.boss)).state.summaries.filter(x => x.ideaId === idea.r.id && x.kind === 'analysis').pop();
+  ok(last.payload.overview === '运营者手写的整理稿', '人工改过的整理稿不被 AI 覆盖');
   // 管理员已用 3 次（1 次成功 + 拒答 + 限流），上限 4：并发 3 个请求只能成功 1 个
   const conc = await Promise.all([1, 2, 3].map(() => api('POST', '/api/ai/ask', { q: '并发' }, t.adm)));
   ok(conc.filter(x => x.status === 200).length === 1 && conc.filter(x => x.status === 429).length === 2, '并发请求也不会超过每日上限');

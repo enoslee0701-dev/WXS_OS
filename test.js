@@ -490,5 +490,19 @@ const real = TM.blank({ name: '王建国' }); delete real.todos;
 TM.migrate(real);
 ok(real.users[0].name === '王建国' && (real.todos || []).length === 0, '真实团队：老板叫王建国不会被改名，不会塞演示待办');
 
+// ===== 真实 AI 整理稿写入 =====
+s = TM.migrate(fresh());
+let ai1 = must(TM.act(s, O, 'idea.create', { note: '想给团队办一次退修会，预算两万元，十二月中旬' }), '老板记想法');
+must(TM.act(s, O, 'idea.submit', { id: ai1.id, path: 'direct' }), '提交');
+let smA = TM.latestSummary(s, ai1.id, 'analysis');
+ok(smA && smA.authorType === 'agent' && smA.payload.simulated, '先有规则版整理稿');
+rej(TM.act(s, O, 'idea.aiResult', { id: ai1.id, summaryId: smA.id, payload: {} }), '老板不能伪造 AI 结果');
+must(TM.act(s, 'agent', 'idea.aiResult', { id: ai1.id, summaryId: smA.id, model: 'claude-opus-5-5', payload: { title: '团队退修会（12 月中旬）', overview: '在 12 月中旬办一次全队退修会。', goal: '定下时间地点和预算', issues: ['场地未定'], directions: ['先定日期'], category: 'admin', exception_flags: ['over_budget', 'bogus'], suggested_route: 'to_owner', suggested_tasks: [{ title: '找场地', expected_output: '三个候选', acceptance_criteria: '老板选定', suggested_due_days: 500 }], confidence: 3, evil: 'x' } }), '系统写入 AI 结果');
+smA = TM.latestSummary(s, ai1.id, 'analysis');
+ok(smA.payload.simulated === false && smA.payload.overview.includes('退修会') && smA.payload.category === 'admin', 'AI 结果替换规则稿');
+ok(JSON.stringify(smA.payload.exception_flags) === '["over_budget"]' && smA.payload.suggested_tasks[0].suggested_due_days === 90 && smA.payload.confidence === 1 && !('evil' in smA.payload), 'AI 结果字段清洗');
+ok(s.ideas.find(x => x.id === ai1.id).title === '团队退修会（12 月中旬）', 'AI 拟的标题生效');
+rej(TM.act(s, 'agent', 'idea.aiResult', { id: ai1.id, summaryId: 'S-old', payload: {} }), '整理稿已更新时不覆盖');
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

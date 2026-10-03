@@ -1000,6 +1000,32 @@ var TM = (function () {
     ['ideas', 'suggestions', 'summaries', 'workItems', 'tasks', 'checklist', 'deliverables', 'reviews', 'decisions', 'comments', 'events', 'notifications', 'todos', 'todoRecent'].forEach(function (k) { s[k] = []; });
     if (s.knowledge) s.knowledge = s.knowledge.filter(function (k) { return !k.demo; });
   }
+  /* 真实 AI 整理稿：只有服务器以系统身份（agent）能写入；最新一版已经是人工写的就不覆盖 */
+  var AI_CAT = ['admin', 'product', 'other'], AI_FLAGS = ['strategy_change', 'over_budget', 'personnel', 'major_release'], AI_ROUTE = ['operator_direct', 'to_lead', 'to_owner'];
+  A['idea.aiResult'] = function (s, uid, p) {
+    need(uid === 'agent', '只有系统可以写入 AI 整理结果');
+    var d = s.ideas.find(function (x) { return x.id === p.id; }); need(d, '想法不存在');
+    var sm = latestSummary(s, d.id, 'analysis');
+    need(sm && sm.id === p.summaryId && sm.authorType === 'agent', '整理稿已经更新过，不覆盖');
+    var a = p.payload || {}, str = function (v, n) { return txt(v).slice(0, n); }, arr = function (v, n, m) { return (Array.isArray(v) ? v : []).map(function (x) { return str(x, m); }).filter(Boolean).slice(0, n); };
+    var np = Object.assign({}, sm.payload, {
+      simulated: false, model: str(p.model, 40),
+      title: str(a.title, 30) || sm.payload.title, summary: str(a.summary, 120), background: str(a.background, 1000), problem: str(a.problem, 500),
+      goal: str(a.goal, 300), overview: str(a.overview, 600), issues: arr(a.issues, 6, 80), directions: arr(a.directions, 6, 80),
+      category: AI_CAT.indexOf(a.category) >= 0 ? a.category : sm.payload.category,
+      relation_to_direction: str(a.relation_to_direction, 300) || sm.payload.relation_to_direction,
+      open_questions: arr(a.open_questions, 5, 80),
+      exception_flags: (Array.isArray(a.exception_flags) ? a.exception_flags : []).filter(function (x, i, l) { return AI_FLAGS.indexOf(x) >= 0 && l.indexOf(x) === i; }),
+      suggested_route: AI_ROUTE.indexOf(a.suggested_route) >= 0 ? a.suggested_route : sm.payload.suggested_route,
+      suggested_tasks: (Array.isArray(a.suggested_tasks) ? a.suggested_tasks : []).slice(0, 6).map(function (t) { return { title: str(t && t.title, 50), expected_output: str(t && t.expected_output, 100), acceptance_criteria: str(t && t.acceptance_criteria, 100), suggested_due_days: Math.max(1, Math.min(90, Math.round(+(t && t.suggested_due_days) || 7))) }; }).filter(function (t) { return t.title; }),
+      confidence: Math.max(0, Math.min(1, +a.confidence || 0.7))
+    });
+    if (!np.suggested_tasks.length) np.suggested_tasks = sm.payload.suggested_tasks;
+    sm.payload = np;
+    if (d.titleSource === 'ai' && np.title) d.title = np.title;
+    ev(s, { ideaId: d.id, actor: 'agent', action: 'ai.analyze.real', text: 'Claude 完成整理 · 建议：' + L.route[np.suggested_route] });
+    return {};
+  };
   /* 清理演示数据：保留成员、设置和自己添加的知识库资料，其余示例内容全部清空 */
   A['data.clearDemo'] = function (s, uid) {
     need(hasRole(s, uid, 'owner'), '只有老板可以清理数据');
