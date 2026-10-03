@@ -67,6 +67,8 @@ public class SpeechPlugin: CAPPlugin, CAPBridgedPlugin {
                 try session.setActive(true, options: .notifyOthersOnDeactivation)
                 let req = SFSpeechAudioBufferRecognitionRequest()
                 req.shouldReportPartialResults = true
+                // 没网时用手机本地识别（iPhone 支持离线中文识别）；有网时用苹果在线识别，更准
+                if call.getBool("onDevice") ?? false, recognizer.supportsOnDeviceRecognition { req.requiresOnDeviceRecognition = true }
                 if #available(iOS 16.0, *) { req.addsPunctuation = true }
                 self.request = req
                 let input = self.engine.inputNode

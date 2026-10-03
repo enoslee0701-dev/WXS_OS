@@ -22,7 +22,7 @@ const FAKE = (opts) => {
       if (pl === 'Haptics') { F.haptics = (F.haptics || []).concat(m + ':' + (a.type || a.style)); return Promise.resolve(); }
       if (pl === 'Clipboard' && m === 'write') { F.clip = a.string; return Promise.resolve(); }
       if (pl === 'Speech' && m === 'requestPermissions') return Promise.resolve({ speech: F.perm, microphone: F.perm });
-      if (pl === 'Speech' && m === 'start') F.lang = a.lang;
+      if (pl === 'Speech' && m === 'start') { F.lang = a.lang; F.onDevice = a.onDevice; }
       if (pl === 'PushNotifications' && m === 'checkPermissions') return Promise.resolve({ receive: 'prompt' });
       if (pl === 'PushNotifications' && m === 'requestPermissions') return Promise.resolve({ receive: o.pushDeny ? 'denied' : 'granted' });
       if (pl === 'PushNotifications' && m === 'register') setTimeout(() => F.emit('PushNotifications', 'registration', { value: 'cd'.repeat(32) }), 50);
@@ -100,6 +100,7 @@ const c0route = (p) => p.context().route('http://join.test:8787/**', r => r.fulf
     r.stop(); await new Promise(z => setTimeout(z, 50)); return out;
   });
   ok(r1.lang === 'zh-CN', '语言传给原生');
+  ok(await p.evaluate(() => __fake.onDevice) === false, '有网时用在线识别');
   ok(r1.fin.join('|') === '今天开会|讨论预算', '停顿切句、停止时补最后一句：' + r1.fin.join('|'));
   ok(r1.ends === 1, '停止后 onend 一次');
   // 单次模式：停顿后自动结束；results[0][0] 可读

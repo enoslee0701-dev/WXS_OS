@@ -83,7 +83,8 @@ var TMN = (function () {
         Speech.addListener('error', function (e) { if (self._on) self._fail(e && e.error || 'network'); })
       ]).then(function (subs) {
         self._subs = subs;
-        return Speech.start({ lang: self.lang || 'zh-CN' }).then(function () { if (self.onstart) self.onstart({}); });
+        // 没网时用手机本地识别
+        return Speech.start({ lang: self.lang || 'zh-CN', onDevice: navigator.onLine === false }).then(function () { if (self.onstart) self.onstart({}); });
       });
     }).catch(function (e) { self._fail(/permission|denied|authori/i.test(String(e && e.message)) ? 'not-allowed' : 'audio-capture'); });
   };
