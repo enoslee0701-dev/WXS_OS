@@ -2186,7 +2186,19 @@
       '<div class="ic-chips">' + chips.map(function (c) { return '<button data-do="icAsk" data-q="' + c + '">' + c + '</button>'; }).join('') + '</div>' +
       '<div class="ic-in"><input type="text" id="ic-q" maxlength="80" placeholder="输入问题，或点话筒说话"><button class="ic-mic" data-do="icMic" aria-label="语音提问">' + ai2('mic', 1.8) + '</button><button class="ic-go" data-do="icSend" aria-label="发送">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>' + '</button></div><p class="ix2-advf">AI 模拟回答，按关键词从讨论和资料里找答案。</p></div>';
   }
-  function icPush(d, q) { var a2 = ichatAnswer(d, q); (ichat[d.id] = ichat[d.id] || []).push({ me: true, text: q }, { html: a2.html, src: a2.src }); render(); setTimeout(function () { var l = document.getElementById('ic-list'); if (l) l.scrollTop = l.scrollHeight; var pn = document.getElementById('ic-panel'); if (pn) pn.scrollIntoView({ block: 'nearest' }); }, 30); }
+  /* 想法 / 项目里的「问 AI」：AI 已启用时交给 Claude（带上这条想法 / 项目的背景），失败退回规则回答 */
+  function aiChatPush(store, key, ctx, q, rule, after) {
+    var list = store[key] = store[key] || [];
+    var hist = list.filter(function (m) { return !m.pending; }).slice(-6).map(function (m) { var dd = document.createElement('div'); dd.innerHTML = m.html || ''; return { role: m.me ? 'user' : 'assistant', text: m.me ? m.text : dd.textContent }; });
+    var msg = { html: '<span class="ai-typing"><i></i><i></i><i></i></span> 正在思考…', src: [], pending: true };
+    list.push({ me: true, text: q }, msg); render(); after();
+    TMS.aiAsk(ctx + '\n问题：' + q, hist).then(function (r) { msg.pending = false; msg.html = '<div class="ai-md">' + kbMd(r.text || '') + '</div>'; msg.src = ['Claude 回答，只读你能看到的数据']; render(); after(); },
+      function (e) { var a = rule(); msg.pending = false; msg.html = a.html; msg.src = a.src; toast((e && e.error) || 'AI 暂时不可用', true); render(); after(); });
+  }
+  function icPush(d, q) {
+    var after = function () { setTimeout(function () { var l = document.getElementById('ic-list'); if (l) l.scrollTop = l.scrollHeight; }, 30); };
+    if (AI_ON) return aiChatPush(ichat, d.id, '关于想法「' + (d.title || '') + '」（' + L.idea[d.status] + '，发起人 ' + nm(d.creatorId) + '）。原文：' + String(d.note || '').slice(0, 800), q, function () { return ichatAnswer(d, q); }, after);
+    var a2 = ichatAnswer(d, q); (ichat[d.id] = ichat[d.id] || []).push({ me: true, text: q }, { html: a2.html, src: a2.src }); render(); setTimeout(function () { var l = document.getElementById('ic-list'); if (l) l.scrollTop = l.scrollHeight; var pn = document.getElementById('ic-panel'); if (pn) pn.scrollIntoView({ block: 'nearest' }); }, 30); }
   function digestHTML(d) {
     if (!isOwner()) return '';
     var n = S.suggestions.filter(function (x) { return x.ideaId === d.id; }).length; if (!n) return '';
@@ -2440,7 +2452,9 @@
       '<div class="ic-chips">' + chips.map(function (c) { return '<button data-do="wcAsk" data-q="' + c + '">' + c + '</button>'; }).join('') + '</div>' +
       '<div class="ic-in"><input type="text" id="wc-q" maxlength="80" placeholder="输入问题，或点话筒说话"><button class="ic-mic" data-do="wcMic" aria-label="语音提问">' + ai2('mic', 1.8) + '</button><button class="ic-go" data-do="wcSend" aria-label="发送"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div><p class="ix2-advf">AI 模拟回答，按关键词从项目任务和资料里找答案。</p></div>';
   }
-  function wcPush(w, q) { var a2 = wchatAnswer(w, q); (wchat[w.id] = wchat[w.id] || []).push({ me: true, text: q }, { html: a2.html, src: a2.src }); render(); setTimeout(function () { var l = document.getElementById('wc-list'); if (l) l.scrollTop = l.scrollHeight; }, 30); }
+  function wcPush(w, q) {
+    if (AI_ON) return aiChatPush(wchat, w.id, '关于项目「' + w.title + '」（' + L.work[w.status] + '，负责人 ' + (w.leadId ? nm(w.leadId) : '无') + '，跟进 ' + (w.operatorId ? nm(w.operatorId) : '无') + '，截止 ' + (w.due || '未定') + '）。目标：' + (w.goal || ''), q, function () { return wchatAnswer(w, q); }, function () { setTimeout(function () { var l = document.getElementById('wc-list'); if (l) l.scrollTop = l.scrollHeight; }, 30); });
+    var a2 = wchatAnswer(w, q); (wchat[w.id] = wchat[w.id] || []).push({ me: true, text: q }, { html: a2.html, src: a2.src }); render(); setTimeout(function () { var l = document.getElementById('wc-list'); if (l) l.scrollTop = l.scrollHeight; }, 30); }
   /* 任务 / 成员 / 文件 标签页 */
   var WTF = [['all', '全部'], ['doing', '进行中'], ['review', '待验收'], ['done', '已完成'], ['flag', '需关注']];
   function wtFlag(t) { return t.status === 'blocked' || TM.isOverdue(S, t) || TM.isStale(S, t); }

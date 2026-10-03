@@ -56,6 +56,17 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', d => b
   ok(calls === n3 + 1 && (await p.textContent('.sheet .ix2-advh b')).includes('建议先补充信息') && await p.locator('.sheet [data-do=advAI]').count() === 0, '显示 Claude 的结论，按钮消失');
   await p.evaluate(() => document.querySelectorAll('.scrim.on').forEach(x => x.click())); await p.waitForTimeout(150);
 
+  // ---- 想法详情里的「问 AI」交给 Claude
+  const ideaWithChat = await p.evaluate(() => window.__tm.S.suggestions[0].ideaId);
+  await p.goto(URL + '#/idea/' + ideaWithChat); await p.waitForTimeout(300);
+  await p.locator('[data-do=icOpen]').first().click(); await p.waitForTimeout(200);
+  ok(await p.locator('#ic-q').count() === 1, '打开想法里的问 AI');
+  {
+    const n6 = calls; await p.fill('#ic-q', '这个想法现在卡在哪？'); await p.press('#ic-q', 'Enter');
+    ok(await until(async () => (await p.locator('#ic-list .ic-src').last().textContent().catch(() => '')).includes('Claude')), '想法里的问 AI 走 Claude');
+    ok(calls === n6 + 1, '只调用一次');
+  }
+
   // ---- AI 新建项目：示例素材交给 Claude 解析
   await p.goto(URL + '#/project/ai'); await p.waitForTimeout(250);
   const n4 = calls; await p.locator('[data-do=aiSample]').first().click();
