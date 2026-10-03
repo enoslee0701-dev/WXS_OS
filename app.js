@@ -43,7 +43,7 @@
   function av(uid, sm) {
     if (uid === 'agent') return '<span class="av agent' + (sm ? ' sm' : '') + '" aria-hidden="true">AI</span>';
     if (uid === 'system') return '<span class="av agent' + (sm ? ' sm' : '') + '" aria-hidden="true">系</span>';
-    var n = TM.name(S, uid); if (PHOTOS[uid]) return '<span class="av ph' + (sm ? ' sm' : '') + '" aria-hidden="true"><img src="' + PHOTOS[uid] + '" alt=""></span>'; return '<span class="av' + (sm ? ' sm' : '') + '" style="background:' + color(uid) + '" aria-hidden="true">' + esc(/^[A-Za-z]/.test(n) ? n.charAt(0) : n.slice(-1)) + '</span>';
+    var n = TM.name(S, uid); if (PHOTOS[uid] && !S.real && n === 'Enos') return '<span class="av ph' + (sm ? ' sm' : '') + '" aria-hidden="true"><img src="' + PHOTOS[uid] + '" alt=""></span>'; return '<span class="av' + (sm ? ' sm' : '') + '" style="background:' + color(uid) + '" aria-hidden="true">' + esc(/^[A-Za-z]/.test(n) ? n.charAt(0) : n.slice(-1)) + '</span>';
   }
   function nm(uid) { var u = TM.user(S, uid); var n = TM.name(S, uid); return u && S.settings.showTiers && u.tier ? n + '（' + u.tier + '）' : n; }
   function pill(group, st) { return '<span class="pill t-' + TM.TONE[group][st] + '">' + esc(L[group === 'decision' ? 'decisionStatus' : group][st]) + '</span>'; }

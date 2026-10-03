@@ -22,6 +22,7 @@ let srv = null;
   await A.click('form[data-form=srvSetup] button[type=submit]'); await A.waitForSelector('.hm-card');
   ok(JSON.stringify(await A.$$eval('.hm-card', xs => xs.map(x => x.dataset.do))) === '["quickIdea","quickProject"]', '老板进入首页');
   ok(await A.locator('.hm-demo').count() === 0, '首页没有演示版标记');
+  ok(await A.locator('.hm-me img').count() === 0, '真实团队老板的头像不是演示照片');
   await A.waitForSelector('.sheet .ob-list', { timeout: 3000 });
   ok(await A.locator('.sheet .ob-i').count() === 3 && await A.locator('.sheet .ob-i.done').count() === 0, '新团队老板看到「三步开始使用」');
   await A.click('.sheet footer button[type=submit]'); await A.waitForTimeout(150);
