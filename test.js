@@ -574,5 +574,11 @@ rej(TM.act(s, DS, 'member.update', { id: DS, avatar: '../etc/passwd' }), '头像
 rej(TM.act(s, O, 'member.update', { id: DS, avatar: 'zzzz1234' }), '别人不能换我的头像');
 must(TM.act(s, DS, 'member.update', { id: DS, avatar: '' }), '移除头像'); ok(!TM.user(s, DS).avatar, '已移除');
 
+// ===== 随机测试发现：老板不能删别人的私人草稿 =====
+s = TM.migrate(fresh());
+const ldDraft = must(TM.act(s, LD, 'idea.create', { note: '负责人的私人草稿' }), '负责人记草稿');
+rej(TM.act(s, O, 'idea.delete', { id: ldDraft.id }), '老板删别人的私人草稿');
+must(TM.act(s, LD, 'idea.delete', { id: ldDraft.id }), '发起人删自己的草稿');
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

@@ -43,7 +43,8 @@ var TM = (function () {
   function usersWith(s, r) { return s.users.filter(function (u) { return hasRole(s, u.id, r); }).map(function (u) { return u.id; }); }
   function primaryRole(s, uid) { var order = ['owner', 'operator', 'lead', 'executor', 'admin']; for (var i = 0; i < order.length; i++) if (hasRole(s, uid, order[i])) return order[i]; return 'executor'; }
   function get(arr, id, what) { var x = arr.find(function (o) { return o.id === id; }); if (!x) deny('找不到该' + (what || '记录')); return x; }
-  function idea(s, id) { return get(s.ideas, id, '想法'); }
+  // 已删除的想法对所有人都不可见，任何操作都不能再动它
+  function idea(s, id) { var d = get(s.ideas, id, '想法'); if (d.deleted) deny('找不到该想法'); return d; }
   function work(s, id) { return get(s.workItems, id, '事项'); }
   function task(s, id) { return get(s.tasks, id, '任务'); }
   function nid(s, p) { s.seq = (s.seq || 100) + 1; return p + s.seq; }
@@ -708,6 +709,7 @@ var TM = (function () {
     var d = get(s.ideas, p.id, '想法'); need(!d.deleted, '这个想法已删除');
     var ow = hasRole(s, uid, 'owner');
     need(ow || (d.creatorId === uid && d.status === 'draft'), '只有老板可以删除想法（发起人可以删除自己的草稿）');
+    need(canViewIdea(s, uid, d), '找不到该想法'); // 老板也看不到别人的私人草稿，更不能删
     var live = s.workItems.filter(function (w) { return w.ideaId === d.id && ['done', 'cancelled'].indexOf(w.status) < 0; });
     need(!live.length, '这个想法已形成进行中的项目「' + (live[0] && live[0].title) + '」，请先在项目里取消，再删除想法');
     d.deleted = true; d.deletedAt = now(s); d.deletedBy = uid; d.deleteReason = txt(p.reason);
@@ -1015,7 +1017,7 @@ var TM = (function () {
   var AI_CAT = ['admin', 'product', 'other'], AI_FLAGS = ['strategy_change', 'over_budget', 'personnel', 'major_release'], AI_ROUTE = ['operator_direct', 'to_lead', 'to_owner'];
   A['idea.aiResult'] = function (s, uid, p) {
     need(uid === 'agent', '只有系统可以写入 AI 整理结果');
-    var d = s.ideas.find(function (x) { return x.id === p.id; }); need(d, '想法不存在');
+    var d = s.ideas.find(function (x) { return x.id === p.id; }); need(d && !d.deleted, '想法不存在');
     var sm = latestSummary(s, d.id, 'analysis');
     need(sm && sm.id === p.summaryId && sm.authorType === 'agent', '整理稿已经更新过，不覆盖');
     // 运营者已经据此派发、或已送老板 / 老板已决定：整理稿是当时决定的依据，不再改
@@ -1049,7 +1051,7 @@ var TM = (function () {
   /* Claude 讨论总结：服务器后台以系统身份替换规则版（期间老板又让总结了一版就不覆盖） */
   A['idea.digestResult'] = function (s, uid, p) {
     need(uid === 'agent', '只有系统可以写入 AI 总结');
-    var d = s.ideas.find(function (x) { return x.id === p.id; }); need(d, '想法不存在');
+    var d = s.ideas.find(function (x) { return x.id === p.id; }); need(d && !d.deleted, '想法不存在');
     var sm = latestSummary(s, d.id, 'digest'); need(sm && sm.id === p.summaryId && sm.payload.simulated, '总结已经更新过，不覆盖');
     var a = p.payload || {}, str = function (v, n) { return txt(v).slice(0, n); };
     var names = s.users.map(function (u) { return u.name; }), who = function (v) { return (Array.isArray(v) ? v : []).map(function (x) { return str(x, 20); }).filter(function (x) { return names.indexOf(x) >= 0; }).slice(0, 8); };
