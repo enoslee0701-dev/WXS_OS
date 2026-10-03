@@ -56,6 +56,10 @@ team.example.com {
 | `AI_MODEL` | claude-opus-5-5 | AI 模型 |
 | `AI_FOR_ALL` | 关 | 设为 1 时全员可用真实 AI（默认只有老板和管理员） |
 | `AI_DAILY_LIMIT` | 200 | 每人每天 AI 调用上限 |
+| `AI_SYSTEM_LIMIT` | 100 | 后台自动 AI（整理稿、讨论总结、早报）全队每天上限 |
+| `AI_AUTO_ANALYZE` | 开 | 设为 0：想法整理稿、讨论总结不自动交给 Claude |
+| `BRIEF_AT` | 08:00 | 老板每日早报的时间（服务器所在时区） |
+| `AI_DAILY_BRIEF` | 开 | 设为 0：早报不附 Claude 要点（只发数字） |
 | `USER_QUOTA_MB` | 5000 | 每人附件总容量 |
 | `SETUP_CODE` | 随机 | 首次创建团队的初始化码 |
 | `TRUST_PROXY` | 关 | 设为 1：在反向代理后按 X-Forwarded-For 识别 IP（登录限流用） |
