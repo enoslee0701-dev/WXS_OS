@@ -1108,7 +1108,8 @@
     var offSel = dayDiff(td.day) || 0, center = Math.abs(offSel) <= 7 ? 0 : offSel;
     var days = []; for (var di = -7; di <= 7; di++) days.push(dayInfo(center + di));
     var isT = td.day === TM.todayStr(S);
-    var onDay = all.filter(function (x) { return x.date === td.day || (isT && x.date < td.day && !x.done); });
+    // 今天：除了今天的和逾期的，所有「下一步等我处理」的任务（例如刚分派给我、下周才截止）也都显示，不然执行者打开任务页看不到要接收的任务
+    var onDay = all.filter(function (x) { return x.date === td.day || (isT && !x.done && (x.date < td.day || x.sys)); });
     var open = onDay.filter(function (x) { return !x.done; }), done = onDay.filter(function (x) { return x.done; });
     var F = [['all', '全部', open.length], ['hi', '高优先级', open.filter(function (x) { return x.prio === 'hi'; }).length], ['mine', '我负责', open.filter(function (x) { return x.mine; }).length], ['done', '已完成', done.length]];
     var nU = unread(), p = td.day.split('-');

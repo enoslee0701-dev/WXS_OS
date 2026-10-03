@@ -65,6 +65,11 @@ const EXPECT = {
         const d = await denied(); ok(!d.length, `${n} AI「${k}」不被拒 ${d.join('|')}`);
       }
     }
+    // 任务标签上的红点数 = 任务页今天能看到的「等我处理」的任务
+    await shut(); await p.goto(URL + '#/tasks'); await p.waitForTimeout(150);
+    const badge = +(await p.evaluate(() => { const b = document.querySelector('.tabs .badge'); return b ? b.textContent : '0'; }));
+    const sysOnPage = await p.evaluate(() => document.querySelectorAll('main a[href^="#/task/"], main [href^="#/task/"]').length);
+    ok(sysOnPage >= badge, `${n} 任务页能看到红点提示的 ${badge} 件任务（页面上 ${sysOnPage} 件）`);
     // 设置与重置入口
     await shut(); await p.goto(URL + '#/me'); await p.waitForTimeout(80);
     const canSet = n === 'Enos' || n === '孙磊';
