@@ -532,5 +532,20 @@ must(TM.act(s, OP, 'idea.claim', { id: lt.id }), '认领');
 must(TM.act(s, OP, 'idea.route', { id: lt.id, kind: 'admin', tasks: [{ title: '买饮水机', ownerId: AX, expected: '照片', criteria: '可用' }] }), '派发');
 rej(TM.act(s, 'agent', 'idea.aiResult', { id: lt.id, summaryId: ltSum.id, payload: { title: '新标题', overview: '迟到的 AI 结果' } }), '想法已派发，迟到的 AI 结果不覆盖');
 
+// ===== 没有运营者的小团队：老板兼任跟进 =====
+const sm0 = TM.blank({ name: '老板' });
+must(TM.act(sm0, 'u_owner', 'member.add', { name: '小李', title: '设计', role: 'executor', group: '设计创意' }), '加执行者');
+const xl = sm0.users[1].id;
+let np0 = must(TM.act(sm0, 'u_owner', 'project.create', { title: '第一个项目', ptype: 'admin', tasks: [{ title: '买打印纸', ownerId: xl, expected: '照片', criteria: '够用' }] }), '没有运营者时老板也能建项目');
+ok(sm0.workItems.find(w => w.id === np0.workId).operatorId === 'u_owner', '老板兼任跟进');
+let ni0 = must(TM.act(sm0, 'u_owner', 'idea.create', { note: '换打印机' }), '记想法');
+must(TM.act(sm0, 'u_owner', 'idea.submit', { id: ni0.id, path: 'direct' }), '提交');
+ok(sm0.notifications.some(n => n.userId === 'u_owner' && /待认领/.test(n.title)), '待认领通知发给老板');
+must(TM.act(sm0, 'u_owner', 'idea.claim', { id: ni0.id }), '老板认领');
+must(TM.act(sm0, 'u_owner', 'idea.route', { id: ni0.id, kind: 'admin', tasks: [{ title: '买新打印机', ownerId: xl, expected: '照片', criteria: '能打印' }] }), '老板派发');
+must(TM.act(sm0, 'u_owner', 'member.add', { name: '小王', title: '运营', role: 'operator', group: '行政运营' }), '后来有了运营者');
+let ni1 = must(TM.act(sm0, 'u_owner', 'idea.create', { note: '换投影' }), '再记想法'); must(TM.act(sm0, 'u_owner', 'idea.submit', { id: ni1.id, path: 'direct' }), '提交');
+rej(TM.act(sm0, 'u_owner', 'idea.claim', { id: ni1.id }), '有了运营者后老板不再认领');
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

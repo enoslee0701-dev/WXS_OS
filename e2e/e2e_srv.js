@@ -66,6 +66,11 @@ let srv = null;
   ok(/团队协同备份-.*\.json$/.test(dl.suggestedFilename()), '老板导出全部数据 ' + dl.suggestedFilename());
   await A.goto(URL + '#/me'); await A.waitForTimeout(150);
   ok((await A.textContent('[data-do=onboard]')).includes('还有 2 步'), '加了成员后，「开始使用」还剩 2 步');
+  // 还没有运营者：老板记的想法提交后，老板能在界面上认领跟进
+  const ni = await api('POST', '/api/act', { name: 'idea.create', payload: { note: '会议室投影仪坏了，换一台' } }, bossTok);
+  await api('POST', '/api/act', { name: 'idea.submit', payload: { id: ni.r.id, path: 'direct' } }, bossTok);
+  await A.goto(URL + '#/idea/' + ni.r.id); await A.waitForTimeout(400);
+  ok(await A.locator('[data-do=claim]').count() >= 1, '没有运营者时，老板能认领跟进');
   // 老板的私人草稿
   const dr = await api('POST', '/api/act', { name: 'idea.create', payload: { note: '老板的私人草稿：明年扩张计划' } }, bossTok);
   ok(dr.ok, '老板记了一条草稿');

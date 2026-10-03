@@ -36,6 +36,9 @@ var TM = (function () {
   function name(s, id) { if (id === 'agent') return 'AI 助理'; if (id === 'system') return '系统'; var u = user(s, id); return u ? u.name : '—'; }
   function hasRole(s, uid, r) { var u = user(s, uid); return !!u && u.roles.some(function (a) { return a.role === r; }); }
   function canInitiate(s, uid) { var u = user(s, uid); return !!u && u.roles.some(function (a) { return a.role === 'owner' || (a.role === 'lead' && a.canInitiate); }); }
+  /* 跟进人：团队里有运营者就是运营者；还没有运营者的小团队，由老板兼任（否则建不了项目、想法没人认领） */
+  function followUsers(s) { var ops = usersWith(s, 'operator'); return ops.length ? ops : usersWith(s, 'owner'); }
+  function canFollow(s, uid) { return hasRole(s, uid, 'operator') || (hasRole(s, uid, 'owner') && !usersWith(s, 'operator').length); }
   function usersWith(s, r) { return s.users.filter(function (u) { return hasRole(s, u.id, r); }).map(function (u) { return u.id; }); }
   function primaryRole(s, uid) { var order = ['owner', 'operator', 'lead', 'executor', 'admin']; for (var i = 0; i < order.length; i++) if (hasRole(s, uid, order[i])) return order[i]; return 'executor'; }
   function get(arr, id, what) { var x = arr.find(function (o) { return o.id === id; }); if (!x) deny('找不到该' + (what || '记录')); return x; }
@@ -332,7 +335,7 @@ var TM = (function () {
     if (s.settings.demoAiFail) {
       d.aiStatus = 'failed';
       ev(s, { ideaId: d.id, actor: 'agent', action: 'ai.analyze.failed', text: 'AI 整理失败（演示：已开启「模拟 AI 失败」）' });
-      notify(s, d.followerId ? [d.followerId] : usersWith(s, 'operator'), null, 'AI 整理失败', (d.title || '想法') + '：可重试或手写整理稿', '#/idea/' + d.id);
+      notify(s, d.followerId ? [d.followerId] : followUsers(s), null, 'AI 整理失败', (d.title || '想法') + '：可重试或手写整理稿', '#/idea/' + d.id);
       return;
     }
     var p = mockAnalysis(s, d);
@@ -348,7 +351,7 @@ var TM = (function () {
       ev(s, { ideaId: d.id, actor: 'agent', action: 'idea.to_owner', from: 'triage', to: 'awaiting_owner', text: 'AI 助理按设置直接送老板确认' });
       notify(s, usersWith(s, 'owner'), null, '新的待决策', d.title, '#/idea/' + d.id);
     } else if (d.status === 'triage' && !d.followerId) {
-      notify(s, usersWith(s, 'operator'), null, '有想法待认领', d.title, '#/idea/' + d.id);
+      notify(s, followUsers(s), null, '有想法待认领', d.title, '#/idea/' + d.id);
     }
   }
   function addSummary(s, d, kind, payload, authorType, authorId) {
@@ -436,7 +439,7 @@ var TM = (function () {
     runAnalysis(s, d); touchIdea(s, d); return {};
   };
   A['idea.claim'] = function (s, uid, p) {
-    var d = idea(s, p.id); need(hasRole(s, uid, 'operator'), '只有运营者可以认领'); need(d.status === 'triage', '只有待运营整理的想法可以认领'); need(!d.followerId, '已被 ' + name(s, d.followerId) + ' 认领');
+    var d = idea(s, p.id); need(canFollow(s, uid), '只有运营者可以认领'); need(d.status === 'triage', '只有待运营整理的想法可以认领'); need(!d.followerId, '已被 ' + name(s, d.followerId) + ' 认领');
     d.followerId = uid; ev(s, { ideaId: d.id, actor: uid, action: 'idea.claim', text: '认领，成为跟进人' }); touchIdea(s, d); return {};
   };
   A['idea.saveSummary'] = function (s, uid, p) {
@@ -485,7 +488,7 @@ var TM = (function () {
       if (p.status === 'approved') { d.ownerApproved = true; }
       d.status = to;
       ev(s, { ideaId: d.id, actor: uid, action: 'decision.' + p.status, from: 'awaiting_owner', to: to, reason: note, text: L.decisionStatus[p.status] + (note ? '：' + note : '') });
-      var who = [d.creatorId]; if (d.followerId) who.push(d.followerId); else if (to === 'triage') who = who.concat(usersWith(s, 'operator'));
+      var who = [d.creatorId]; if (d.followerId) who.push(d.followerId); else if (to === 'triage') who = who.concat(followUsers(s));
       notify(s, who, uid, '老板' + L.decisionStatus[p.status], d.title, '#/idea/' + d.id); touchIdea(s, d);
     }
     return {};
@@ -548,7 +551,7 @@ var TM = (function () {
     var title = txt(p.title); need(title, '请填写项目名称'); need(title.length <= 50, '项目名称不超过 50 字');
     var pt = PTYPE[p.ptype]; need(pt, '请选择项目类型');
     var kind = pt[1];
-    var opId = p.operatorId || (op ? uid : usersWith(s, 'operator')[0]); need(opId && hasRole(s, opId, 'operator'), '请选择跟进运营者');
+    var opId = p.operatorId || (op ? uid : followUsers(s)[0]); need(opId && canFollow(s, opId), '请选择跟进运营者');
     var leadId = p.leadId || null;
     if (lead && !owner && !op) leadId = uid;
     if (kind === 'product') need(leadId && hasRole(s, leadId, 'lead'), '产品开发项目请指定项目负责人');
@@ -1216,7 +1219,7 @@ var TM = (function () {
 
   return {
     L: L, STAGES: STAGES, TONE: TONE, DAY: DAY, act: act, seed: seed, user: user, name: name, hasRole: hasRole, canInitiate: canInitiate, usersWith: usersWith,
-    primaryRole: primaryRole, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
+    primaryRole: primaryRole, followUsers: followUsers, canFollow: canFollow, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
     latestSummary: latestSummary, deriveAnalysis: deriveAnalysis, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, migrate: migrate, viewFor: viewFor, blank: blank, canCreateProject: canCreateProject, canAssign: canAssign, caps: caps, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
     nextForTask: nextForTask, PTYPE: PTYPE, GROUPS: GROUPS, seedTodos: seedTodos, ensureTodos: ensureTodos, nextForIdea: nextForIdea, ideaProgress: ideaProgress, workProgress: workProgress, TT: TT
   };

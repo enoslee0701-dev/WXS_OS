@@ -239,7 +239,7 @@
     vIdeas().forEach(function (d) {
       var nx = TM.nextForIdea(S, d);
       if (d.status === 'awaiting_owner') return;
-      if (nx && (nx.who === me || (nx.queue && TM.hasRole(S, me, 'operator')))) out.push({ title: nx.what + '：' + (d.title || d.note.slice(0, 16)), tag: ['想法', 'tg-purple'], prio: nx.queue || d.status === 'summary_ready' ? 'mid' : 'lo', who: d.creatorId, due: { t: ago(d.lastActivity), bad: false }, href: '#/idea/' + d.id, at: d.submittedAt || d.createdAt, date: TM.todayStr(S), comments: S.suggestions.filter(function (x) { return x.ideaId === d.id; }).length, mine: d.creatorId === me && d.status === 'draft', people: d.creatorId === me ? [] : [d.creatorId] });
+      if (nx && (nx.who === me || (nx.queue && TM.canFollow(S, me)))) out.push({ title: nx.what + '：' + (d.title || d.note.slice(0, 16)), tag: ['想法', 'tg-purple'], prio: nx.queue || d.status === 'summary_ready' ? 'mid' : 'lo', who: d.creatorId, due: { t: ago(d.lastActivity), bad: false }, href: '#/idea/' + d.id, at: d.submittedAt || d.createdAt, date: TM.todayStr(S), comments: S.suggestions.filter(function (x) { return x.ideaId === d.id; }).length, mine: d.creatorId === me && d.status === 'draft', people: d.creatorId === me ? [] : [d.creatorId] });
     });
     vWork().forEach(function (w) {
       if ((w.status === 'planning' && w.leadId === me) || (w.status === 'acceptance' && w.reviewerId === me))
@@ -410,7 +410,7 @@
   function ideaNeedsMe(d) {
     if (d.status === 'awaiting_owner' && isOwner()) return true;
     if (d.status === 'draft' && d.creatorId === me) return true;
-    if (d.status === 'triage' && TM.hasRole(S, me, 'operator')) return true;
+    if (d.status === 'triage' && TM.canFollow(S, me)) return true;
     if (d.status === 'cocreate' && d.creatorId !== me && !S.suggestions.some(function (x) { return x.ideaId === d.id && x.authorId === me; })) return true;
     return false;
   }
@@ -566,7 +566,7 @@
     } else if (pd.step === 2) {
       var leadLocked = TM.hasRole(S, me, 'lead') && !isOwner() && !TM.hasRole(S, me, 'operator');
       if (leadLocked) pd.leadId = me;
-      if (!pd.operatorId) pd.operatorId = TM.hasRole(S, me, 'operator') ? me : TM.usersWith(S, 'operator')[0];
+      if (!pd.operatorId) pd.operatorId = TM.hasRole(S, me, 'operator') ? me : TM.followUsers(S)[0];
       var isProd = TM.PTYPE[pd.ptype][1] === 'product', left = pd.due ? dayDiff(pd.due) : null;
       var who = function (k, role, sub, uid, locked, req, empty) {
         return '<button type="button" class="np-who' + (uid ? '' : ' empty') + (req && !uid ? ' req' : '') + '"' + (locked ? ' disabled' : ' data-do="pPick" data-k="' + k + '"') + '><span class="np-wr"><b>' + role + (req ? ' <em class="np-req">*</em>' : '') + '</b><small>' + sub + '</small></span>' +
@@ -765,7 +765,7 @@
     pRecStart: pRecStart, pRecStop: pRecStop,
     pPick: function (el) { var k = el.dataset.k, ids, empty = '', t2;
       if (k === 'leadId') { ids = S.users.filter(function (u) { return TM.hasRole(S, u.id, 'lead'); }).map(function (u) { return u.id; }); t2 = '选择负责人'; if (TM.PTYPE[pd.ptype][1] !== 'product') empty = '不指定，由运营者推进'; }
-      else if (k === 'operatorId') { ids = TM.usersWith(S, 'operator'); t2 = '选择跟进运营'; }
+      else if (k === 'operatorId') { ids = TM.followUsers(S); t2 = '选择跟进运营'; }
       else { ids = S.users.filter(function (u) { return !u.roles.every(function (a) { return a.role === 'admin'; }); }).map(function (u) { return u.id; }); t2 = '选择验收人'; empty = '默认：负责人，没有时由运营者验收'; }
       npPick(t2, ids, pd[k], empty, function (v) { pd[k] = v; }); },
     pPickT: function (el) { var i = +el.dataset.i, ids = S.users.filter(function (u) { return u.roles.some(function (a) { return a.role === 'executor' || a.role === 'lead' || a.role === 'operator'; }); }).map(function (u) { return u.id; });
@@ -2237,7 +2237,7 @@
     if (d.status === 'draft' && cr) { a.push(['编辑', 'editIdea']); a.push(['提交', 'submitIdea', 'pri']); }
     if (d.status === 'discussing' && cr) a.push(['结束讨论并汇总', 'closeDisc', 'pri']);
     if (d.status === 'summary_ready' && cr) { a.push(['重新讨论', 'reopen']); a.push(['确认方向', 'confirmDir', 'pri']); }
-    if (d.status === 'triage' && !d.followerId && TM.hasRole(S, me, 'operator')) a.push(['认领跟进', 'claim', 'pri']);
+    if (d.status === 'triage' && !d.followerId && TM.canFollow(S, me)) a.push(['认领跟进', 'claim', 'pri']);
     if (d.status === 'triage' && fo) {
       if (d.aiStatus === 'failed') a.push(['重试 AI', 'retryAi']);
       a.push(['改整理稿', 'editSummary']);
