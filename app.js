@@ -1876,14 +1876,14 @@
     var xs = vIdeas().filter(function (d) { return TM.latestSummary(S, d.id, 'analysis') || d.aiStatus === 'failed'; });
     botSay(xs.length ? '<b>AI 整理过的想法：</b><ol>' + xs.slice(0, 6).map(function (d) { var sm = TM.latestSummary(S, d.id, 'analysis'); return '<li><a href="#/idea/' + d.id + '" data-do="aiGo" data-h="#/idea/' + d.id + '">' + esc(d.title || '未命名') + '</a>' + (d.aiStatus === 'failed' ? '（AI 失败，可重试）' : sm && L.route[sm.payload.suggested_route] ? '：建议' + L.route[sm.payload.suggested_route] : '') + '</li>'; }).join('') + '</ol>' : '还没有 AI 整理过的想法。');
   }
-  function capMinutes(text) {
+  function capMinutes(text, given) {
     var sents = text.split(/[。！？!?\n；;]/).map(function (x) { return x.trim(); }).filter(function (x) { return x.length > 3; });
     var dec = sents.filter(function (x) { return /决定|确定|同意|通过|定了|拍板/.test(x); });
-    var todos = parseTodos(text); aiS.pendingTodos = todos;
+    var todos = given || parseTodos(text); aiS.pendingTodos = todos;
     var ppl = S.users.filter(function (u) { return text.indexOf(u.name) >= 0; }).map(function (u) { return u.name; });
     botSay('<b>会议纪要</b><h5>参会/提到的人</h5><p>' + (ppl.length ? esc(ppl.join('、')) : '未识别出') + '</p><h5>讨论要点</h5>' + li(sents.filter(function (x) { return dec.indexOf(x) < 0; }).slice(0, 6).map(esc)) + '<h5>决定</h5>' + li(dec.map(esc)) + '<h5>待办（' + todos.length + '）</h5>' + li(todos.map(function (t) { return esc(t.title) + '（' + relDay(t.date) + (t.time ? ' ' + t.time : '') + (t.people.length ? '，' + t.people.map(function (u) { return esc(nm(u)); }).join('、') : '') + '）'; })) + (todos.length ? '<button class="ai-act" data-do="aiAddTodos">把 ' + todos.length + ' 条待办加入今日待办</button>' : ''));
   }
-  function capTodos(text) { var todos = parseTodos(text); aiS.pendingTodos = todos; botSay(todos.length ? '<b>拆出 ' + todos.length + ' 条待办：</b>' + li(todos.map(function (t) { return esc(t.title) + '（' + relDay(t.date) + (t.time ? ' ' + t.time : '') + '，' + ({ hi: '高', mid: '中', lo: '低' })[t.priority] + '优先级）'; })) + '<button class="ai-act" data-do="aiAddTodos">全部加入今日待办</button>' : '没有识别出待办。试试「明天上午10点和陈立开周会，周五前回复邮件，紧急」。'); }
+  function capTodos(text, given) { var todos = given || parseTodos(text); aiS.pendingTodos = todos; botSay(todos.length ? '<b>拆出 ' + todos.length + ' 条待办：</b>' + li(todos.map(function (t) { return esc(t.title) + '（' + relDay(t.date) + (t.time ? ' ' + t.time : '') + '，' + ({ hi: '高', mid: '中', lo: '低' })[t.priority] + '优先级）'; })) + '<button class="ai-act" data-do="aiAddTodos">全部加入今日待办</button>' : '没有识别出待办。试试「明天上午10点和陈立开周会，周五前回复邮件，紧急」。'); }
   function capSplit(text) {
     var r = parseTranscript(text); aiS.pendingSplit = r;
     botSay('<b>「' + esc(r.title) + '」可以拆成：</b><ol>' + (r.tasks.length ? r.tasks.map(function (t) { return '<li>' + esc(t.title) + '　<span class="muted">建议负责人：' + esc(nm(t.ownerId)) + '</span></li>'; }).join('') : '<li>没有识别出明确步骤，建议补充「先…再…然后…」这样的描述</li>') + '</ol>' + (canAssign() && r.tasks.length ? '<button class="ai-act" data-do="aiToAssign">分配第一个任务</button>' : '') + (canCreateProject() ? '<button class="ai-act ghost" data-do="aiToProject">建成项目</button>' : ''));
@@ -1942,6 +1942,14 @@
     if (aiS.mode === 'recall') { capRecall(text); return; }
     if (aiS.mode && CAP_RUN[aiS.mode]) { var m = aiS.mode; aiS.mode = null; CAP_RUN[m](text); return; }
     if (/找回|找一下|在哪|忘了|上次.*(录|传|说)|之前.*(录|传|记)/.test(text)) return capRecall(text);
+    var mins = /纪要|会议记录/.test(text), tds = !mins && parseTodos(text).some(function (t) { return t.time || t.people.length; });
+    if (AI_ON && (mins || tds)) {
+      // 纪要 / 拆待办：待办部分交给 Claude 拆（日期、相关人更准），展示和一键添加按钮不变
+      var msg = { who: 'bot', html: '<span class="ai-typing"><i></i><i></i><i></i></span> 正在拆分…', pending: true }; aiS.msgs.push(msg); aiS.lastText = text;
+      TMS.aiTodos(text).then(function (r) { aiS.msgs.splice(aiS.msgs.indexOf(msg), 1); mins ? capMinutes(text, r.items) : capTodos(text, r.items); var m = aiS.msgs[aiS.msgs.length - 1]; if (m) m.html = m.html.replace('<span class="ai-sim">模拟输出</span>', '<span class="ai-sim ai-real">待办由 Claude 拆分</span>'); renderAI(); },
+        function (e) { aiS.msgs.splice(aiS.msgs.indexOf(msg), 1); toast((e && e.error) || 'AI 暂时不可用', true); mins ? capMinutes(text) : capTodos(text); renderAI(); });
+      return;
+    }
     if (/纪要|会议记录/.test(text) || /拆解|拆成|分配/.test(text) || parseTodos(text).some(function (t) { return t.time || t.people.length; })) { /* 结构化动作：继续用规则版（会生成可点击按钮） */ }
     else if (AI_ON) return aiReal(text, function () { aiRuleAnswer(text); });
     aiRuleAnswer(text);

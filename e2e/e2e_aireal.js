@@ -38,8 +38,9 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', d => b
   ok(/<b>结论<\/b>/.test(last) && /清醒/.test(last) && /kb-li|•/.test(last), '回答按格式渲染（加粗、列表）');
   ok(calls === n0 + 1, '只调用一次 AI');
   // 结构化动作仍用规则版（有可点按钮）
-  await send('明天下午3点和林晓开会，周五前交报价'); await p.waitForTimeout(300);
-  ok(calls === n0 + 1 && (await p.locator('.ai-m.bot').last().textContent()).includes('模拟输出'), '拆待办仍走规则版');
+  await send('明天下午3点和林晓开会，周五前交报价');
+  ok(await until(async () => (await p.locator('.ai-m.bot').last().textContent()).includes('Claude 拆分')) && calls === n0 + 2, '拆待办交给 Claude，展示和按钮不变');
+  ok(await p.locator('.ai-m.bot').last().locator('[data-do=aiAddTodos]').count() === 1, '仍有一键添加待办按钮');
   // 出错 → 自动退回规则答案
   mode = 'down'; await send('项目进度怎么样');
   ok(await until(async () => (await p.textContent('#toast')).includes('AI'), 15000), 'AI 出错有提示');
