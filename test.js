@@ -411,5 +411,21 @@ ok(s.knowledge.find(k => k.id === kv.id).source === 'voice', '记录来源为口
 kv = must(TM.act(s, O, 'kb.add', { title: '普通资料', body: '这是一份普通的文字资料内容。', source: 'hack' }), '普通资料');
 ok(s.knowledge.find(k => k.id === kv.id).source === 'text', '非法来源回落为文字');
 
+// ===== 角色能力表：用不了的功能不展示 =====
+s = fresh();
+const cap = (u) => TM.caps(s, u);
+ok(cap(O).recordIdea && cap(O).createProject && cap(O).decide && cap(O).settings && cap(O).direction && cap(O).resetData, '老板全部能力');
+ok(!cap(OP).recordIdea && cap(OP).createProject && cap(OP).claimIdeas && cap(OP).assign && !cap(OP).settings, '运营者：建项目、认领、分配，不能记录想法和改设置');
+ok(cap(LD).recordIdea && cap(LD).createProject && cap(LD).assign && !cap(LD).members, '有发起权的负责人');
+[AX, DS, DV].forEach(u => ok(!cap(u).recordIdea && !cap(u).createProject && !cap(u).assign && !cap(u).members && !cap(u).settings && !cap(u).resetData && cap(u).ideas && cap(u).tasks, '执行者 ' + u + ' 只有执行类能力'));
+ok(cap(AD).members && cap(AD).settings && cap(AD).kbEdit && !cap(AD).direction && !cap(AD).ideas && !cap(AD).work && !cap(AD).recordIdea, '管理员：成员、设置、知识库；看不到想法和项目');
+s.settings.ownerApprovalMode = 'all';
+ok(cap(O).createProject && !cap(OP).createProject && !cap(LD).createProject, '每条都送：只有老板能直接建项目');
+rej(TM.act(s, OP, 'project.create', { title: 'x', ptype: 'admin' }), '每条都送时运营者建项目');
+s.settings.ownerApprovalMode = 'exceptions_only';
+s.workItems.forEach(w => { if (w.operatorId === OP || w.leadId === OP) w.status = 'done'; });
+ok(!cap(OP).assign, '运营者手上没有进行中的项目时不能分配');
+ok(TM.canAssign(s, O) === s.workItems.some(w => ['planning', 'active', 'acceptance', 'blocked'].includes(w.status)), '老板有进行中项目即可分配');
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

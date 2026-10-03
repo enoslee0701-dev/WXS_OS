@@ -168,6 +168,35 @@ var TM = (function () {
   ];
   function kbInit(s) { if (s.knowledge) return; s.knowledge = KB_SEED.map(function (x, i) { return { id: 'K' + (i + 1), title: x.title, body: x.body, scope: 'team', on: true, demo: true, by: 'u_owner', at: s.settings ? now(s) : Date.now(), size: x.body.length }; }); }
   function kbCan(s, uid) { return hasRole(s, uid, 'owner') || hasRole(s, uid, 'admin'); }
+  /* ---------- 角色能力表：界面按它显示或隐藏入口（用不了的功能不展示） ---------- */
+  function canCreateProject(s, uid) {
+    if (hasRole(s, uid, 'owner')) return true;
+    if (s.settings.ownerApprovalMode === 'all') return false;
+    return hasRole(s, uid, 'operator') || (canInitiate(s, uid) && hasRole(s, uid, 'lead'));
+  }
+  var LIVE = ['planning', 'active', 'acceptance', 'blocked'];
+  function canAssign(s, uid) {
+    var owner = hasRole(s, uid, 'owner');
+    return s.workItems.some(function (w) { return LIVE.indexOf(w.status) >= 0 && (owner || w.leadId === uid || w.operatorId === uid); });
+  }
+  function caps(s, uid) {
+    var owner = hasRole(s, uid, 'owner'), admin = hasRole(s, uid, 'admin'), solo = onlyAdmin(s, uid);
+    return {
+      recordIdea: canInitiate(s, uid),          // 记录想法
+      createProject: canCreateProject(s, uid),  // 新建项目
+      assign: canAssign(s, uid),                // 分配任务
+      claimIdeas: hasRole(s, uid, 'operator'),  // 认领整理想法
+      decide: owner,                            // 老板决策
+      members: owner || admin,                  // 添加 / 管理成员
+      settings: owner || admin,                 // 流程开关、提醒阈值
+      direction: owner,                         // 公司方向
+      kbEdit: kbCan(s, uid),                    // 知识库维护、口述整理
+      resetData: owner || admin,                // 清理 / 重置数据
+      ideas: !solo,                             // 想法页
+      work: !solo,                              // 项目页
+      tasks: !solo                              // 任务（项目任务）；纯管理员只有个人待办
+    };
+  }
   function kbVisible(s, uid) { kbInit(s); return s.knowledge.filter(function (k) { return k.scope === 'team' || kbCan(s, uid); }); }
   function kbTerms(t) {
     t = String(t || '').replace(/[\s，。！？、；：,.!?;:（）()【】\[\]「」"'“”#*\-\d]+/g, ' ');
@@ -514,7 +543,7 @@ var TM = (function () {
   A['project.create'] = function (s, uid, p) {
     var owner = hasRole(s, uid, 'owner'), op = hasRole(s, uid, 'operator'), lead = canInitiate(s, uid) && hasRole(s, uid, 'lead');
     need(owner || op || lead, '只有老板、运营者或有发起权的负责人可以新建项目');
-    if (s.settings.ownerApprovalMode === 'all' && !owner) deny('当前设置要求每条想法派发前由老板确认，请改用「记录想法」提交');
+    if (!canCreateProject(s, uid)) deny('当前设置要求每条想法派发前由老板确认，请改用「记录想法」提交');
     var title = txt(p.title); need(title, '请填写项目名称'); need(title.length <= 50, '项目名称不超过 50 字');
     var pt = PTYPE[p.ptype]; need(pt, '请选择项目类型');
     var kind = pt[1];
@@ -1041,7 +1070,7 @@ var TM = (function () {
   return {
     L: L, STAGES: STAGES, TONE: TONE, DAY: DAY, act: act, seed: seed, user: user, name: name, hasRole: hasRole, canInitiate: canInitiate, usersWith: usersWith,
     primaryRole: primaryRole, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
-    latestSummary: latestSummary, deriveAnalysis: deriveAnalysis, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
+    latestSummary: latestSummary, deriveAnalysis: deriveAnalysis, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, canCreateProject: canCreateProject, canAssign: canAssign, caps: caps, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
     nextForTask: nextForTask, PTYPE: PTYPE, GROUPS: GROUPS, seedTodos: seedTodos, ensureTodos: ensureTodos, nextForIdea: nextForIdea, ideaProgress: ideaProgress, workProgress: workProgress, TT: TT
   };
 })();

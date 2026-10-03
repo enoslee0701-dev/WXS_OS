@@ -39,6 +39,6 @@ await p.click('[data-do=asPickCollab]');await p.check('.sheet input[value=u_desi
 ok(await p.locator('.as-collab .av').count()===1,'添加协作者');
 await p.click('[data-do=asCreate]');await p.waitForTimeout(200);ok(p.url().endsWith('#/work/W1'),'手动创建任务成功');
 // 权限
-await p.goto(URL+'#/home');await p.waitForTimeout(80);await p.click('[data-do=switch]');await p.click('.acct:has-text("周敏")');await p.goto(URL+'#/work');await p.waitForTimeout(100);await p.click('.w-plus');await p.click('.sheet [data-do=quickAssign]');ok((await toast()).includes('负责人'),'执行者不能分配');
+await p.goto(URL+'#/home');await p.waitForTimeout(80);await p.click('[data-do=switch]');await p.click('.acct:has-text("周敏")');await p.goto(URL+'#/work');await p.waitForTimeout(100);await p.click('.w-plus');await p.waitForTimeout(80);ok(await p.locator('.sheet [data-do=quickAssign]').count()===0 && await p.locator('.sheet [data-do=quickAI]').count()===1,'执行者的新建菜单里没有分配任务');await p.goto(URL+'#/assign/W1');await p.waitForTimeout(100);ok(p.url().endsWith('#/home'),'执行者打开分配页被送回首页');
 ok(errs.length===0,'无报错 '+errs.join('|'));
 console.log(`分配 E2E 通过 ${pass}，失败 ${fail}`);await b.close();process.exit(fail?1:0);})().catch(e=>{console.error(e);process.exit(1)});

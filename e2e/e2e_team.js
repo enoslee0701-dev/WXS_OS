@@ -23,6 +23,6 @@ await p.click('.tm-invite');await p.fill('.sheet input[name=name]','王五');awa
 ok(await p.locator('.tm-card').count()===8 && (await p.textContent('.tm-count b')).includes('8'),'邀请新成员');
 await p.click('[data-do=tmSearch]');await p.fill('#tmq','设计');await p.waitForTimeout(100);ok(await p.locator('#tmr .tm-card').count()>=1,'搜索成员');await p.click('.sheet footer button[type=submit]');
 await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("周敏")');await p.goto(URL+'#/team');await p.waitForTimeout(100);
-await p.click('.tm-invite');ok((await toast()).includes('只有'),'执行者不能邀请');
+ok(await p.locator('.tm-invite').count()===0 && await p.locator('[data-do=tmInvite]').count()===0,'执行者看不到邀请入口');
 ok(errs.length===0,'无报错 '+errs.join('|'));
 console.log(`团队 E2E 通过 ${pass}，失败 ${fail}`);await b.close();process.exit(fail?1:0);})().catch(e=>{console.error(e);process.exit(1)});

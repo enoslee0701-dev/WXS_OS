@@ -60,7 +60,8 @@ ok(p.url().includes('#/work/'),'AI 方式创建成功');
 await p.goto(URL+'#/project/ai');await p.setInputFiles('[data-aivideo]',{name:'会议.mp4',mimeType:'video/mp4',buffer:Buffer.from('x')});
 await p.waitForSelector('.sheet h2:has-text("视频已选择")');ok(true,'上传视频如实提示无法解析');
 // 权限
-await p.goto(URL);await p.click('[data-do=switch]');await p.click('.acct:has-text("周敏")');await p.click('[data-do=quickProject]');
-ok((await toast()).includes('只有'),'执行者不能新建项目');
+await p.goto(URL);await p.click('[data-do=switch]');await p.click('.acct:has-text("周敏")');await p.waitForTimeout(100);
+ok(await p.locator('[data-do=quickProject]').count()===0,'执行者首页没有新建项目');
+await p.goto(URL+'#/project');await p.waitForTimeout(100);ok(p.url().endsWith('#/home'),'执行者打开新建项目被送回首页');
 ok(errs.length===0,'无报错 '+errs.join('|'));
 console.log(`项目 E2E 通过 ${pass}，失败 ${fail}`);await b.close();process.exit(fail?1:0);})().catch(e=>{console.error(e);process.exit(1)});

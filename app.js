@@ -220,9 +220,22 @@
       '<header class="hm-top"><button class="hm-me" data-do="switch" aria-label="切换账号，当前 ' + esc(u.name) + '">' + av(me) + '<i style="background:' + p[1] + '"></i></button><span class="hm-demo">演示版</span><a class="hm-bell" href="#/inbox" aria-label="通知 ' + nU + ' 条未读">' + hi('bell', 1.8) + (nU ? '<i>' + nU + '</i>' : '') + '</a></header>' +
       '<div class="hm-copy"><small>FOR A GREATER MISSION</small><h1>用科技<br>让福音走得更远</h1>' +
       '<button class="hm-verse" data-do="hmVerse"><svg class="hm-q" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18v-5.5C4 8.4 6.2 6 10 5.5V8c-2 .4-3 1.7-3 4h3v6zm9.5 0v-5.5c0-4.1 2.2-6.5 6-7V8c-2 .4-3 1.7-3 4h3v6z" fill="currentColor"/></svg><span><b>' + esc(VERSES[hmV % VERSES.length][0]).replace('，', '，<br>') + '</b><small>— ' + VERSES[hmV % VERSES.length][1] + '</small></span>' + hi('chev', 2) + '</button></div>' +
-      '<div class="hm-cards"><div class="hm-script" aria-hidden="true">Better<br>&nbsp;&nbsp;Together<svg viewBox="0 0 180 40"><path d="M4 38C60 22 120 10 176 2" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></div><button class="hm-card c1" data-do="quickIdea"><span class="hm-ic">' + ai2('bulb', 1.5) + '</span><i class="hm-go">' + hi('chev', 2.2) + '</i><b>记录想法</b><small>随时记录，激发灵感</small></button>' +
-      '<button class="hm-card c2" data-do="quickProject"><span class="hm-ic">' + ti('plus2', 1.6) + '</span><i class="hm-go">' + hi('chev', 2.2) + '</i><b>新建项目</b><small>从想法开始，落地执行</small></button></div>' +
+      '<div class="hm-cards"><div class="hm-script" aria-hidden="true">Better<br>&nbsp;&nbsp;Together<svg viewBox="0 0 180 40"><path d="M4 38C60 22 120 10 176 2" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></div>' + homeCards().map(function (k, i) { return '<button class="hm-card c' + (i + 1) + ' hc-' + k[0] + '" data-do="' + k[0] + '"><span class="hm-ic">' + k[1] + '</span><i class="hm-go">' + hi('chev', 2.2) + '</i><b>' + k[2] + '</b><small>' + k[3] + '</small></button>'; }).join('') + '</div>' +
       '<footer class="hm-foot"><i></i><p>微小的顺服，<br>可以带来永恒的改变。</p><small>SMALL STEPS · ETERNAL IMPACT</small></footer></section>';
+  }
+  /* 首页两张卡片按角色给出：老板/发起人 记录想法+新建项目；运营者 整理想法+新建项目；执行者 我的待办+记待办；管理员 成员+知识库 */
+  function homeCards() {
+    var c = myCaps(), out = [];
+    var nT = todoItems().filter(function (x) { return !x.done; }).length;
+    var nTri = c.claimIdeas ? vIdeas().filter(function (d) { return d.status === 'triage' && !d.followerId; }).length : 0;
+    if (c.recordIdea) out.push(['quickIdea', ai2('bulb', 1.5), '记录想法', '随时记录，激发灵感']);
+    if (c.claimIdeas) out.push(['hmTriage', ai2('bulb', 1.5), '整理想法', nTri ? nTri + ' 条新想法等你认领' : '暂时没有待认领的想法']);
+    if (c.createProject) out.push(['quickProject', ti('plus2', 1.6), '新建项目', '从想法开始，落地执行']);
+    if (c.assign) out.push(['quickAssign', ai2('person', 1.6), '分配任务', '让合适的人做合适的事']);
+    if (!c.ideas) { if (c.members) out.push(['hmTeam', ai2('team', 1.6), '成员与账号', '添加成员、设置角色']); if (c.kbEdit) out.push(['hmKB', ai2('doc2', 1.6), 'AI 知识库', '维护老板思想与公司资料']); }
+    out.push(['hmTasks', hi('cal', 1.6), '我的待办', nT ? nT + ' 件等你处理' : '今天的事都处理完了']);
+    out.push(['hmTodo', ai2('edit', 1.6), '记一条待办', '提醒自己要做的事']);
+    return out.slice(0, 2);
   }
   var VERSES = [['你们往普天下去，传福音给万民听。', '马可福音 16:15'], ['凡你手所当做的事，要尽力去做。', '传道书 9:10'], ['两个人总比一个人好，因为二人劳碌同得美好的果效。', '传道书 4:9'], ['你们要先求他的国和他的义，这些东西都要加给你们了。', '马太福音 6:33']];
   var hmV = 0;
@@ -417,7 +430,9 @@
     play: '<path d="M9 7.5v9l7.5-4.5z" fill="currentColor"/>', vcam: '<rect x="2.8" y="6.5" width="13" height="11" rx="2.6"/><path d="M15.8 10.4l4.7-2.6v8.4l-4.7-2.6z"/>'
   };
   function pi(k, sw) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="' + (sw || 1.7) + '" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (PI[k] || NI[k] || HI[k]) + '</svg>'; }
-  function canCreateProject() { return isOwner() || TM.hasRole(S, me, 'operator') || (TM.canInitiate(S, me) && TM.hasRole(S, me, 'lead')); }
+  function canCreateProject() { return TM.canCreateProject(S, me); }
+  /* 角色能力表（engine.js TM.caps）：用不了的功能不展示 */
+  function myCaps() { return TM.caps(S, me); }
   function pHead(title, sub, right) {
     return '<header class="p-head"><button class="circle" data-do="pBack" aria-label="返回">' + hi('chev', 2.2).replace('M9 6l6 6-6 6', 'M15 6l-6 6 6 6') + '</button><div><h1>' + title + '</h1><p>' + sub + '</p></div>' + (right || '<span style="width:44px"></span>') + '</header>';
   }
@@ -1506,11 +1521,11 @@
       ['tm-purple', '<svg viewBox="0 0 24 24"><rect x="4" y="13" width="4" height="7" rx="1.5" fill="currentColor" opacity=".55"/><rect x="10" y="9" width="4" height="11" rx="1.5" fill="currentColor" opacity=".8"/><rect x="16" y="5" width="4" height="15" rx="1.5" fill="currentColor"/></svg>', eff, '团队效率', 'tmRate']];
     var canInvite = isOwner() || TM.hasRole(S, me, 'admin');
     return stdHero({ back: true, title: '团队', bg: 'var(--hero)', pos: '40% 70%', sub: '不同的恩赐，同一个使命。', verse: ['两个人总比一个人好，<br>因为二人劳碌同得美好的果效。', '传道书 4:9'], script: 'Better<br>&nbsp;Together',
-      actions: '<button class="tk-ic w-ic" data-do="tmSearch" aria-label="搜索成员">' + hi('search', 1.8) + '</button><button class="w-plus" data-do="tmInvite" aria-label="邀请新成员">' + ti('plus2', 2.4) + '</button>',
+      actions: '<button class="tk-ic w-ic" data-do="tmSearch" aria-label="搜索成员">' + hi('search', 1.8) + '</button>' + (canInvite ? '<button class="w-plus" data-do="tmInvite" aria-label="邀请新成员">' + ti('plus2', 2.4) + '</button>' : ''),
       pill: '<button class="tk-month tm-count" data-do="tmMembers">' + ai2('team', 1.6) + '<b>' + us.length + '</b> 位伙伴' + ai2('downc', 1.8) + '</button>' }) +
       '<div class="w-chips tm-chips"><button class="' + (sel === 'all' ? 'on' : '') + '" data-do="tmGroup" data-g="all">全部 <i>' + us.length + '</i></button>' + G.slice(1).concat(G.slice(0, 1)).map(function (g) { var n = us.filter(function (u) { return u.group === g; }).length; return n ? '<button class="' + (sel === g ? 'on' : '') + '" data-do="tmGroup" data-g="' + g + '">' + g + ' <i>' + n + '</i></button>' : ''; }).join('') + '</div>' +
       rows.map(memberCard).join('') +
-      '<button class="tm-invite" data-do="tmInvite"><span class="tm-ip">' + ti('plus2', 2.4) + '</span><span><b>邀请新成员</b><small>' + (canInvite ? '一起打造更好的团队' : '由老板或管理员添加成员') + '</small></span><svg class="tm-ppl" viewBox="0 0 120 60" aria-hidden="true"><g fill="#C9D8FB"><circle cx="30" cy="22" r="10"/><path d="M12 60c1-14 8-22 18-22s17 8 18 22z"/><circle cx="90" cy="22" r="10"/><path d="M72 60c1-14 8-22 18-22s17 8 18 22z"/></g><g fill="#B3C8F8"><circle cx="60" cy="16" r="13"/><path d="M36 60c1-17 10-27 24-27s23 10 24 27z"/></g></svg>' + hi('chev', 2) + '</button>';
+      (canInvite ? '<button class="tm-invite" data-do="tmInvite"><span class="tm-ip">' + ti('plus2', 2.4) + '</span><span><b>邀请新成员</b><small>' + (canInvite ? '一起打造更好的团队' : '由老板或管理员添加成员') + '</small></span><svg class="tm-ppl" viewBox="0 0 120 60" aria-hidden="true"><g fill="#C9D8FB"><circle cx="30" cy="22" r="10"/><path d="M12 60c1-14 8-22 18-22s17 8 18 22z"/><circle cx="90" cy="22" r="10"/><path d="M72 60c1-14 8-22 18-22s17 8 18 22z"/></g><g fill="#B3C8F8"><circle cx="60" cy="16" r="13"/><path d="M36 60c1-17 10-27 24-27s23 10 24 27z"/></g></svg>' + hi('chev', 2) + '</button>' : '');
   }
   function memberCard(u) {
     var c = tCounts(u.id), p = PRES[u.presence || 'offline'];
@@ -1570,7 +1585,7 @@
     var info = function (iconSvg, label, val, k, ok2) { return '<button class="me-info" ' + (ok2 ? 'data-do="meEdit" data-k="' + k + '"' : 'disabled') + '>' + iconSvg + '<span>' + label + '</span><b>' + esc(val || '未填写') + '</b>' + (ok2 ? hi('chev', 2) : '<i></i>') + '</button>'; };
     var adm = can;
     return stdHero({ title: '我的', bg: 'var(--homebg)', pos: '50% 62%', sub: '管理账号与个性化设置，让团队协作更高效。', verse: ['凡你们所做的都要凭爱心而做。', '哥林多前书 16:14'], script: 'Serve<br>&nbsp;with Love',
-      actions: '<a class="tk-ic me-round" href="#/inbox" aria-label="通知 ' + nU + ' 条未读">' + hi('bell', 1.8) + (nU ? '<i>' + nU + '</i>' : '') + '</a><a class="tk-ic me-round" href="#/settings" aria-label="更多设置">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>' + '</a>',
+      actions: '<a class="tk-ic me-round" href="#/inbox" aria-label="通知 ' + nU + ' 条未读">' + hi('bell', 1.8) + (nU ? '<i>' + nU + '</i>' : '') + '</a>' + (can ? '<a class="tk-ic me-round" href="#/settings" aria-label="更多设置">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>' + '</a>' : '') + '',
       pill: '<button class="tk-month" data-do="switch">' + av(me, true) + esc(u.name) + ' · ' + ROLE_BADGE[r] + ai2('downc', 1.8) + '</button>' }) +
       '<section class="me-card"><span class="tm-av me-av">' + av(me) + '<i style="background:' + p[1] + '"></i></span><div class="me-who"><div class="me-nm"><b>' + esc(u.name) + '</b><span class="me-badge">' + (r === 'owner' ? '<svg viewBox="0 0 24 24"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z" fill="currentColor"/></svg>' : '') + ROLE_BADGE[r] + '</span></div><p>' + esc(u.bio || u.motto || '') + '</p>' +
       '<div class="me-meta"><span>' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 10h4a1 1 0 0 1 1 1v10M3 21h18M8 8h3M8 12h3M8 16h3"/></svg>' + ROLE_DUTY[r] + '</span>' + (u.location ? '<i></i><span>' + ai2('pin', 1.7) + esc(u.location) + '</span>' : '') + '</div></div>' +
@@ -1580,13 +1595,13 @@
       '<a class="me-team me-kb" href="#/kb"><span class="me-ic kbic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/><path d="M9 8h7M9 11.5h5"/></svg></span><span class="me-tt"><b>AI 知识库</b><small>' + TM.kbVisible(S, me).filter(function (k) { return k.on; }).length + ' 份资料 · 让 AI 了解公司和老板的想法</small></span>' + hi('chev', 2) + '</a>' +
       '<button class="me-team me-demo" data-do="demoStart"><span class="me-ic dk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg></span><span class="me-tt"><b>演示向导</b><small>一键走完 想法 → 整理 → 事项 → 执行 → 验收</small></span>' + hi('chev', 2) + '</button>' +
       '<section class="me-sec"><div class="me-sh">' + ic(ai2('ops', 1.8)).replace('me-ic', 'me-ic blue') + '<b>工作概览</b></div>' + homeStats().map(function (x) { return '<a class="me-info me-ov" href="#/stat/' + x.k + '">' + hi(x.icon, 1.7).replace('<svg ', '<svg class="' + x.cls + '" ') + '<span>' + esc(x.label) + '</span><b><strong>' + x.n + '</strong></b>' + hi('chev', 2) + '</a>'; }).join('') + '</section>' +
-      '<section class="me-sec"><a class="me-sh" href="#/settings">' + ic('<svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z" fill="#fff"/><path d="M19.4 13.5l1.6 1.2-1.8 3.2-1.9-.7a7 7 0 0 1-1.8 1l-.3 2h-3.6l-.3-2a7 7 0 0 1-1.8-1l-1.9.7-1.8-3.2 1.6-1.2a7 7 0 0 1 0-2.1L4.6 10.3 6.4 7l1.9.8a7 7 0 0 1 1.8-1l.3-2h3.6l.3 2a7 7 0 0 1 1.8 1l1.9-.8 1.8 3.3-1.6 1.1a7 7 0 0 1 0 2.1z" fill="currentColor"/><circle cx="12" cy="12" r="2.6" fill="#E8F0FF"/></svg>').replace('me-ic', 'me-ic blue') + '<b>流程开关（第 3 节待拍板）</b><small>根据团队需要灵活设置</small>' + hi('chev', 2) + '</a>' +
-      (can ? '' : '<p class="me-note">只有老板或管理员可以修改，你可以查看当前设置。</p>') +
+      (can ? '<section class="me-sec"><a class="me-sh" href="#/settings">' + ic('<svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z" fill="#fff"/><path d="M19.4 13.5l1.6 1.2-1.8 3.2-1.9-.7a7 7 0 0 1-1.8 1l-.3 2h-3.6l-.3-2a7 7 0 0 1-1.8-1l-1.9.7-1.8-3.2 1.6-1.2a7 7 0 0 1 0-2.1L4.6 10.3 6.4 7l1.9.8a7 7 0 0 1 1.8-1l.3-2h3.6l.3 2a7 7 0 0 1 1.8 1l1.9-.8 1.8 3.3-1.6 1.1a7 7 0 0 1 0 2.1z" fill="currentColor"/><circle cx="12" cy="12" r="2.6" fill="#E8F0FF"/></svg>').replace('me-ic', 'me-ic blue') + '<b>流程开关（第 3 节待拍板）</b><small>根据团队需要灵活设置</small>' + hi('chev', 2) + '</a>' +
+      
       row('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>', '老板确认范围（C2）', '只送例外：战略、超预算、人事、重要发布才找老板。每条都送：所有想法派发前都要老板确认。',
         '<label class="me-sel"><select data-set="ownerApprovalMode"' + dis + '><option value="exceptions_only"' + (cs.ownerApprovalMode === 'exceptions_only' ? ' selected' : '') + '>只送例外</option><option value="all"' + (cs.ownerApprovalMode === 'all' ? ' selected' : '') + '>每条都送</option></select>' + ai2('downc', 2) + '</label>') +
       row(hi('spark', 1.6).replace('<svg ', '<svg class="gold" '), 'AI 助理可直接送人（C3）', '打开后，在「每条都送」模式下 AI 整理完可直接发送到老板待决策；派发、立项由人点。', tog('data-set="agentDirectRoute"', cs.agentDirectRoute, dis)) +
       row('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.3l2.4 2.4 4.6-5"/></svg>', '行政任务老板终验（C1）', '负责人验收后，再进入老板终验。', tog('data-set="ownerFinalAdmin"', cs.ownerFinalAdmin, dis)) +
-      row(hi('bell', 1.7), '重要事项通知我', '当有需要我处理的事项时，立即推送通知。演示版只有 App 内通知。', tog('data-pref="notifyImportant"', pref.notifyImportant !== false)) + '</section>' +
+      row(hi('bell', 1.7), '重要事项通知我', '当有需要我处理的事项时，立即推送通知。演示版只有 App 内通知。', tog('data-pref="notifyImportant"', pref.notifyImportant !== false)) + '</section>' : '<section class="me-sec"><div class="me-sh">' + ic(hi('bell', 1.7)).replace('me-ic', 'me-ic blue') + '<b>通知</b></div>' + row(hi('bell', 1.7), '重要事项通知我', '当有需要我处理的事项时，立即推送通知。演示版只有 App 内通知。', tog('data-pref="notifyImportant"', pref.notifyImportant !== false)) + '</section>') +
       '<section class="me-sec"><div class="me-sh">' + ic(ti('person', 1.8)).replace('me-ic', 'me-ic blue') + '<b>个人信息</b></div>' +
       info('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2"/><path d="M5.8 16c.6-1.6 1.8-2.4 3.2-2.4s2.6.8 3.2 2.4M14.5 10h4M14.5 13.5h3"/></svg>', '姓名', u.name, 'name', adm) +
       info('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="7" width="18" height="12.5" rx="2.5"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12.5h18"/></svg>', '职位', u.title, 'title', true) +
@@ -1597,7 +1612,7 @@
       '<section class="me-sec"><div class="me-sh">' + ic(ti('more', 1.6)).replace('me-ic', 'me-ic blue') + '<b>通用</b></div>' +
       '<button class="me-info" data-do="quickAI">' + hi('spark', 1.7) + '<span>AI 助手</span><b>整理、分析、建议、创作</b>' + hi('chev', 2) + '</button>' +
       '<a class="me-info" href="#/inbox">' + hi('bell', 1.7) + '<span>通知中心</span><b>' + (nU ? nU + ' 条未读' : '全部已读') + '</b>' + hi('chev', 2) + '</a>' +
-      '<a class="me-info" href="#/settings">' + ai2('ctx', 1.7) + '<span>更多设置</span><b>终验、标签、提醒、演示工具</b>' + hi('chev', 2) + '</a>' +
+      (can ? '<a class="me-info" href="#/settings">' + ai2('ctx', 1.7) + '<span>更多设置</span><b>终验、标签、提醒、演示工具</b>' + hi('chev', 2) + '</a>' : '') +
       '<button class="me-info" data-do="meAbout">' + ai2('info', 1.7) + '<span>关于本版</span><b>演示版（阶段 1）</b>' + hi('chev', 2) + '</button></section>';
   }
   var ME = {
@@ -1643,7 +1658,7 @@
         '<nav class="ai-cats">' + AIC.map(function (c) { return '<button class="' + (aiS.cat === c[0] ? 'on' : '') + '" data-do="aiCat" data-c="' + c[0] + '">' + (c[0] === 'rec' ? hi('spark', 1.6) : ai2(c[2] === 'ops' ? 'ops' : c[2], 1.8)) + c[1] + '</button>'; }).join('') + '</nav>' +
         '<div class="ai-sh"><h4>你可以试着问我</h4>' + (sets.length > 1 ? '<button data-do="aiShuffle">' + ai2('refresh', 1.8) + '换一换</button>' : '') + '</div>' +
         set.map(function (k) { var c = CAPS[k]; return '<div class="ai-cap"><span class="ai-ci t-' + c[2] + '">' + aiIcon(c[3]) + '</span><div><b>' + c[0] + '</b><small>' + c[1] + '</small></div><button data-do="aiUse" data-k="' + k + '">使用</button></div>'; }).join('') +
-        '<div class="ai-chips">' + CHIPS.map(function (c) { return '<button data-do="aiChip" data-k="' + c[0] + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + c[2] + '</svg>' + c[1] + '</button>'; }).join('') + '</div>';
+        '<div class="ai-chips">' + CHIPS.filter(function (c) { var cp = myCaps(); return c[0] === 'plan' ? cp.createProject : c[0] === 'brain' ? cp.recordIdea : c[0] === 'load' ? cp.work : true; }).map(function (c) { return '<button data-do="aiChip" data-k="' + c[0] + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + c[2] + '</svg>' + c[1] + '</button>'; }).join('') + '</div>';
     } else {
       body = '<div class="ai-chathead">' + hi('spark', 1.4).replace('<svg ', '<svg class="ai-star" ') + '<b>AI 助手</b><button data-do="aiReset">新对话</button></div><div class="ai-msgs" id="aimsgs">' + aiS.msgs.map(function (m) { return '<div class="ai-m ' + m.who + '">' + (m.who === 'bot' ? '<span class="ai-av">' + hi('spark', 1.6) + '</span>' : '') + '<div class="ai-b">' + m.html + '</div></div>'; }).join('') + '</div>';
     }
@@ -1771,7 +1786,7 @@
     if (/拆解|拆成|分配/.test(text)) return capSplit(text);
     if (/方案|怎么做|建议/.test(text)) return capOptions(text);
     if (parseTodos(text).some(function (t) { return t.time || t.people.length; })) return capTodos(text);
-    botSay('我先帮你记下了。演示版能做这些：写周报、项目进度分析、团队负载、今日优先级、会议纪要、拆待办、任务拆解、方案建议、写通知和议程。<br><button class="ai-act" data-do="aiSaveIdea">把这句话存成想法草稿</button>');
+    botSay('我先帮你记下了。演示版能做这些：写周报、项目进度分析、团队负载、今日优先级、会议纪要、拆待办、任务拆解、方案建议、写通知和议程。' + (myCaps().recordIdea ? '<br><button class="ai-act" data-do="aiSaveIdea">把这句话存成想法草稿</button>' : ''));
     aiS.lastText = text;
   }
   var AIX = {
@@ -2117,7 +2132,7 @@
   function projHeader(on) {
     var act = vWork().filter(function (w) { return ['active', 'blocked', 'paused'].indexOf(w.status) >= 0; }).length;
     return stdHero({ title: on === 'ideas' ? '想法' : '项目', bg: 'var(--homebg)', pos: '50% 22%', sub: '让想法落地，一步步推进。', verse: ['凡事都要规规矩矩地按着次序行。', '哥林多前书 14:40'], script: 'Step<br>&nbsp;by Step',
-      actions: '<button class="tk-ic w-ic" data-do="search" aria-label="搜索">' + hi('search', 1.8) + '</button><button class="w-plus" data-do="' + (on === 'ideas' ? 'quickIdea' : 'wNew') + '" aria-label="' + (on === 'ideas' ? '记录想法' : '新建') + '">' + ti('plus2', 2.4) + '</button>',
+      actions: '<button class="tk-ic w-ic" data-do="search" aria-label="搜索">' + hi('search', 1.8) + '</button>' + (on === 'ideas' && !myCaps().recordIdea ? '' : '<button class="w-plus" data-do="' + (on === 'ideas' ? 'quickIdea' : 'wNew') + '" aria-label="' + (on === 'ideas' ? '记录想法' : '新建') + '">' + ti('plus2', 2.4) + '</button>'),
       pill: on === 'ideas' ? '' : '<button class="tk-month" data-do="workFilter" data-f="active">' + ai2('ops', 1.6) + '进行中 ' + act + ' 个' + ai2('downc', 1.8) + '</button>' }) +
       '';
   }
@@ -2342,6 +2357,7 @@
   var WD = {
     wNew: function () {
       var O2 = [['quickIdea', 'bulb', '记录想法', '语音、文字或视频'], ['quickProject', 'plus2', '新建项目', '手动填写或 AI 解析'], ['quickAssign', 'person', '分配任务', '让合适的人做合适的事'], ['quickAI', 'spark', 'AI 助手', '整理、分析、建议、创作']];
+      var cp = myCaps(); O2 = O2.filter(function (o) { return o[0] === 'quickIdea' ? cp.recordIdea : o[0] === 'quickProject' ? cp.createProject : o[0] === 'quickAssign' ? cp.assign : true; });
       openSheet('新建', '<div class="wn-list">' + O2.map(function (o) { return '<button type="button" class="wn-item" data-do="' + o[0] + '"><span>' + (o[1] === 'spark' ? hi('spark', 1.6) : o[1] === 'plus2' ? ti('plus2', 2) : ai2(o[1], 1.7)) + '</span><b>' + o[2] + '</b><small>' + o[3] + '</small>' + hi('chev', 2) + '</button>'; }).join('') + '</div>', '关闭', function () { closeSheet(); });
     },
     wTab: function (el) { wd.tab = el.dataset.t; render(); },
@@ -2523,7 +2539,7 @@
     goMe: function () { location.hash = '#/me'; },
     readAll: function () { act('notif.read', {}); },
     readOne: function (el) { TM.act(S, me, 'notif.read', { id: el.dataset.id }); save(); return true; },
-    reset: function () { if (confirm('重置后，所有演示操作都会清空，回到初始示例数据。确定吗？')) { S = TM.seed(); save(); toast('已重置演示数据'); render(); } },
+    reset: function () { if (!myCaps().resetData) return toast('只有老板或管理员可以重置数据', true); if (confirm('重置后，所有演示操作都会清空，回到初始示例数据。确定吗？')) { S = TM.seed(); save(); toast('已重置演示数据'); render(); } },
     recStart: startRec, recStop: stopRec,
     rmMedia: function (el) { newMedia.splice(+el.dataset.i, 1); render(); },
     reply: function (el) { var f = document.querySelector('form[data-form=suggest]'); if (!f) return; f.replyTo.value = el.dataset.id; document.getElementById('replyHint').textContent = '回复 ' + el.dataset.id + '（点发送前可清空输入框改为新建议）'; f.body.focus(); },
@@ -2689,6 +2705,15 @@
     var app = document.getElementById('app'), c = cur();
     if (!me) { document.body.classList.remove('has-actions'); app.innerHTML = DEMO + viewLogin(); return; }
     if (c.name === 'login') { location.hash = '#/home'; return; }
+    var cp = myCaps(), to = null;
+    if (c.name === 'new' && !cp.recordIdea) to = '#/home';
+    else if (c.name === 'project' && !cp.createProject) to = '#/home';
+    else if (c.name === 'assign' && !cp.assign) to = '#/home';
+    else if (c.name === 'settings' && !cp.settings) to = '#/me';
+    else if (c.name === 'kb' && c.id === 'voice' && !cp.kbEdit) to = '#/kb';
+    else if ((c.name === 'ideas' || c.name === 'idea') && !cp.ideas) to = '#/home';
+    else if (c.name === 'work' && !cp.work) to = '#/home';
+    if (to) { history.replaceState(null, '', to); return render(); }
     var body = '', acts = [], title = TITLES[c.name] || '首页', back = false;
     switch (c.name) {
       case 'ideas': body = viewIdeas(); break;
@@ -2723,7 +2748,7 @@
       '<div class="top' + (back ? ' detail' : '') + '">' + (back ? '<button class="circle back" data-do="back" aria-label="返回"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>' : '') +
       '<h1>' + esc(title) + '</h1><button class="me-chip" data-do="switch" aria-label="切换账号，当前 ' + esc(u.name) + '">' + av(me) + '<span>' + esc(u.name) + '　' + esc(L.role[role()]) + '</span></button></div>') +
       '<main>' + body + '</main>' + actHTML +
-      '<div class="dock"><nav class="tabs" aria-label="主导航">' + TABS.map(function (t) { return '<a href="#/' + t[0] + '" class="' + (tabKey === t[0] ? 'on' : '') + '"' + (tabKey === t[0] ? ' aria-current="page"' : '') + '><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (tabKey === t[0] && TAB_ON[t[0]] ? TAB_ON[t[0]] : t[2]) + '</svg></span>' + t[1] + (t[0] === 'tasks' && nT ? '<span class="badge">' + nT + '</span>' : '') + '</a>'; }).join('') + '</nav></div>';
+      '<div class="dock"><nav class="tabs" aria-label="主导航">' + TABS.filter(function (t) { var cp = myCaps(); return t[0] === 'ideas' ? cp.ideas : t[0] === 'work' ? cp.work : true; }).map(function (t) { return '<a href="#/' + t[0] + '" class="' + (tabKey === t[0] ? 'on' : '') + '"' + (tabKey === t[0] ? ' aria-current="page"' : '') + '><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (tabKey === t[0] && TAB_ON[t[0]] ? TAB_ON[t[0]] : t[2]) + '</svg></span>' + t[1] + (t[0] === 'tasks' && nT ? '<span class="badge">' + nT + '</span>' : '') + '</a>'; }).join('') + '</nav></div>';
     afterRender();
   }
   Object.keys(QUICK).forEach(function (k) { DO[k] = QUICK[k]; });
@@ -2738,6 +2763,11 @@
   };
   DO.expandNote = function () { draft.big = !draft.big; render(); };
   DO.hmVerse = function () { hmV++; render(); };
+  DO.hmTriage = function () { filt.ideas = 'triage'; filt.ideasOpen = true; location.hash = '#/ideas'; };
+  DO.hmTasks = function () { location.hash = '#/tasks'; };
+  DO.hmTodo = function () { location.hash = '#/todo/new'; };
+  DO.hmTeam = function () { location.hash = '#/team'; };
+  DO.hmKB = function () { location.hash = '#/kb'; };
   DO.ixFold = function (el) { var c = el.closest('.ix2-fold'); var on = c.classList.toggle('open'); el.setAttribute('aria-expanded', on); el.querySelector('span').textContent = on ? '收起' : (c.classList.contains('ix2-adv') ? '看理由' : c.classList.contains('fl-card') ? '展开完整过程' : c.classList.contains('dg') ? '展开完整总结' : c.classList.contains('tx-log') ? '展开全部动态' : c.classList.contains('dz-card') ? (c.querySelectorAll('.dz-t.more').length ? '展开其余 ' + c.querySelectorAll('.dz-t.more').length + ' 条讨论' : '展开讨论汇总') : c.classList.contains('ix2-aiwrap') ? '展开全部' : '展开全文'); if (!on) c.scrollIntoView({ block: 'nearest' }); };
   DO.ixAttach = function () { var id = cur().id;
     var o = function (cap, acc, icon, t, s) { return '<label class="ix2-opt"><input type="file" data-ixfile="' + id + '"' + (acc ? ' accept="' + acc + '"' : '') + (cap ? ' capture="' + cap + '"' : '') + ' multiple><span class="ix2-oi">' + icon + '</span><b>' + t + '</b><small>' + s + '</small></label>'; };
@@ -2757,7 +2787,7 @@
   DO.ixReAI = function () { act('idea.reanalyze', { id: cur().id }, '已重新整理'); };
   DO.ixTags = function () { var d = I(cur().id), sel = (d.tags || []).slice(); var pool = TX_TAGS.map(function (x) { return x[0]; }).concat(['招聘', '开发', '预算']).concat(sel).filter(function (x, i, a) { return a.indexOf(x) === i; });
     openSheet('相关标签', '<p class="muted" style="font-size:14px;margin:0 0 10px">点选或取消，最多 5 个。</p><div class="ix2-pick">' + pool.map(function (t) { return '<label><input type="checkbox" name="t" value="' + esc(t) + '"' + (sel.indexOf(t) >= 0 ? ' checked' : '') + '><span># ' + esc(t) + '</span></label>'; }).join('') + '</div>' + field('自定义标签', '<input type="text" name="custom" maxlength="8" placeholder="输入后保存即可添加">'), '保存', function (o) { var f = document.querySelector('.sheet form') || document; var ts = Array.prototype.map.call(document.querySelectorAll('.sheet input[name=t]:checked'), function (x) { return x.value; }); if (o.custom && o.custom.trim()) ts.push(o.custom.trim()); act('idea.tags', { id: d.id, tags: ts }, '标签已更新'); }); };
-  DO.ixMore = function () { var d = I(cur().id), acts = ideaActions(d).filter(function (x) { return x[2] !== 'pri'; }); openSheet('更多操作', '<div class="wd-ops">' + acts.map(function (x) { return '<button type="button" class="btn block" data-do="' + x[1] + '"' + (x[3] ? ' data-arg="' + x[3] + '"' : '') + '>' + x[0] + '</button>'; }).join('') + '<button type="button" class="btn block" data-do="ixLog">查看操作记录</button><button type="button" class="btn block" data-do="ixCopy">复制链接</button>' + (isOwner() || (d.creatorId === me && d.status === 'draft') ? '<button type="button" class="btn block danger" data-do="ixDelete">删除这个想法</button>' : '') + '</div>', '关闭', function () { closeSheet(); }); };
+  DO.ixMore = function () { var d = I(cur().id), acts = ideaActions(d).filter(function (x) { return x[2] !== 'pri'; }); openSheet('更多操作', '<div class="wd-ops">' + acts.map(function (x) { return '<button type="button" class="btn block" data-do="' + x[1] + '"' + (x[3] ? ' data-arg="' + x[3] + '"' : '') + '>' + x[0] + '</button>'; }).join('') + (ixCanLog(d) ? '<button type="button" class="btn block" data-do="ixLog">查看操作记录</button>' : '') + '<button type="button" class="btn block" data-do="ixCopy">复制链接</button>' + (isOwner() || (d.creatorId === me && d.status === 'draft') ? '<button type="button" class="btn block danger" data-do="ixDelete">删除这个想法</button>' : '') + '</div>', '关闭', function () { closeSheet(); }); };
   DO.ixDelete = function () {
     var d = I(cur().id); if (!d) return;
     var live = S.workItems.filter(function (w) { return w.ideaId === d.id && ['done', 'cancelled'].indexOf(w.status) < 0; });

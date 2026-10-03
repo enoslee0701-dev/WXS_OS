@@ -61,7 +61,7 @@ let pass=0, fail=0; const ok=(c,m)=>{ if(c)pass++; else {fail++; console.log('�
   await login('周敏'); await p.goto(URL+'#/idea/I2');
   await p.fill('form[data-form=suggest] textarea','担心内容成本太高，有风险'); await p.click('form[data-form=suggest] button');
   ok(await p.locator('.dz-m').count()>=4,'执行者建议已发出');
-  await p.goto(URL+'#/home'); await p.click('[data-do=quickIdea]'); ok((await toastTxt()).includes('只有老板'),'执行者点记录想法被提示无权限');
+  await p.goto(URL+'#/home'); await p.waitForTimeout(100); ok(await p.locator('[data-do=quickIdea]').count()===0 && await p.locator('.hm-card[data-do=hmTasks]').count()===1,'执行者首页不显示记录想法，改为我的待办');
   await login('陈立'); await p.goto(URL+'#/idea/I2'); await btn('结束讨论'); await sheetSubmit();
   ok(await p.locator('.src').count()>3,'汇总带来源引用');
   await p.screenshot({path:'shot-cocreate.png',fullPage:true});
@@ -78,7 +78,9 @@ let pass=0, fail=0; const ok=(c,m)=>{ if(c)pass++; else {fail++; console.log('�
   ok(await p.locator('.wx-chips i',{hasText:'开发阶段'}).count()===1,'推进到开发阶段');
   // ---- 权限：管理员
   await login('孙磊'); await p.goto(URL+'#/ideas'); ok(await p.locator('.row').count()===0,'管理员看不到想法');
-  await p.goto(URL+'#/idea/I3'); ok((await p.textContent('main')).includes('没有查看权限'),'管理员打不开老板草稿');
+  await p.goto(URL+'#/idea/I3'); await p.waitForTimeout(100); ok(p.url().endsWith('#/home') && !(await p.textContent('#app')).includes('I3'),'管理员打不开老板草稿（送回首页）');
+  ok(await p.locator('.tabs a:has-text("想法")').count()===0 && await p.locator('.tabs a:has-text("项目")').count()===0,'管理员底部没有想法、项目标签');
+  ok(await p.locator('.hm-card[data-do=hmTeam]').count()===1 && await p.locator('.hm-card[data-do=hmKB]').count()===1,'管理员首页：成员与账号、AI 知识库');
   // 设置开关
   await login('Enos'); await p.goto(URL+'#/me'); await p.locator('input[data-set=ownerFinalAdmin]').evaluate(e=>e.click());
   await p.waitForTimeout(100); ok(await p.evaluate(()=>window.__tm.S.settings.ownerFinalAdmin)===true,'C1 开关生效');

@@ -32,6 +32,6 @@ const URL=(require('./_env').URL);
   await p.goto(URL+'#/kb'); await p.waitForTimeout(100); ok(await p.locator('.kb-row',{hasText:'口述整理'}).count()===1, '列表标注口述整理');
   await p.fill('#kbq','新想法要不要试点'); await p.click('[data-do=kbAsk]'); await p.waitForTimeout(100); ok((await p.textContent('main')).includes('老板的决策与用人原则'), 'AI 能引用口述整理的规则');
   // 权限
-  await as('u_op'); await p.goto(URL+'#/kb/voice'); await p.waitForTimeout(150); ok((await p.textContent('main')).includes('只有老板和管理员'), '非老板不能录入');
+  await as('u_op'); await p.goto(URL+'#/kb/voice'); await p.waitForTimeout(150); ok(p.url().endsWith('#/kb') && await p.locator('[href="#/kb/voice"],[data-do=kbVoice]').count()===0, '非老板打开口述录入被送回知识库，且看不到入口');
   ok(!errs.length,'无脚本错误 '+errs.join(';')); console.log('口述成规则 E2E 通过',pass,'失败',fail); await b.close();
 })();

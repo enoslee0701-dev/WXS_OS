@@ -18,7 +18,9 @@ await p.click('[data-do=meEdit][data-k=email]');await p.fill('.sheet input[name=
 await p.fill('.sheet input[name=v]','enos@team.org');await sub();ok((await p.textContent('.me-sec')).length>0 && (await p.locator('.me-info',{hasText:'邮箱'}).textContent()).includes('enos@team.org'),'改邮箱');
 await p.click('.me-round[href="#/settings"]');await p.waitForTimeout(120);ok(p.url().endsWith('#/settings') && await p.locator('[data-set=staleDays]').count()===1,'更多设置页');
 await p.goto(URL+'#/me');await p.click('[data-do=switch]');await p.click('.acct:has-text("周敏")');await p.click('.tabs a:has-text("我的")');await p.waitForTimeout(120);
-ok((await p.textContent('.me-badge')).includes('执行者') && await p.locator('[data-set=ownerFinalAdmin]').isDisabled(),'执行者只读开关');
+ok((await p.textContent('.me-badge')).includes('执行者') && await p.locator('[data-set=ownerFinalAdmin]').count()===0 && await p.locator('[data-pref=notifyImportant]').count()===1,'执行者不显示流程开关，只保留个人通知');
+ok(await p.locator('a[href="#/settings"]').count()===0,'执行者没有更多设置入口');
+await p.goto(URL+'#/settings');await p.waitForTimeout(100);ok(p.url().endsWith('#/me'),'执行者打开设置被送回我的');
 ok(await p.locator('[data-do=meEdit][data-k=name]').count()===0,'执行者不能改姓名');
 ok(errs.length===0,'无报错 '+errs.join('|'));
 console.log(`我的 E2E 通过 ${pass}，失败 ${fail}`);await b.close();process.exit(fail?1:0);})().catch(e=>{console.error(e);process.exit(1)});

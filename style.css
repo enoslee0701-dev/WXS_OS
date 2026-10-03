@@ -2946,3 +2946,6 @@ textarea{min-height:76px;padding:9px 12px;font-size:15px;border-radius:12px}
 .kbv-raw{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:13px;color:#3A4358;cursor:pointer}
 .kbv-raw input{width:18px;height:18px;accent-color:#1E2638}
 .kbv-btns{margin:4px 0 24px}
+
+/* 角色化：标签数量随角色变化（管理员只有 3 个），按实际数量均分 */
+.tabs{grid-template-columns:none!important;grid-auto-flow:column;grid-auto-columns:1fr}
