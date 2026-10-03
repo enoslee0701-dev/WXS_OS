@@ -33,6 +33,7 @@ const FAKE = (opts) => {
   // 0. 普通浏览器：桥接层不生效
   { const c = await b.newContext(); const p = await c.newPage(); await p.goto(URL);
     ok(await p.evaluate(() => TMN.native === false && !document.documentElement.classList.contains('native')), '浏览器里不启用原生层');
+    ok(await p.evaluate(() => !/maximum-scale/.test(document.querySelector('meta[name=viewport]').content)), '网页版保留缩放');
     await c.close(); }
 
   // 1. 原生环境基础（首次打开：欢迎页）
@@ -41,6 +42,7 @@ const FAKE = (opts) => {
   ok(await p.evaluate(() => window.SpeechRecognition === TMN.SpeechRecognition && window.webkitSpeechRecognition === TMN.SpeechRecognition), '语音识别换成原生实现');
   ok(await p.evaluate(() => __fake.calls.includes('SplashScreen.hide')), '加载后关闭启动屏');
   ok(await p.evaluate(() => !TMN.error), '桥接层无错误');
+  ok(await p.evaluate(() => /maximum-scale=1/.test(document.querySelector('meta[name=viewport]').content)), 'App 里禁止缩放（避免点输入框页面放大）');
 
   ok(await p.locator('.welcome [data-do=srvConnect]').count() === 1 && await p.locator('.acct').count() === 0, 'App 首次打开是欢迎页（连接服务器 / 看演示）');
   await p.click('[data-do=demoChoose]'); await p.waitForTimeout(100);

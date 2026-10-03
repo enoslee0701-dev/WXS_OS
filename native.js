@@ -10,6 +10,8 @@ var TMN = (function () {
   if (!native) return api;
   try {
   document.documentElement.classList.add('native', 'p-' + api.platform);
+  // App 里禁止缩放：iOS 遇到字号小于 16px 的输入框会自动放大页面（网页版保留缩放，照顾无障碍）
+  (function () { var m = document.querySelector('meta[name=viewport]'); if (m && !/maximum-scale/.test(m.content)) m.content += ', maximum-scale=1, user-scalable=no'; })();
   function plug(n) { try { return C.registerPlugin(n); } catch (e) { return null; } }
   var Prefs = plug('Preferences'), Clip = plug('Clipboard'), App = plug('App'), Bar = plug('StatusBar'), Kb = plug('Keyboard'), Splash = plug('SplashScreen'), Speech = plug('Speech');
   api.plugins = { Preferences: Prefs, Clipboard: Clip, App: App, StatusBar: Bar, Keyboard: Kb, SplashScreen: Splash, Speech: Speech };
