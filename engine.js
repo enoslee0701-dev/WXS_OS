@@ -1038,6 +1038,13 @@ var TM = (function () {
     ev(s, { ideaId: d.id, actor: 'agent', action: 'ai.analyze.real', text: 'Claude 完成整理 · 建议：' + L.route[np.suggested_route] });
     return {};
   };
+  /* 日常清理（服务器每天以系统身份执行）：已读且超过 60 天的通知删掉，未读的保留 */
+  A['system.housekeep'] = function (s, uid) {
+    need(uid === 'agent', '只有系统可以清理');
+    var cut = now(s) - 60 * DAY, n0 = s.notifications.length;
+    s.notifications = s.notifications.filter(function (n) { return !n.read || n.at >= cut; });
+    return { removed: n0 - s.notifications.length };
+  };
   /* Claude 讨论总结：服务器后台以系统身份替换规则版（期间老板又让总结了一版就不覆盖） */
   A['idea.digestResult'] = function (s, uid, p) {
     need(uid === 'agent', '只有系统可以写入 AI 总结');

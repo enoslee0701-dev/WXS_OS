@@ -559,5 +559,12 @@ must(TM.act(mt, 'u_owner', 'task.review', { id: mtk, verdict: 'pass', note: '好
 must(TM.act(mt, 'u_owner', 'work.close', { id: mp.workId }), '老板确认项目完成');
 ok(mt.workItems.find(w => w.id === mp.workId).status === 'done', '最小团队闭环走通');
 
+// ===== 日常清理 =====
+s = TM.migrate(fresh());
+s.notifications.push({ id: 'Nold1', userId: O, title: '旧的已读', body: '', link: '', at: t - 90 * TM.DAY, read: true }, { id: 'Nold2', userId: O, title: '旧的未读', body: '', link: '', at: t - 90 * TM.DAY, read: false });
+rej(TM.act(s, O, 'system.housekeep', {}), '老板不能直接调用清理');
+const hk = must(TM.act(s, 'agent', 'system.housekeep', {}), '系统清理');
+ok(hk.removed >= 1 && !s.notifications.some(n => n.id === 'Nold1') && s.notifications.some(n => n.id === 'Nold2'), '删掉 60 天前已读的通知，未读的保留');
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

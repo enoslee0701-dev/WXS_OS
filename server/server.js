@@ -447,8 +447,11 @@ function sweepAi() {
   if (!S) return; const ids = new Set(q('SELECT summary_id FROM ai_jobs WHERE at > ?').all(Date.now() - 2 * 864e5).map(r => r.summary_id)); q('DELETE FROM ai_jobs').run();
   autoAnalyze(S.summaries.filter(x => ids.has(x.id) && x.payload && x.payload.simulated && TM.latestSummary(S, x.ideaId, x.kind) === x));
 }
+/* 每天清理一次（启动 1 分钟后先跑一次） */
+function housekeep() { if (!S) return; try { const r = TM.act(S, 'agent', 'system.housekeep', {}); if (r.ok && r.removed) { changed(); console.log('日常清理：删掉 ' + r.removed + ' 条旧通知'); } } catch (e) { console.error('日常清理出错', e); } }
 if (require.main === module) server.listen(PORT, HOST, () => {
   setTimeout(sweepAi, 3000);
+  setTimeout(housekeep, 60e3).unref(); setInterval(housekeep, 864e5).unref();
   console.log(`团队协同服务器已启动：http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  数据目录：${DATA}`);
   if (SETUP_CODE) console.log(`还没有创建团队。创建团队时需要初始化码：${SETUP_CODE}`);
 });
