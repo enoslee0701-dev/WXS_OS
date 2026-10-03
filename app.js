@@ -1077,8 +1077,18 @@
     txRmFile: function (el) { tx.files.splice(+el.dataset.i, 1); render(); }
   };
   var mustAsked = false;
+  /* 真实团队（老板刚创建）第一天：三步开始 */
+  var onboardAsked = false;
+  function onboardSteps() { return [
+    ['members', '添加成员并分派账号', '让同事用自己的账号登录', S.users.length > 1, '#/team'],
+    ['direction', '填写公司方向', 'AI 整理想法时会参考', !!(S.settings.direction || '').trim(), '#/settings'],
+    ['idea', '记录第一个想法', '说一段话、拍个视频或写几句', S.ideas.length > 0, '#/new']
+  ]; }
+  function onboardDone() { try { if (localStorage.getItem('tm_onboard_' + me) === '1') return true; } catch (e) {} return onboardSteps().every(function (x) { return x[3]; }); }
+
   function afterRender() {
     if (SRV && me && TMS.mustChange && !mustAsked && !document.querySelector('#layer .sheet')) { mustAsked = true; setTimeout(function () { DO.srvPassword(); }, 300); }
+    if (SRV && me && isOwner() && S.real && cur().name === 'home' && !onboardAsked && !document.querySelector('#layer .sheet') && !onboardDone()) { onboardAsked = true; setTimeout(function () { DO.onboard(); }, 400); }
     var strip = document.getElementById('tkdays');
     if (strip) { if (td.stripScroll != null) strip.scrollLeft = td.stripScroll; else { var tg = strip.querySelector('.today') || strip.querySelector('.on'); if (tg) strip.scrollLeft = tg.offsetLeft - strip.firstElementChild.offsetLeft; } strip.onscroll = function () { td.stripScroll = strip.scrollLeft; }; }
     document.querySelectorAll('video[data-vmeta]').forEach(function (v) { v.onloadedmetadata = function () { var m = cam.clips[+v.dataset.vmeta]; if (m && !m.durationSec && isFinite(v.duration)) { m.durationSec = Math.round(v.duration); render(); } }; });
@@ -1727,6 +1737,7 @@
         '<div class="me-info">' + hi('pie', 1.7) + '<span>服务器</span><b>' + esc(TMS.serverUrl()) + '</b><i></i></div>' +
         '<button class="me-info me-out" data-do="srvLogout">' + hi('chev', 1.7) + '<span>退出登录</span><b></b>' + hi('chev', 2) + '</button>' + (isOwner() ? '' : '<button class="me-info me-del" data-do="srvDeactivate">' + hi('chev', 1.7) + '<span>注销账号</span><b>停用后无法登录</b>' + hi('chev', 2) + '</button>') + '</section>' : '') +
       '<section class="me-sec"><div class="me-sh">' + ic(ti('more', 1.6)).replace('me-ic', 'me-ic blue') + '<b>通用</b></div>' +
+      (SRV && isOwner() && S.real && !onboardSteps().every(function (x) { return x[3]; }) ? '<button class="me-info" data-do="onboard">' + hi('flag', 1.7) + '<span>开始使用</span><b>还有 ' + onboardSteps().filter(function (x) { return !x[3]; }).length + ' 步</b>' + hi('chev', 2) + '</button>' : '') +
       '<button class="me-info" data-do="quickAI">' + hi('spark', 1.7) + '<span>AI 助手</span><b>整理、分析、建议、创作</b>' + hi('chev', 2) + '</button>' +
       '<a class="me-info" href="#/inbox">' + hi('bell', 1.7) + '<span>通知中心</span><b>' + (nU ? nU + ' 条未读' : '全部已读') + '</b>' + hi('chev', 2) + '</a>' +
       (can ? '<a class="me-info" href="#/settings">' + ai2('ctx', 1.7) + '<span>更多设置</span><b>终验、标签、提醒、演示工具</b>' + hi('chev', 2) + '</a>' : '') +
@@ -2904,6 +2915,11 @@
   };
   DO.expandNote = function () { draft.big = !draft.big; render(); };
   DO.hmVerse = function () { hmV++; render(); };
+  DO.onboard = function () {
+    var st = onboardSteps();
+    openSheet('三步开始使用', '<p class="muted" style="margin:0 0 12px;font-size:14px">团队已经建好。完成这三步，团队就能运转起来：</p><div class="ob-list">' + st.map(function (x, i) { return '<button type="button" class="ob-i' + (x[3] ? ' done' : '') + '" data-do="onboardGo" data-h="' + x[4] + '"><span class="ob-n">' + (x[3] ? '✓' : i + 1) + '</span><span><b>' + x[1] + '</b><small>' + x[2] + '</small></span>' + hi('chev', 2) + '</button>'; }).join('') + '</div>', '以后再说', function () { try { localStorage.setItem('tm_onboard_' + me, '1'); } catch (e) {} closeSheet(); });
+  };
+  DO.onboardGo = function (el) { closeSheet(); location.hash = el.dataset.h; };
   DO.demoChoose = function () { try { localStorage.setItem('tm_demo_chosen', '1'); } catch (e) {} render(); };
   DO.srvConnect = function () { openSheet('连接团队服务器', field('服务器地址', '<input type="url" name="server" placeholder="例如：http://192.168.1.20:8787" autocapitalize="off" autocorrect="off" required>', '由老板在电脑或服务器上运行 npm run server 后得到的地址。'), '连接', function (o) { TMS.useServer(o.server); }); };
   DO.srvLocal = function () { TMS.useLocal(); };
