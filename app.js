@@ -773,7 +773,19 @@
     pDue: function (el) { pd.due = TM.dateAdd(S, +el.dataset.d); render(); },
     pPri: function (el) { pd.priority = el.dataset.v; render(); },
     pGoalAI: function () { var n = (pd.note || '').replace(/【[^】]*】/g, ' ').split(/[。\n！!；;]/).map(function (x) { return x.trim(); }).filter(function (x) { return x.length > 3; })[0] || pd.title; pd.goal = ((pd.due ? mdTxt(pd.due) + '前' : '') + (n || '').replace(/^(我想|我们想|希望|打算|准备)/, '') + '，并通过验收').slice(0, 200); render(); toast('已按描述拟了目标（演示：规则模拟），可以再改'); },
-    pTasksAI: function () {
+    pTasksAI: function (el) {
+      // 老板 / 管理员且 AI 已启用：交给 Claude 按名称、类型和描述拆任务；失败退回规则
+      if (AI_ON && !pd.aiRule && (pd.title || pd.note)) {
+        if (el && el.disabled) return; if (el) { el.disabled = true; el.dataset.t = el.innerHTML; el.innerHTML = '<span class="ai-typing"><i></i><i></i><i></i></span> Claude 拆解中…'; }
+        var undo = function () { if (el) { el.disabled = false; el.innerHTML = el.dataset.t; } };
+        TMS.aiProject('项目名称：' + (pd.title || '') + '\n项目类型：' + (TM.PTYPE[pd.ptype] ? TM.PTYPE[pd.ptype][0] : '') + '\n项目描述：' + (pd.note || '') + (pd.goal ? '\n项目目标：' + pd.goal : '') + '\n请拆出首批任务。').then(function (r) {
+          undo(); var have = pd.tasks.map(function (t) { return t.title.trim(); });
+          var list = r.tasks.filter(function (t) { return have.indexOf(t.title) < 0; }).map(function (t) { return { title: t.title, ownerId: t.ownerId || pd.leadId || TM.usersWith(S, 'executor')[0], expected: t.expected || '完成说明 + 成果链接或照片', criteria: t.criteria || '由验收人确认达到目标' }; });
+          if (!list.length) return toast('Claude 建议的任务都已经在列表里了');
+          pd.tasks = pd.tasks.filter(function (t) { return t.title.trim(); }).concat(list); render(); toast('Claude 拆出 ' + list.length + ' 个任务，执行人可以改');
+        }, function (e) { undo(); toast(((e && e.error) || 'AI 暂时不可用') + '，已改用规则拆解', true); pd.aiRule = true; DO.pTasksAI(); pd.aiRule = false; });
+        return;
+      }
       var r = pd.note ? parseTranscript(pd.note) : { tasks: [] }, ld = pd.leadId && (TM.user(S, pd.leadId).roles.find(function (x) { return x.role === 'lead'; }) || {}).dept;
       var ex = (ld && S.users.find(function (u) { return u.roles.some(function (x) { return x.role === 'executor' && x.dept === ld; }); }) || {}).id || TM.usersWith(S, 'executor')[0];
       var list = r.tasks && r.tasks.length >= 2 ? r.tasks.map(function (t) { return { title: t.title, ownerId: t.ownerId || ex, expected: t.expected || '完成说明 + 成果链接或照片', criteria: t.criteria || '由验收人确认达到目标' }; })

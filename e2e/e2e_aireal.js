@@ -63,6 +63,15 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', d => b
   ok(calls === n4 + 1 && (await p.inputValue('.sheet input[name=title]')) === 'Claude 拟的项目' && (await p.inputValue('.sheet select[name=ptype]')) === 'event', 'AI 新建项目走 Claude 解析');
   await p.evaluate(() => document.querySelectorAll('.scrim.on').forEach(x => x.click())); await p.waitForTimeout(150);
 
+  // ---- 新建项目第 2 步：AI 拆任务走 Claude
+  await p.goto(URL + '#/project'); await p.waitForTimeout(250);
+  await p.fill('[data-pd=title]', '年底感恩聚会'); await p.fill('[data-pd=note]', '十二月中旬全队感恩聚会，要订场地、做海报');
+  await p.click('[data-do=pTypeOther]'); await p.click('.np-more [data-k=event]');
+  await p.click('[data-do=pNext]'); await p.waitForTimeout(200);
+  const n5 = calls, t0n = await p.locator('.np-task').count(); await p.click('[data-do=pTasksAI]');
+  ok(await until(async () => (await p.textContent('#toast')).includes('Claude 拆出')), 'AI 拆任务走 Claude');
+  ok(calls === n5 + 1 && await p.locator('.np-task').count() > t0n, '拆出的任务加进列表');
+
   // ---- 口述整理成规则：Claude 结构化输出
   await p.goto(URL + '#/kb/voice'); await p.waitForTimeout(200);
   await p.fill('#kbv-text', '嗯，我说两点。新想法先试点两周看反馈。然后单笔超过五千块的支出要先问我。');
