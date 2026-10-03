@@ -13,8 +13,8 @@ var TMN = (function () {
   // App 里禁止缩放：iOS 遇到字号小于 16px 的输入框会自动放大页面（网页版保留缩放，照顾无障碍）
   (function () { var m = document.querySelector('meta[name=viewport]'); if (m && !/maximum-scale/.test(m.content)) m.content += ', maximum-scale=1, user-scalable=no'; })();
   function plug(n) { try { return C.registerPlugin(n); } catch (e) { return null; } }
-  var Prefs = plug('Preferences'), Clip = plug('Clipboard'), App = plug('App'), Bar = plug('StatusBar'), Kb = plug('Keyboard'), Splash = plug('SplashScreen'), Speech = plug('Speech');
-  api.plugins = { Preferences: Prefs, Clipboard: Clip, App: App, StatusBar: Bar, Keyboard: Kb, SplashScreen: Splash, Speech: Speech };
+  var Prefs = plug('Preferences'), Clip = plug('Clipboard'), App = plug('App'), Bar = plug('StatusBar'), Kb = plug('Keyboard'), Splash = plug('SplashScreen'), Speech = plug('Speech'), Push = plug('PushNotifications');
+  api.plugins = { PushNotifications: Push, Preferences: Prefs, Clipboard: Clip, App: App, StatusBar: Bar, Keyboard: Kb, SplashScreen: Splash, Speech: Speech };
 
   /* ---------- 1. 数据双存 ---------- */
   var PFX = 'tm_', MAIN = 'tm_demo_v3', BK = 'tm_backup_keys';
@@ -112,6 +112,16 @@ var TMN = (function () {
     App.addListener('pause', function () { flush(); });
     App.addListener('backButton', function (e) { if (location.hash && location.hash !== '#/home' && e && e.canGoBack) history.back(); else App.exitApp(); });
   }
+  /* ---------- 推送：登录后申请通知权限、登记设备；点通知跳到对应页面 ---------- */
+  api.pushInit = function () {
+    if (!Push || !window.TMS || !TMS.loggedIn() || api._push) return; api._push = true;
+    Push.addListener('registration', function (t) { if (t && t.value) { try { localStorage.setItem('tm_push_token', t.value); } catch (e) {} TMS.registerDevice(t.value); } });
+    Push.addListener('pushNotificationActionPerformed', function (a) { var d = a && a.notification && a.notification.data || {}; if (d.link && /^#\//.test(d.link)) location.hash = d.link; });
+    Push.addListener('pushNotificationReceived', function () { if (TMS.pull) TMS.pull(); });
+    Push.checkPermissions().then(function (p) { return p.receive === 'prompt' ? Push.requestPermissions() : p; })
+      .then(function (p) { if (p.receive === 'granted') return Push.register(); }).catch(function () {});
+  };
+  window.addEventListener('load', function () { setTimeout(api.pushInit, 1500); });
   /* ---------- 4. 外观 ---------- */
   if (Bar) Bar.setStyle({ style: 'LIGHT' }).catch(function () {});
   if (Kb) Kb.setAccessoryBarVisible({ isVisible: true }).catch(function () {});

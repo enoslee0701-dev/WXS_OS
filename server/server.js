@@ -10,6 +10,7 @@ const http = require('http'), fs = require('fs'), path = require('path'), crypto
 const { DatabaseSync } = require('node:sqlite');
 const TM = require('../engine.js');
 const AI = require('./ai.js');
+const PUSH = require('./push.js');
 
 const PORT = +process.env.PORT || 8787, HOST = process.env.HOST || '0.0.0.0';
 const DATA = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
@@ -27,6 +28,7 @@ CREATE TABLE IF NOT EXISTS creds(uid TEXT PRIMARY KEY, login TEXT UNIQUE COLLATE
 CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, uid TEXT, created INTEGER, seen INTEGER, agent TEXT);
 CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY, uid TEXT, name TEXT, type TEXT, size INTEGER, created INTEGER);
 CREATE TABLE IF NOT EXISTS ai_log(at INTEGER, uid TEXT, kind TEXT, in_tok INTEGER, out_tok INTEGER, ok INTEGER);
+CREATE TABLE IF NOT EXISTS devices(token TEXT PRIMARY KEY, uid TEXT, platform TEXT, created INTEGER);
 CREATE TABLE IF NOT EXISTS ops(seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, uid TEXT, action TEXT, payload TEXT, ok INTEGER, error TEXT);`);
 if (!db.prepare('PRAGMA table_info(sessions)').all().some(c => c.name === 'ft')) db.exec('ALTER TABLE sessions ADD COLUMN ft TEXT');
 const q = (sql) => db.prepare(sql);
@@ -95,6 +97,22 @@ function broadcast() { const msg = 'event: v\ndata: ' + JSON.stringify({ version
 function kickStale() { clients.forEach(c => { if (!q('SELECT 1 FROM sessions WHERE token=?').get(c.token)) { try { c.res.end(); } catch (e) {} clients.delete(c); } }); }
 setInterval(() => clients.forEach(c => { try { c.res.write(': ping\n\n'); } catch (e) {} }), 25e3).unref();
 
+/* 数据变了：版本 +1、写库、通知在线客户端；新产生的通知发 iOS 推送 */
+function changed(nNotif) {
+  version++; persist(); broadcast();
+  if (typeof nNotif === 'number') pushNew(S.notifications.slice(nNotif));
+}
+function pushNew(list) {
+  if (!PUSH.enabled() || !list.length) return;
+  list.forEach(n => {
+    const u = TM.user(S, n.userId); if (!u || (u.prefs && u.prefs.notifyImportant === false)) return;
+    const badge = S.notifications.filter(x => x.userId === n.userId && !x.read).length;
+    q('SELECT token FROM devices WHERE uid=?').all(n.userId).forEach(d => {
+      PUSH.send(d.token, { title: n.title, body: n.body, link: n.link, badge }).then(r => { if (PUSH.dead(r)) q('DELETE FROM devices WHERE token=?').run(d.token); });
+    });
+  });
+}
+
 /* ---------- HTTP ---------- */
 function send(res, code, obj) { if (res.headersSent) return; const b = JSON.stringify(obj); res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(b); }
 function body(req) {
@@ -143,13 +161,13 @@ const routes = {
   /* 执行业务操作：权限全部由 engine.js 按登录身份判断 */
   'POST /api/act': async (req, url, b, me) => {
     const name = String(b.name || '').slice(0, 64), payload = b.payload && typeof b.payload === 'object' && !Array.isArray(b.payload) ? b.payload : {};
-    const snap = JSON.stringify(S), nSum = S.summaries.length; let r;
+    const snap = JSON.stringify(S), nSum = S.summaries.length, nNotif = S.notifications.length; let r;
     // 清理数据前留一份完整备份
     if (name === 'data.clearDemo' && isOwner(me.uid)) fs.writeFileSync(path.join(DATA, 'backups', 'before-clear-' + Date.now() + '.json'), snap);
     try { r = TM.act(S, me.uid, name, payload); }
     catch (e) { S = JSON.parse(snap); console.error('act 异常', name, e); r = { ok: false, error: '服务器处理出错，已回滚' }; }
     q('INSERT INTO ops(at,uid,action,payload,ok,error) VALUES(?,?,?,?,?,?)').run(Date.now(), me.uid, name, JSON.stringify(payload).slice(0, 20000), r.ok ? 1 : 0, r.ok ? null : String(r.error || '').slice(0, 200));
-    if (r.ok) { version++; persist(); broadcast(); autoAnalyze(S.summaries.slice(nSum)); }
+    if (r.ok) { changed(nNotif); autoAnalyze(S.summaries.slice(nSum)); }
     return [200, { ok: !!r.ok, error: r.ok ? undefined : r.error, r: pickR(r), ...stateFor(me.uid) }];
   },
   'POST /api/password': async (req, url, b, me) => {
@@ -167,10 +185,18 @@ const routes = {
     if (!checkPw(c, b.password || '')) return [400, { error: '密码不对' }];
     q('UPDATE creds SET disabled=1 WHERE uid=?').run(me.uid);
     dropSessions('uid=?', me.uid);
-    const r = TM.act(S, 'agent', 'account.deactivated', { id: me.uid });
-    if (r.ok) { version++; persist(); broadcast(); }
+    q('DELETE FROM devices WHERE uid=?').run(me.uid);
+    const n0 = S.notifications.length, r = TM.act(S, 'agent', 'account.deactivated', { id: me.uid });
+    if (r.ok) changed(n0);
     return [200, { ok: true }];
   },
+  /* iOS 推送：登记 / 注销设备（同一台手机换人登录，归属跟着换） */
+  'POST /api/devices': async (req, url, b, me) => {
+    const t = String(b.token || ''); if (!/^[0-9a-fA-F]{32,200}$/.test(t)) return [400, { error: '设备令牌不对' }];
+    q('INSERT INTO devices(token,uid,platform,created) VALUES(?,?,?,?) ON CONFLICT(token) DO UPDATE SET uid=excluded.uid, platform=excluded.platform').run(t, me.uid, b.platform === 'android' ? 'android' : 'ios', Date.now());
+    return [200, { ok: true, push: PUSH.enabled() }];
+  },
+  'POST /api/devices/remove': async (req, url, b, me) => { q('DELETE FROM devices WHERE token=? AND uid=?').run(String(b.token || ''), me.uid); return [200, { ok: true }]; },
   /* 真实 AI：没配置密钥或没有权限时 enabled=false，客户端用规则模拟 */
   'GET /api/ai/status': async (req, url, b, me) => [200, { enabled: AI.enabled() && AI.allowed(S, me.uid), configured: AI.enabled(), model: AI.MODEL }],
   'POST /api/ai/ask': async (req, url, b, me) => aiRun(me, 'ask', () => AI.ask(S, me.uid, String(b.q || ''), b.history)),
@@ -208,12 +234,12 @@ const routes = {
     if (isOwner(uid)) return [403, { error: '不能停用老板的账号' }];
     if (!isOwner(me.uid) && TM.hasRole(S, uid, 'admin')) return [403, { error: '管理员的账号只能由老板停用' }];
     q('UPDATE creds SET disabled=? WHERE uid=?').run(b.disabled ? 1 : 0, uid);
-    if (b.disabled) dropSessions('uid=?', uid);
+    if (b.disabled) { dropSessions('uid=?', uid); q('DELETE FROM devices WHERE uid=?').run(uid); }
     return [200, { ok: true }];
   }
 };
 /* 没改初始密码前只能做这些 */
-const MUST_OK = new Set(['POST /api/account/deactivate', 'GET /api/me', 'GET /api/state', 'POST /api/password', 'POST /api/logout', 'GET /api/ai/status']);
+const MUST_OK = new Set(['POST /api/devices', 'POST /api/devices/remove', 'POST /api/account/deactivate', 'GET /api/me', 'GET /api/state', 'POST /api/password', 'POST /api/logout', 'GET /api/ai/status']);
 
 /* ---------- 附件 ---------- */
 const FILE_ID = /^[A-Za-z0-9_-]{4,64}$/;
@@ -280,8 +306,8 @@ function autoAnalyze(added) {
     aiRun({ uid: 'agent' }, 'analyze', () => AI.analyzeIdea(S, sm.ideaId), true).then(([code, out]) => {
       analyzing.delete(sm.id);
       if (code !== 200 || !S) return;
-      const r = TM.act(S, 'agent', 'idea.aiResult', { id: sm.ideaId, summaryId: sm.id, model: AI.MODEL, payload: out.payload });
-      if (r.ok) { version++; persist(); broadcast(); }
+      const n0 = S.notifications.length, r = TM.act(S, 'agent', 'idea.aiResult', { id: sm.ideaId, summaryId: sm.id, model: AI.MODEL, payload: out.payload });
+      if (r.ok) changed(n0);
     }, () => analyzing.delete(sm.id));
   });
 }

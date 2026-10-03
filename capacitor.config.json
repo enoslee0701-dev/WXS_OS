@@ -9,8 +9,27 @@
     "limitsNavigationsToAppBoundDomains": false
   },
   "plugins": {
-    "SplashScreen": { "launchShowDuration": 3000, "launchAutoHide": false, "backgroundColor": "#FFFFFF", "showSpinner": false },
-    "Keyboard": { "resize": "native", "resizeOnFullScreen": true },
-    "StatusBar": { "overlaysWebView": true, "style": "LIGHT" }
+    "SplashScreen": {
+      "launchShowDuration": 3000,
+      "launchAutoHide": false,
+      "backgroundColor": "#FFFFFF",
+      "showSpinner": false
+    },
+    "Keyboard": {
+      "resize": "native",
+      "resizeOnFullScreen": true
+    },
+    "StatusBar": {
+      "overlaysWebView": true,
+      "style": "LIGHT"
+    },
+    "PushNotifications": {
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "banner",
+        "list"
+      ]
+    }
   }
 }

@@ -14,7 +14,7 @@ const FAKE = (opts) => {
   const M = (n, ms) => ({ name: n, methods: ms.map(x => ({ name: x, rtype: 'promise' })).concat([{ name: 'addListener', rtype: 'callback' }, { name: 'removeListener', rtype: 'promise' }, { name: 'removeAllListeners', rtype: 'promise' }]) });
   window.webkit = { messageHandlers: { bridge: { postMessage() {} } } };
   window.Capacitor = {
-    PluginHeaders: [M('Preferences', ['get', 'set', 'remove', 'keys']), M('Clipboard', ['write', 'read']), M('App', ['exitApp']), M('StatusBar', ['setStyle']), M('Keyboard', ['setAccessoryBarVisible']), M('SplashScreen', ['hide', 'show']), M('Speech', ['available', 'checkPermissions', 'requestPermissions', 'start', 'stop'])],
+    PluginHeaders: [M('Preferences', ['get', 'set', 'remove', 'keys']), M('Clipboard', ['write', 'read']), M('App', ['exitApp']), M('StatusBar', ['setStyle']), M('Keyboard', ['setAccessoryBarVisible']), M('SplashScreen', ['hide', 'show']), M('Speech', ['available', 'checkPermissions', 'requestPermissions', 'start', 'stop']), M('PushNotifications', ['checkPermissions', 'requestPermissions', 'register'])],
     nativeCallback(pl, m, a, cb) { const k = pl + ':' + a.eventName; (subs[k] = subs[k] || []).push(cb); return String(++cid); },
     nativePromise(pl, m, a) {
       F.calls.push(pl + '.' + m);
@@ -22,6 +22,9 @@ const FAKE = (opts) => {
       if (pl === 'Clipboard' && m === 'write') { F.clip = a.string; return Promise.resolve(); }
       if (pl === 'Speech' && m === 'requestPermissions') return Promise.resolve({ speech: F.perm, microphone: F.perm });
       if (pl === 'Speech' && m === 'start') F.lang = a.lang;
+      if (pl === 'PushNotifications' && m === 'checkPermissions') return Promise.resolve({ receive: 'prompt' });
+      if (pl === 'PushNotifications' && m === 'requestPermissions') return Promise.resolve({ receive: o.pushDeny ? 'denied' : 'granted' });
+      if (pl === 'PushNotifications' && m === 'register') setTimeout(() => F.emit('PushNotifications', 'registration', { value: 'cd'.repeat(32) }), 50);
       return Promise.resolve({});
     }
   };
@@ -121,5 +124,25 @@ const FAKE = (opts) => {
   await p.waitForTimeout(900);
   ok(await p.evaluate(() => localStorage.getItem('tm_token')) === 'tok-123' && await p.evaluate(() => localStorage.getItem('tm_user_v3')) === 'u_op', '部分丢失：只补回缺的登录令牌');
   ok(await p.evaluate(() => window.__tm.me) === 'u_op' && p.errs.length === 0, '部分恢复后正常进入');
+  await p.context().close();
+  // 8. 推送：服务器模式登录后申请权限、登记设备；点通知跳页；退出时先注销设备再退出
+  { const c3 = await b.newContext({ ...devices['iPhone 13'] }); const reqs = [];
+    await c3.addInitScript((st) => { if (!sessionStorage.getItem('__s3')) { localStorage.setItem('tm_server', 'http://push.test'); localStorage.setItem('tm_token', 'tok'); localStorage.setItem('tm_user_v3', 'u_owner'); localStorage.setItem('tm_demo_v3', st); sessionStorage.setItem('__s3', '1'); } }, seed2);
+    await c3.addInitScript(FAKE, null);
+    await c3.route('http://push.test/**', async (route) => { const r = route.request(), u = new globalThis.URL(r.url()); reqs.push(r.method() + ' ' + u.pathname + ' ' + (r.postData() || ''));
+      if (u.pathname === '/api/events') return route.fulfill({ status: 200, contentType: 'text/event-stream', body: '' });
+      if (u.pathname === '/api/state') return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: 1, state: JSON.parse(seed2) }) });
+      if (u.pathname === '/api/logout') return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"enabled":false}' }); });
+    p = await c3.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); await p.goto(URL);
+    await p.waitForTimeout(2300);
+    ok(reqs.some(x => x.startsWith('POST /api/devices ') && x.includes('cd'.repeat(32))), '登录后申请通知权限并登记设备');
+    await p.evaluate(() => __fake.emit('PushNotifications', 'pushNotificationActionPerformed', { notification: { data: { link: '#/ideas' } } })); await p.waitForTimeout(150);
+    ok(p.url().endsWith('#/ideas'), '点通知跳到对应页面');
+    const n0 = reqs.length; await p.evaluate(() => TMS.logout()); await p.waitForTimeout(600);
+    const tail = reqs.slice(n0).map(x => x.split(' ')[1]);
+    ok(tail.indexOf('/api/devices/remove') >= 0 && tail.indexOf('/api/devices/remove') < tail.indexOf('/api/logout'), '退出时先注销设备再退出 ' + tail.join(','));
+    ok(p.errs.length === 0, '推送流程无报错 ' + p.errs.join('|'));
+    await c3.close(); }
   console.log(`原生桥接 E2E 通过 ${pass}，失败 ${fail}`); await b.close(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -154,9 +154,12 @@ var TMS = (function () {
   api.useLocal = function () { ['tm_server', 'tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; location.reload(); };
   api.logout = function () {
     var done = function () { ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; location.reload(); };
-    req('POST', '/api/logout').then(done, done);
+    var out = function () { req('POST', '/api/logout').then(done, done); };
+    // 先注销这台手机的推送（退出后会话就失效了），再退出
+    var pt = g('tm_push_token'); if (pt) req('POST', '/api/devices/remove', { token: pt }).then(out, out); else out();
   };
   api.changePassword = function (old, pw) { return req('POST', '/api/password', { old: old, password: pw }).then(function (r) { api.mustChange = false; put('tm_must', null); flush(); pump(); return r; }); };
+  api.registerDevice = function (t) { if (api.loggedIn() && t) req('POST', '/api/devices', { token: t, platform: 'ios' }).catch(function () {}); };
   api.deactivate = function (pw) { return req('POST', '/api/account/deactivate', { password: pw }).then(function (r) { ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', K, KU].forEach(function (k) { put(k, null); }); return r; }); };
   api.accounts = function () { return req('GET', '/api/accounts'); };
   api.setAccount = function (o) { return req('POST', '/api/accounts', o); };

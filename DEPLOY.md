@@ -60,6 +60,22 @@ team.example.com {
 | `SETUP_CODE` | 随机 | 首次创建团队的初始化码 |
 | `TRUST_PROXY` | 关 | 设为 1：在反向代理后按 X-Forwarded-For 识别 IP（登录限流用） |
 
+## iOS 推送通知（有苹果开发者账号后）
+
+1. 在 [Apple Developer → Keys](https://developer.apple.com/account/resources/authkeys/list) 新建一把密钥，勾选 **Apple Push Notifications service (APNs)**，下载 `AuthKey_XXXXXXXXXX.p8`（只能下载一次，妥善保存）。
+2. 在 Xcode 里给 App 开启 **Push Notifications** 能力（工程里已经准备好 `App.entitlements` 和 AppDelegate 代码）。
+3. 服务器加上这些环境变量后重启：
+
+| 变量 | 说明 |
+|---|---|
+| `APNS_KEY_FILE` | .p8 文件的路径 |
+| `APNS_KEY_ID` | 密钥 ID（10 位，文件名里那串） |
+| `APNS_TEAM_ID` | 开发者账号的 Team ID |
+| `APNS_BUNDLE_ID` | App 的 Bundle ID（默认 com.teamops.app） |
+| `APNS_ENV` | Xcode 直接装到手机上调试时填 `development`；TestFlight / App Store 用默认的 `production` |
+
+之后，派任务、待验收、等老板决策、被 @ 等 App 内通知会同时推送到手机。每个人可以在「我的 → 通知」里关掉。
+
 ## 备份
 
 - 数据目录下 `backups/` 每天自动存一份完整快照（JSON）。
