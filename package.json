@@ -11,7 +11,8 @@
     "check": "npm run build && npm test && npm run e2e",
     "setup": "npx playwright install chromium",
     "server": "node server/server.js",
-    "ios": "node build.js && npx cap copy ios && node scripts/ios.js"
+    "ios": "node build.js && npx cap copy ios && node scripts/ios.js",
+    "crawl": "node scripts/e2e.js crawl"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",

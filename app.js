@@ -3053,7 +3053,7 @@
     });
   };
   DO.ixLog = function () { closeSheet(); var d = I(cur().id); if (!d || !ixCanLog(d)) return toast('只有发起人、跟进人和老板能看操作记录', true); location.hash = '#/idea/' + d.id + '/log'; };
-  DO.ixCopy = function () { try { navigator.clipboard.writeText(location.href).then(function () { toast('链接已复制'); }); } catch (e) { toast('请手动复制地址栏链接'); } closeSheet(); };
+  DO.ixCopy = function () { var no = function () { toast('复制失败，请手动复制地址栏链接', true); }; try { navigator.clipboard.writeText(location.href).then(function () { toast('链接已复制'); }, no); } catch (e) { no(); } closeSheet(); };
   DO.nFilter = function (el) { nf = el.dataset.f; render(); };
   DO.ideasNeed = function () { filt.ideas = 'need'; render(); };
   DO.ideasTile = function (el) { filt.ideas = el.dataset.f; filt.ideasOpen = true; render(); };
