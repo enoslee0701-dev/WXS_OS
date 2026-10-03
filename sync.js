@@ -43,10 +43,14 @@ var TMS = (function () {
 
   /* ---------- 发件箱 ---------- */
   var busy = false, retryT = null, delay = 2000;
-  function saveBox() { put('tm_outbox', api.outbox.length ? JSON.stringify(api.outbox) : null); }
+  function saveBox() { put('tm_outbox', api.outbox.length ? JSON.stringify(api.outbox) : null); if (api.outbox.length) put('tm_outbox_uid', g(KU)); }
   function ids(r) { var o = {}; Object.keys(r || {}).forEach(function (k) { if (k !== 'ok' && (typeof r[k] === 'string' || typeof r[k] === 'number')) o[k] = r[k]; }); return o; }
+  function swapIds(o, map) { if (typeof o === 'string') return map[o] || o; if (Array.isArray(o)) return o.map(function (x) { return swapIds(x, map); }); if (o && typeof o === 'object') { var r = {}; Object.keys(o).forEach(function (k) { r[k] = swapIds(o[k], map); }); return r; } return o; }
   function remap(a, b) {
     if (!a || !b) return;
+    // 后面还在排队的操作如果引用了本地生成的 ID，也换成服务器的 ID
+    var map = {}, n = 0; Object.keys(a).forEach(function (k) { if (typeof a[k] === 'string' && typeof b[k] === 'string' && a[k] !== b[k]) { map[a[k]] = b[k]; n++; } });
+    if (n) { api.outbox.forEach(function (op) { op.p = swapIds(op.p, map); }); saveBox(); }
     Object.keys(a).forEach(function (k) { if (typeof a[k] === 'string' && typeof b[k] === 'string' && a[k] !== b[k] && location.hash.indexOf(a[k]) >= 0) history.replaceState(null, '', location.hash.split(a[k]).join(b[k])); });
   }
   function flush() {
@@ -62,7 +66,9 @@ var TMS = (function () {
     }, function (e) {
       busy = false;
       if (e.status === 401) return expired();
-      if (e.status) { api.outbox.shift(); saveBox(); toast('同步出错：' + (e.error || e.status), true); setStatus('online'); return flush(); }
+      if (e.status === 403 && e.mustChange) { setStatus('online'); return; } // 先改初始密码，改完再补发
+      // 服务器暂时出问题（5xx）、限流（429）、超时（408）：保留，退避重试；其他 4xx 是这条操作本身不对：丢弃并提示
+      if (e.status && !(e.status >= 500 || e.status === 429 || e.status === 408)) { api.outbox.shift(); saveBox(); toast('同步出错：' + (e.error || e.status), true); setStatus('online'); return flush(); }
       setStatus('offline'); clearTimeout(retryT); retryT = setTimeout(flush, delay); delay = Math.min(delay * 2, 30000);
     });
   }
@@ -88,7 +94,7 @@ var TMS = (function () {
     window.__tm.setState(st);
   }
   function accept(v, st) {
-    if (typeof v === 'number') { api.version = v; put('tm_ver', v); }
+    if (typeof v === 'number') { if (v < api.version) return; /* 迟到的旧数据：不能覆盖新的 */ api.version = v; put('tm_ver', v); }
     if (api.outbox.length || busy) return; // 后面还有本地操作在排队：等最后一个回执再应用
     if (st) apply(st);
   }
@@ -97,11 +103,13 @@ var TMS = (function () {
     return req('GET', '/api/state').then(function (res) {
       setStatus('online');
       if (res.mustChange && !api.mustChange) { api.mustChange = true; put('tm_must', '1'); }
+      if (res.fileToken && res.fileToken !== g('tm_ft')) put('tm_ft', res.fileToken);
       accept(res.version, res.state);
     }, function (e) { if (e.status === 401) expired(); else setStatus('offline'); });
   }
   function expired() {
-    ['tm_token', 'tm_ver', 'tm_outbox', 'tm_must', K, KU].forEach(function (k) { put(k, null); });
+    // 发件箱保留：同一个人重新登录后继续补发（换了人就清掉）
+    ['tm_token', 'tm_ft', 'tm_ver', 'tm_must', K, KU].forEach(function (k) { put(k, null); });
     toast('登录已过期，请重新登录', true); setTimeout(function () { location.hash = '#/login'; location.reload(); }, 800);
   }
 
@@ -133,8 +141,9 @@ var TMS = (function () {
 
   /* ---------- 登录、创建团队、账号 ---------- */
   function establish(base, res) {
-    put('tm_server', api.sameOrigin ? null : base); put('tm_token', res.token); put('tm_ver', res.version);
-    put(K, JSON.stringify(res.state)); put(KU, res.uid); put('tm_must', res.mustChange ? '1' : null); put('tm_outbox', null);
+    put('tm_server', api.sameOrigin ? null : base); put('tm_token', res.token); put('tm_ft', res.fileToken || null); put('tm_ver', res.version);
+    if (g('tm_outbox_uid') !== res.uid) { put('tm_outbox', null); put('tm_outbox_uid', null); }
+    put(K, JSON.stringify(res.state)); put(KU, res.uid); put('tm_must', res.mustChange ? '1' : null);
     location.hash = '#/home'; location.reload();
   }
   api.serverUrl = function () { return api.sameOrigin ? location.origin : api.base; };
@@ -142,12 +151,12 @@ var TMS = (function () {
   api.login = function (server, login, password) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'POST', '/api/login', { login: login, password: password }).then(function (res) { establish(b, res); }); };
   api.setup = function (server, o) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'POST', '/api/setup', o).then(function (res) { establish(b, res); }); };
   api.useServer = function (server) { put('tm_server', norm(server) || 'http://'); put(K, null); put(KU, null); location.hash = '#/login'; location.reload(); };
-  api.useLocal = function () { ['tm_server', 'tm_token', 'tm_ver', 'tm_outbox', 'tm_must', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; location.reload(); };
+  api.useLocal = function () { ['tm_server', 'tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; location.reload(); };
   api.logout = function () {
-    var done = function () { ['tm_token', 'tm_ver', 'tm_outbox', 'tm_must', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; location.reload(); };
+    var done = function () { ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; location.reload(); };
     req('POST', '/api/logout').then(done, done);
   };
-  api.changePassword = function (old, pw) { return req('POST', '/api/password', { old: old, password: pw }).then(function (r) { api.mustChange = false; put('tm_must', null); return r; }); };
+  api.changePassword = function (old, pw) { return req('POST', '/api/password', { old: old, password: pw }).then(function (r) { api.mustChange = false; put('tm_must', null); flush(); pump(); return r; }); };
   api.accounts = function () { return req('GET', '/api/accounts'); };
   api.setAccount = function (o) { return req('POST', '/api/accounts', o); };
   api.disable = function (uid, d) { return req('POST', '/api/accounts/disable', { uid: uid, disabled: d }); };
@@ -163,9 +172,10 @@ var TMS = (function () {
   function pump() {
     if (upBusy || !api.loggedIn()) return;
     upBusy = true;
-    tx('readonly', function (st) { return st.getAll(); }).then(function (items) {
-      api.uploading = (items || []).length; setStatus(api.status);
-      var it = items && items[0]; if (!it) { upBusy = false; return; }
+    // 只取队首一个（不把所有大视频一次读进内存）
+    Promise.all([tx('readonly', function (st) { return st.count(); }), idb().then(function (db) { return new Promise(function (ok, bad) { var r = db.transaction('q', 'readonly').objectStore('q').openCursor(); r.onsuccess = function () { ok(r.result ? r.result.value : null); }; r.onerror = function () { bad(r.error); }; }); })]).then(function (x) {
+      api.uploading = x[0] || 0; setStatus(api.status);
+      var it = x[1]; if (!it) { upBusy = false; return; }
       return fetch(api.base + '/api/files/' + encodeURIComponent(it.id), { method: 'PUT', headers: { Authorization: 'Bearer ' + api.token, 'Content-Type': it.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(it.name || '') }, body: it.blob })
         .then(function (r) {
           if (r.status === 401) { upBusy = false; return expired(); }
@@ -185,7 +195,8 @@ var TMS = (function () {
       fetch(api.base + '/api/files/' + encodeURIComponent(id), { method: 'PUT', headers: { Authorization: 'Bearer ' + api.token, 'Content-Type': blob.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(name || blob.name || '') }, body: blob }).catch(function () {});
     });
   };
-  api.fileUrl = function (id) { return api.loggedIn() && id ? api.base + '/api/files/' + encodeURIComponent(id) + '?token=' + encodeURIComponent(api.token) : null; };
+  // 网址里只放「只能读附件」的文件令牌，不放会话令牌（链接被转发也拿不到账号）
+  api.fileUrl = function (id) { var ft = g('tm_ft'); return api.loggedIn() && id && ft ? api.base + '/api/files/' + encodeURIComponent(id) + '?ft=' + encodeURIComponent(ft) : null; };
   if (api.loggedIn()) { window.addEventListener('load', pump); window.addEventListener('online', function () { upDelay = 3000; pump(); }); }
 
   /* ---------- 真实 AI（服务器代理）：未启用或出错时由调用方退回规则模拟 ---------- */

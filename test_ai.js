@@ -17,20 +17,22 @@ const mock = http.createServer((req, res) => {
 });
 function start(env) {
   const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-ai-')), PORT = rnd();
-  const p = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env: { ...process.env, ANTHROPIC_API_KEY: '', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const p = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env: { ...process.env, ANTHROPIC_API_KEY: '', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'code-1234', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   p.stderr.on('data', d => { if (!/ExperimentalWarning|AI 出错/.test(String(d))) process.stderr.write(d); });
   p.B = 'http://127.0.0.1:' + PORT; p.DIR = DIR;
   return new Promise(r => p.stdout.on('data', d => { if (/已启动/.test(String(d))) r(p); }));
 }
 const mkApi = (B) => async (method, u, body, tok) => { const r = await fetch(B + u, { method, headers: { 'Content-Type': 'application/json', ...(tok ? { Authorization: 'Bearer ' + tok } : {}) }, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, ...(await r.json()) }; };
 async function team(api) {
-  const st = await api('POST', '/api/setup', { name: 'Enos', login: 'enos', password: 'enos123', demo: true });
+  const st = await api('POST', '/api/setup', { name: 'Enos', login: 'enos', password: 'enos123', demo: true, code: 'code-1234' });
   const boss = st.token;
   await api('POST', '/api/act', { name: 'idea.create', payload: { note: '老板私人草稿：考虑明年换办公室' } }, boss);
   await api('POST', '/api/accounts', { uid: 'u_sys', login: 'sun', password: 'sun12345' }, boss);
   await api('POST', '/api/accounts', { uid: 'u_dev', login: 'liu', password: 'liu12345' }, boss);
   const adm = (await api('POST', '/api/login', { login: 'sun', password: 'sun12345' })).token;
   const dev = (await api('POST', '/api/login', { login: 'liu', password: 'liu12345' })).token;
+  // 老板分派的是初始密码：先改密码才能用
+  await api('POST', '/api/password', { password: 'sun-new-1' }, adm); await api('POST', '/api/password', { password: 'liu-new-1' }, dev);
   return { boss, adm, dev };
 }
 
@@ -81,6 +83,9 @@ async function team(api) {
   r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 200, '老板第 3 次');
   r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 200, '老板第 4 次');
   r = await api('POST', '/api/ai/ask', { q: 'x' }, t.boss); ok(r.status === 429 && /用完/.test(r.error), '超过每日上限');
+  // 管理员已用 3 次（1 次成功 + 拒答 + 限流），上限 4：并发 3 个请求只能成功 1 个
+  const conc = await Promise.all([1, 2, 3].map(() => api('POST', '/api/ai/ask', { q: '并发' }, t.adm)));
+  ok(conc.filter(x => x.status === 200).length === 1 && conc.filter(x => x.status === 429).length === 2, '并发请求也不会超过每日上限');
   s2.kill(); fs.rmSync(s2.DIR, { recursive: true, force: true }); mock.close();
   console.log(`\nAI 代理 通过 ${pass}，失败 ${fail}`); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

@@ -678,6 +678,7 @@ var TM = (function () {
   A['member.update'] = function (s, uid, p) {
     var u = user(s, p.id); need(u, '找不到该成员');
     need(p.id === uid || hasRole(s, uid, 'owner') || hasRole(s, uid, 'admin'), '只能修改自己的资料');
+    need(p.id === uid || !hasRole(s, p.id, 'owner') || hasRole(s, uid, 'owner'), '老板的资料只能由老板自己修改');
     if ('motto' in p) { need(txt(p.motto).length <= 30, '一句话不超过 30 字'); u.motto = txt(p.motto); }
     if ('skills' in p) u.skills = (p.skills || []).map(txt).filter(Boolean).slice(0, 3);
     if ('presence' in p) { need(['online', 'away', 'busy', 'offline'].indexOf(p.presence) >= 0, '状态不正确'); u.presence = p.presence; }
@@ -688,7 +689,12 @@ var TM = (function () {
     if ('phone' in p) { var ph = txt(p.phone); need(!ph || /^[+\d][\d\s-]{5,19}$/.test(ph), '手机号格式不正确'); u.phone = ph; }
     if ('location' in p) u.location = txt(p.location).slice(0, 20);
     if ('bio' in p) u.bio = txt(p.bio).slice(0, 30);
-    if ('prefs' in p) u.prefs = Object.assign({}, u.prefs || {}, p.prefs);
+    if ('prefs' in p) {
+      // 偏好只收白名单里的布尔开关（防止往全局状态里塞任意数据）
+      var PREFS = ['notifyImportant'], np = Object.assign({}, u.prefs || {});
+      Object.keys(p.prefs || {}).forEach(function (k) { if (PREFS.indexOf(k) < 0) return; need(typeof p.prefs[k] === 'boolean', '偏好设置格式不对'); np[k] = p.prefs[k]; });
+      u.prefs = np;
+    }
     return {};
   };
   A['idea.delete'] = function (s, uid, p) {
@@ -907,6 +913,15 @@ var TM = (function () {
   A['settings.update'] = function (s, uid, p) {
     need(hasRole(s, uid, 'owner') || hasRole(s, uid, 'admin'), '只有老板或管理员可以修改配置');
     var keys = ['ownerApprovalMode', 'ownerFinalAdmin', 'ownerFinalProduct', 'agentDirectRoute', 'staleDays', 'budgetThreshold', 'direction', 'demoAiFail', 'showTiers'];
+    var BOOL = ['ownerFinalAdmin', 'ownerFinalProduct', 'agentDirectRoute', 'demoAiFail', 'showTiers'];
+    keys.forEach(function (k) {
+      if (!(k in p)) return; var v = p[k];
+      if (BOOL.indexOf(k) >= 0) need(typeof v === 'boolean', '开关设置格式不对');
+      if (k === 'ownerApprovalMode') need(v === 'exceptions_only' || v === 'all', '老板确认范围只能是「只送例外」或「每条都送」');
+      if (k === 'staleDays') need(typeof v === 'number' && v >= 1 && v <= 30 && Math.floor(v) === v, '无动态提醒天数要在 1 到 30 之间');
+      if (k === 'budgetThreshold') need(v === null || (typeof v === 'number' && v >= 0 && v <= 1e9), '超预算阈值格式不对');
+      if (k === 'direction') need(typeof v === 'string' && v.length <= 500, '公司方向不超过 500 字');
+    });
     var changed = [];
     keys.forEach(function (k) { if (k in p && p[k] !== s.settings[k]) { s.settings[k] = p[k]; changed.push(k); } });
     if (hasRole(s, uid, 'admin') && !hasRole(s, uid, 'owner') && 'direction' in p) deny('公司方向由老板填写');
@@ -918,7 +933,9 @@ var TM = (function () {
   };
 
   function act(s, uid, action, p) {
-    var fn = A[action]; if (!fn) return { ok: false, error: '未知操作：' + action };
+    // 只认自己定义的操作：constructor / toString / __proto__ 这类原型链上的名字不能当操作（否则会把整个状态当结果返回）
+    var fn = Object.prototype.hasOwnProperty.call(A, action) && typeof A[action] === 'function' ? A[action] : null;
+    if (!fn) return { ok: false, error: '未知操作：' + String(action).slice(0, 40) };
     var snapshot = JSON.stringify(stripFns(s));
     try { var r = fn(s, uid, p || {}); return Object.assign({ ok: true }, r); }
     catch (e) {
@@ -929,6 +946,8 @@ var TM = (function () {
 
   /* ---------- 数据迁移（客户端缓存与服务器共用，幂等） ---------- */
   function migrate(s) {
+    // 演示数据的历史迁移（改名、补演示待办、补演示资料）只作用于演示数据；真实团队（blank 创建，real=true）不动
+    if (s.real) { if (!s.todos) s.todos = []; if (!s.knowledge) s.knowledge = []; } else
     (function () { var o = user(s, 'u_owner'); if (o && o.name === '王建国') { o.name = 'Enos'; } if (!s.todos) seedTodos(s, Date.now()); if (s.users.some(function (u) { return !u.group; })) { var fr = seed(); s.users.forEach(function (u) { var f = fr.users.find(function (x) { return x.id === u.id; }); if (f && !u.group) { u.motto = f.motto; u.skills = f.skills; u.presence = f.presence; u.group = f.group; if (u.id === 'u_owner') u.title = f.title; } else if (!u.group) { u.group = '行政运营'; u.presence = 'offline'; u.skills = []; u.motto = ''; } }); } })();
     kbInit(s);
     s.ideas.forEach(function (d) { if (d.titleSource) return; var n = String(d.note || '').replace(/\s+/g, ''), t = String(d.title || '').replace(/\s+/g, ''); if (!t || /【|^\d+[.、]/.test(d.title) || (t.length >= 6 && n.indexOf(t) === 0)) { d.title = aiTitle(d); d.titleSource = 'ai'; } else d.titleSource = 'user'; });
@@ -948,7 +967,9 @@ var TM = (function () {
     v.ideas.forEach(function (d) { var o = s.ideas.find(function (x) { return x.id === d.id; }); d.media = (d.media || []).filter(function (m) { return canSeeMediaItem(s, uid, o, m); }); });
     v.suggestions = v.suggestions.filter(byIdea);
     v.summaries = v.summaries.filter(byIdea);
-    v.events = v.events.filter(byIdea);
+    var mgr = hasRole(s, uid, 'owner') || hasRole(s, uid, 'admin');
+    // 动态：关联的想法 / 项目 / 任务都得看得到；不关联任何对象的（成员、配置变更）只给老板和管理员
+    v.events = v.events.filter(function (e) { if (!e.ideaId && !e.workId && !e.taskId) return mgr; return byIdea(e) && (!e.workId || W[e.workId]) && (!e.taskId || T[e.taskId]); });
     v.decisions = v.decisions.filter(function (x) { return (x.ideaId && I[x.ideaId]) || (x.workId && W[x.workId]) || (!x.ideaId && !x.workId && hasRole(s, uid, 'owner')); });
     v.workItems = v.workItems.filter(function (w) { return W[w.id]; });
     v.tasks = v.tasks.filter(function (t) { return T[t.id]; });
@@ -958,6 +979,7 @@ var TM = (function () {
     v.todos = (v.todos || []).filter(function (x) { return x.ownerId === uid || (x.people || []).indexOf(uid) >= 0; });
     v.todoRecent = (v.todoRecent || []).filter(function (x) { return x.userId === uid; });
     v.knowledge = (v.knowledge || []).filter(function (k) { return kb[k.id]; });
+    v.users.forEach(function (u) { if (u.id !== uid) delete u.prefs; });
     return v;
   }
 
@@ -968,6 +990,7 @@ var TM = (function () {
     owner.name = txt(o.name) || '老板'; owner.title = txt(o.title) || '负责人';
     owner.email = ''; owner.location = ''; owner.bio = ''; owner.motto = ''; owner.skills = []; owner.presence = 'online';
     s.users = [owner];
+    s.real = true;
     clearContent(s);
     s.knowledge = [];
     s.settings.direction = '';
@@ -979,7 +1002,7 @@ var TM = (function () {
   }
   /* 清理演示数据：保留成员、设置和自己添加的知识库资料，其余示例内容全部清空 */
   A['data.clearDemo'] = function (s, uid) {
-    need(hasRole(s, uid, 'owner') || hasRole(s, uid, 'admin'), '只有老板或管理员可以清理数据');
+    need(hasRole(s, uid, 'owner'), '只有老板可以清理数据');
     clearContent(s);
     return {};
   };

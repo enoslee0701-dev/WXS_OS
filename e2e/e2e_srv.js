@@ -8,7 +8,7 @@ const api = async (method, u, body, tok) => (await fetch(URL.slice(0, -1) + u, {
 const until = async (fn, ms = 4000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await fn()) return true; await new Promise(z => setTimeout(z, 100)); } return false; };
 let srv = null;
 (async () => {
-  srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: DIR }, stdio: ['ignore', 'pipe', 'inherit'] });
+  srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: '246810' }, stdio: ['ignore', 'pipe', 'inherit'] });
   await new Promise(r => srv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }));
   const b = await chromium.launch();
   const mk = async () => { const c = await b.newContext({ ...devices['iPhone 13'] }); const p = await c.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|ERR_INTERNET_DISCONNECTED|net::/.test(m.text())) p.errs.push(m.text()); }); return p; };
@@ -18,7 +18,7 @@ let srv = null;
   const A = await mk(); await A.goto(URL); await A.waitForSelector('form[data-form=srvSetup]');
   ok(await A.locator('input[name=server]').count() === 0, '同源网页版不用填服务器地址');
   ok(await A.locator('.demo').count() === 0, '服务器模式没有演示横幅');
-  await A.fill('input[name=name]', '王老板'); await A.fill('input[name=title]', '创始人'); await A.fill('input[name=login]', 'boss'); await A.fill('input[name=password]', 'boss123');
+  await A.fill('input[name=code]', '246810'); await A.fill('input[name=name]', '王老板'); await A.fill('input[name=title]', '创始人'); await A.fill('input[name=login]', 'boss'); await A.fill('input[name=password]', 'boss123');
   await A.click('form[data-form=srvSetup] button[type=submit]'); await A.waitForSelector('.hm-card');
   ok(JSON.stringify(await A.$$eval('.hm-card', xs => xs.map(x => x.dataset.do))) === '["quickIdea","quickProject"]', '老板进入首页');
   ok(await A.locator('.hm-demo').count() === 0, '首页没有演示版标记');
@@ -76,7 +76,7 @@ let srv = null;
   await A.setInputFiles('.sheet input[data-wfile]:not([accept]):not([capture])', path.join(__dirname, 'fixtures', 'pic.jpg')); await A.waitForTimeout(300);
   const lid = await A.evaluate((w) => { const x = window.__tm.S.workItems.find(v => v.id === w); return x && (x.files || []).map(f => f.localId).filter(Boolean).pop(); }, wid);
   ok(!!lid, '附件记录带文件 ID');
-  ok(await until(async () => (await fetch(URL + 'api/files/' + lid + '?token=' + bossTok)).status === 200, 8000), '附件已上传到服务器');
+  ok(await until(async () => (await fetch(URL + 'api/files/' + lid, { headers: { Authorization: 'Bearer ' + bossTok } })).status === 200, 8000), '附件已上传到服务器');
   ok(await until(async () => (await B.evaluate(() => TMS.uploading || 0)) === 0 && (await A.evaluate(() => TMS.uploading || 0)) === 0), '上传队列清空');
   await B.goto(URL + '#/work/' + wid); await B.waitForTimeout(400);
   const t0 = Date.now(); const seen = await until(async () => (await B.evaluate((w) => !!window.__tm.S.workItems.find(v => v.id === w), wid)), 15000);

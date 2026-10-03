@@ -4,7 +4,7 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-srv-')), PORT = 18000 + Math.floor(Math.random() * 2000);
 const B = 'http://127.0.0.1:' + PORT;
 function start() {
-  const p = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: DIR, MAX_FILE_MB: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const p = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: DIR, MAX_FILE_MB: '1', SETUP_CODE: 'code-1234' }, stdio: ['ignore', 'pipe', 'pipe'] });
   p.stderr.on('data', d => { const t = String(d); if (!/ExperimentalWarning|act 异常/.test(t)) process.stderr.write(t); });
   return new Promise(r => p.stdout.on('data', d => { if (/已启动/.test(String(d))) r(p); }));
 }
@@ -16,11 +16,13 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   // 1. 首次创建团队
   ok((await get('/api/setup')).needsSetup === true, '新服务器需要创建团队');
   ok((await post('/api/login', { login: 'boss', password: '123456' })).status === 409, '未创建团队时不能登录');
-  ok((await post('/api/setup', { name: '王老板', login: 'b', password: '123456' })).status === 400, '账号太短被拒');
-  ok((await post('/api/setup', { name: '王老板', login: 'boss', password: '123' })).status === 400, '密码太短被拒');
-  const st = await post('/api/setup', { name: '王老板', title: '创始人', login: 'boss', password: 'boss123' });
+  ok((await post('/api/setup', { name: '王老板', login: 'boss', password: 'boss123' })).status === 403, '没有初始化码不能创建团队');
+  ok((await post('/api/setup', { name: '王老板', login: 'boss', password: 'boss123', code: 'wrong' })).status === 403, '初始化码不对');
+  ok((await post('/api/setup', { name: '王老板', login: 'b', password: '123456', code: 'code-1234' })).status === 400, '账号太短被拒');
+  ok((await post('/api/setup', { name: '王老板', login: 'boss', password: '123', code: 'code-1234' })).status === 400, '密码太短被拒');
+  const st = await post('/api/setup', { name: '王老板', title: '创始人', login: 'boss', password: 'boss123', code: 'code-1234' });
   ok(st.status === 200 && st.token && st.uid === 'u_owner' && st.state.users.length === 1 && st.state.users[0].name === '王老板', '老板创建空白团队');
-  ok((await post('/api/setup', { name: 'x', login: 'xxx', password: '123456' })).status === 409, '不能重复创建团队');
+  ok((await post('/api/setup', { name: 'x', login: 'xxx', password: '123456', code: 'code-1234' })).status === 409, '不能重复创建团队');
   const boss = st.token;
   ok((await get('/api/state')).status === 401, '没登录拿不到数据');
 
@@ -90,9 +92,16 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   ok(rs.password && rs.password !== 'wang123', '重置密码生成新密码');
   ok((await post('/api/login', { login: 'xiaowang', password: 'wang123' })).status === 401, '旧密码失效');
 
+  // 7.5 首次改密前不能操作
+  const mc = await post('/api/accounts', { uid: wang, reset: true }, boss);
+  const wTok = (await post('/api/login', { login: 'xiaowang', password: mc.password })).token;
+  ok((await post('/api/act', { name: 'todo.create', payload: { title: 'x', date: '2026-10-03' } }, wTok)).status === 403, '没改初始密码前不能操作');
+  ok((await get('/api/state', wTok)).status === 200, '没改初始密码前可以读数据');
+  ok((await post('/api/password', { password: 'wang654321' }, wTok)).ok, '改密码');
+  ok((await post('/api/act', { name: 'todo.create', payload: { title: 'x', date: '2026-10-03' } }, wTok)).ok, '改完可以操作');
   // 8. 登录限流
   for (let i = 0; i < 10; i++) await post('/api/login', { login: 'xiaowang', password: 'x' + i });
-  ok((await post('/api/login', { login: 'xiaowang', password: rs.password })).status === 429, '连续输错 10 次后暂时锁定');
+  ok((await post('/api/login', { login: 'xiaowang', password: 'wang654321' })).status === 429, '连续输错 10 次后暂时锁定');
 
   // 8.5 附件
   const up = (id, body, tok, type) => fetch(B + '/api/files/' + id, { method: 'PUT', headers: { 'Content-Type': type || 'text/plain', 'X-File-Name': encodeURIComponent('会议记录.txt'), ...(tok ? { Authorization: 'Bearer ' + tok } : {}) }, body });
@@ -103,24 +112,57 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   ok(ur.status === 200 && (await ur.json()).size > 10, '老板上传附件');
   ok((await up('f_abc123', 'hack', liTok2)).status === 409, '别人不能覆盖这个文件');
   ok((await up('f_abc123', '0123456789 附件内容 v2', boss)).status === 200, '上传人重传（断网重试）可以覆盖');
-  let gr = await fetch(B + '/api/files/f_abc123?token=' + liTok2);
+  ok((await fetch(B + '/api/files/f_abc123', { headers: { Authorization: 'Bearer ' + liTok2 } })).status === 404, '没被任何想法 / 项目引用的附件，别人读不到');
+  ok((await fetch(B + '/api/files/f_abc123', { headers: { Authorization: 'Bearer ' + boss } })).status === 200, '上传人自己能读');
+  const liSt = await get('/api/state', liTok2); const liFt = liSt.fileToken;
+  ok(typeof liFt === 'string' && liFt.length >= 32 && liFt !== liTok2, '数据接口给出单独的文件令牌');
+  const wangR = await post('/api/act', { name: 'member.add', payload: { name: '小赵', title: '运营', role: 'operator', group: '行政运营' } }, boss);
+  const zhao = wangR.state.users.find(u => u.name === '小赵').id;
+  const pj = await post('/api/act', { name: 'project.create', payload: { title: '附件测试', ptype: 'tech', operatorId: zhao, goal: 'x', tasks: [{ title: '画图', ownerId: li, expected: '图', criteria: '好' }] } }, boss);
+  ok((await post('/api/act', { name: 'work.attach', payload: { id: pj.r.workId, media: [{ kind: 'file', name: '会议记录.txt', localId: 'f_abc123' }] } }, boss)).ok, '老板把附件挂到小李参与的项目');
+  let gr = await fetch(B + '/api/files/f_abc123?ft=' + liFt);
   ok(gr.status === 200 && (await gr.text()) === '0123456789 附件内容 v2' && /会议记录/.test(decodeURIComponent(gr.headers.get('content-disposition'))), '成员用链接令牌读取附件（含文件名）');
   gr = await fetch(B + '/api/files/f_abc123', { headers: { Authorization: 'Bearer ' + liTok2, Range: 'bytes=2-5' } });
   ok(gr.status === 206 && (await gr.text()) === '2345' && gr.headers.get('content-range') === 'bytes 2-5/' + Buffer.byteLength('0123456789 附件内容 v2'), '分段读取（iPhone 播放视频需要）');
   ok((await fetch(B + '/api/files/f_abc123')).status === 401, '没登录不能读取');
-  ok((await fetch(B + '/api/files/f_none00?token=' + liTok2)).status === 404, '不存在的文件');
+  ok((await fetch(B + '/api/files/f_abc123?token=' + liTok2)).status === 401, '网址里的会话令牌不再被接受（只认文件令牌）');
+  ok((await fetch(B + '/api/state?token=' + liTok2)).status === 401, '数据接口不接受网址里的令牌');
+  ok((await fetch(B + '/api/files/f_none00?ft=' + liFt)).status === 404, '不存在的文件');
+  gr = await fetch(B + '/api/files/f_abc123?ft=' + liFt, { headers: { Range: 'bytes=0-999999' } });
+  ok(gr.status === 206 && /^bytes 0-\d+\//.test(gr.headers.get('content-range')), '分段结束位置超出时截断到文件末尾');
+  // 存储型 XSS：上传 HTML 不会按网页打开
+  await up('f_evil0001', '<script>alert(localStorage.tm_token)</script>', liTok2, 'text/html');
+  gr = await fetch(B + '/api/files/f_evil0001', { headers: { Authorization: 'Bearer ' + liTok2 } });
+  ok(gr.headers.get('content-type') === 'application/octet-stream' && /attachment/.test(gr.headers.get('content-disposition')) && gr.headers.get('x-content-type-options') === 'nosniff' && /sandbox/.test(gr.headers.get('content-security-policy') || ''), 'HTML 附件按下载处理（防 XSS）');
+  await up('f_pic00001', 'GIF89a', liTok2, 'image/gif');
+  gr = await fetch(B + '/api/files/f_pic00001', { headers: { Authorization: 'Bearer ' + liTok2 } });
+  ok(gr.headers.get('content-type') === 'image/gif' && /inline/.test(gr.headers.get('content-disposition')), '图片仍可直接显示');
+  await up('f_svg00001', '<svg onload=alert(1)>', liTok2, 'image/svg+xml');
+  ok((await fetch(B + '/api/files/f_svg00001', { headers: { Authorization: 'Bearer ' + liTok2 } })).headers.get('content-type') === 'application/octet-stream', 'SVG 不当图片显示');
+  // 操作结果不回传整个状态
+  let ct = await post('/api/act', { name: 'constructor', payload: {} }, liTok2);
+  ok(ct.ok === false && !(ct.r && ct.r.ideas) && !JSON.stringify(ct).includes('明年计划'), 'constructor 不能拿到整库');
+  ct = await post('/api/act', { name: 'todo.create', payload: { title: 'x', date: '2026-10-03' } }, liTok2);
+  ok(ct.ok && Object.values(ct.r).every(v => typeof v !== 'object'), '操作结果只回传简单字段');
+  // 账号接口加固
+  ok((await post('/api/accounts', { uid: 'u_owner', password: 'newpass1' }, boss)).status === 400, '改自己密码必须走修改密码（要原密码）');
+  await post('/api/accounts', { uid: zhao, login: 'xiaozhao' }, boss);
+  await post('/api/accounts/disable', { uid: zhao, disabled: true }, boss);
+  await post('/api/accounts', { uid: zhao, reset: true }, boss);
+  ok((await get('/api/accounts', boss)).accounts.find(a => a.uid === zhao).disabled === true, '给停用的账号重置密码不会悄悄恢复');
+
   ok((await up('f_big001', Buffer.alloc(1.5 * 1024 * 1024), boss, 'application/octet-stream')).status === 413, '超过大小上限被拒');
   ok(!fs.readdirSync(path.join(DIR, 'files')).some(f => f.includes('.part-') || f === 'f_big001'), '被拒的文件不留残片');
   // 9. 重启后数据还在
   srv.kill(); await new Promise(z => setTimeout(z, 200)); srv = await start();
   r = await get('/api/state', boss);
-  ok(r.status === 200 && r.state.users.length === 3 && r.state.ideas.length === 1 && r.state.ideas[0].note === '改过的草稿', '重启后数据和会话都在');
-  ok((await (await fetch(B + '/api/files/f_abc123?token=' + boss)).text()).endsWith('v2'), '重启后附件还在');
+  ok(r.status === 200 && r.state.users.length === 4 && r.state.ideas.some(d => d.note === '改过的草稿'), '重启后数据和会话都在');
+  ok((await (await fetch(B + '/api/files/f_abc123', { headers: { Authorization: 'Bearer ' + boss } })).text()).endsWith('v2'), '重启后附件还在');
   ok(fs.readdirSync(path.join(DIR, 'backups')).length === 1, '每天一份备份');
   // 10. 演示团队
   srv.kill(); fs.rmSync(DIR, { recursive: true, force: true }); fs.mkdirSync(DIR);
   srv = await start();
-  r = await post('/api/setup', { name: 'Enos', login: 'enos', password: 'enos123', demo: true });
+  r = await post('/api/setup', { name: 'Enos', login: 'enos', password: 'enos123', demo: true, code: 'code-1234' });
   ok(r.state.users.length === 7 && r.state.ideas.length > 0 && r.state.users[0].name === 'Enos', '可以带演示数据创建');
   r = await post('/api/act', { name: 'data.clearDemo', payload: {} }, r.token);
   ok(r.ok && r.state.ideas.length === 0 && r.state.users.length === 7, '一键清理演示数据');

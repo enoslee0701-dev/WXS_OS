@@ -17,6 +17,8 @@
   /* 真实 AI：服务器模式下老板 / 管理员可用（服务器配置了密钥时）；否则一律规则模拟 */
   var AI_ON = false;
   if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.aiStatus().then(function (r) { AI_ON = !!(r && r.enabled); if (AI_ON && aiS && aiS.open) renderAI(); });
+  /* 附件 ID：加密随机（服务器按 ID 存文件，不能被猜到或抢注） */
+  function rid(p) { var a = new Uint8Array(12); try { crypto.getRandomValues(a); } catch (e) { for (var i = 0; i < 12; i++) a[i] = Math.random() * 256; } return p + Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
   /* 附件：本机预览用 blob URL；服务器模式下同时在后台上传（localId 即服务器文件 ID），别的设备从服务器读取 */
   function keepBlob(id, data) { var u = URL.createObjectURL(data); if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.upload(id, data, data && data.name); return u; }
   function blobUrl(id) { return id ? (blobs[id] || (typeof TMS !== 'undefined' && TMS.loggedIn() ? TMS.fileUrl(id) : null)) : null; }
@@ -128,6 +130,7 @@
     var h = '<div class="login srv-login"><div class="mark" aria-hidden="true">协同</div>';
     if (srvL.probed && srvL.setup && !srvL.err) {
       h += '<h1>创建你的团队</h1><p>第一次使用：先建立老板账号。之后由你给每位成员分派登录账号。</p><form class="srv-form" data-form="srvSetup">' + urlF +
+        field('初始化码', '<input type="text" name="code" inputmode="numeric" autocomplete="off" required>', '服务器第一次启动时显示，也保存在数据目录的 setup-code.txt') +
         field('你的姓名', '<input type="text" name="name" maxlength="20" required>') + field('职位（可选）', '<input type="text" name="title" maxlength="20" placeholder="例如：创始人">') +
         field('登录账号', '<input type="text" name="login" autocapitalize="off" autocorrect="off" autocomplete="username" required>', '3–32 位字母、数字或 _ . @ -') +
         field('密码', '<input type="password" name="password" minlength="6" autocomplete="new-password" required>', '至少 6 位') +
@@ -148,7 +151,7 @@
   function srvBusy(b) { srvL.busy = b; var x = document.querySelector('.srv-form button[type=submit]'); if (x) { x.disabled = b; if (!x.dataset.t) x.dataset.t = x.textContent; x.textContent = b ? (x.closest('[data-form=srvSetup]') ? '正在创建…' : '正在登录…') : x.dataset.t; } }
   var SRVF = {
     srvLogin: function (o) { srvL.url = o.server || srvL.url; srvBusy(true); TMS.login(srvL.url, (o.login || '').trim(), o.password || '').then(null, function (e) { srvBusy(false); if (e.needsSetup) { srvL.setup = true; srvL.err = ''; render(); } toast(e.error || '登录失败', true); }); },
-    srvSetup: function (o) { srvL.url = o.server || srvL.url; srvBusy(true); TMS.setup(srvL.url, { name: (o.name || '').trim(), title: (o.title || '').trim(), login: (o.login || '').trim(), password: o.password || '', demo: !!o.demo }).then(null, function (e) { srvBusy(false); toast(e.error || '创建失败', true); }); }
+    srvSetup: function (o) { srvL.url = o.server || srvL.url; srvBusy(true); TMS.setup(srvL.url, { name: (o.name || '').trim(), title: (o.title || '').trim(), login: (o.login || '').trim(), password: o.password || '', demo: !!o.demo, code: (o.code || '').trim() }).then(null, function (e) { srvBusy(false); toast(e.error || '创建失败', true); }); }
   };
   /* App（原生）首次打开：先问连团队服务器还是看演示；浏览器演示网页不受影响 */
   function demoChosen() { try { return localStorage.getItem('tm_demo_chosen') === '1'; } catch (e) { return true; } }
@@ -661,7 +664,7 @@
       mr.ondataavailable = function (e) { chunks.push(e.data); };
       mr.onstop = function () {
         stream.getTracks().forEach(function (t) { t.stop(); });
-        var lid = 'b' + Date.now(), sec = Math.round((Date.now() - ai.t0) / 1000);
+        var lid = rid('b'), sec = Math.round((Date.now() - ai.t0) / 1000);
         blobs[lid] = keepBlob(lid, new Blob(chunks, { type: mr.mimeType || 'audio/webm' }));
         ai.pending = { kind: 'audio', name: '录音 ' + fmtSec(sec), durationSec: sec, localId: lid };
         var text = ai.transcript.trim();
@@ -839,7 +842,7 @@
         mr.ondataavailable = function (e) { chunks.push(e.data); };
         mr.onstop = function () {
           stream.getTracks().forEach(function (t) { t.stop(); });
-          if (vo.discard) { vo.discard = false; vo.state = 'idle'; render(); return; } var sec = Math.round(vo.acc / 1000), lid = 'b' + Date.now();
+          if (vo.discard) { vo.discard = false; vo.state = 'idle'; render(); return; } var sec = Math.round(vo.acc / 1000), lid = rid('b');
           blobs[lid] = keepBlob(lid, new Blob(chunks, { type: mr.mimeType || 'audio/webm' }));
           vo.clips.push({ kind: 'audio', name: '录音 ' + fmtSec(sec), durationSec: sec, localId: lid }); vo.state = 'idle'; render();
         };
@@ -861,7 +864,7 @@
   /* —— 三个记录页（与语音记录同一风格） —— */
   function addVideos(files) {
     var added = 0, big = 0;
-    Array.prototype.forEach.call(files, function (cf) { if (!/^video\//.test(cf.type) && !/\.(mp4|mov|m4v|webm|avi)$/i.test(cf.name)) return; if (cf.size > VMAX) { big++; return; } var cl = 'v' + Date.now() + added; blobs[cl] = keepBlob(cl, cf); cam.clips.push({ kind: 'video', name: cf.name + '（' + fmtSize(cf.size) + '）', fname: cf.name, size: fmtSize(cf.size), localId: cl }); added++; });
+    Array.prototype.forEach.call(files, function (cf) { if (!/^video\//.test(cf.type) && !/\.(mp4|mov|m4v|webm|avi)$/i.test(cf.name)) return; if (cf.size > VMAX) { big++; return; } var cl = rid('v'); blobs[cl] = keepBlob(cl, cf); cam.clips.push({ kind: 'video', name: cf.name + '（' + fmtSize(cf.size) + '）', fname: cf.name, size: fmtSize(cf.size), localId: cl }); added++; });
     render(); toast(big ? big + ' 个视频超过 2GB，未添加' : added ? '已添加 ' + added + ' 个视频（未上传）' : '请选择视频文件', !!big || !added);
   }
   function addFiles(files) {
@@ -869,7 +872,7 @@
     Array.prototype.forEach.call(files, function (f) {
       var isImg = /^image\//.test(f.type), isVid = /^video\//.test(f.type), isTxt = /\.(txt|md)$/i.test(f.name) || /^text\//.test(f.type);
       var item = { kind: isImg ? 'image' : isVid ? 'video' : 'file', name: f.name, size: fmtSize(f.size) };
-      item.localId = 'i' + Date.now() + Math.random().toString(36).slice(2, 6); blobs[item.localId] = keepBlob(item.localId, f);
+      item.localId = rid('i'); blobs[item.localId] = keepBlob(item.localId, f);
       fi.files.push(item);
       rf.unshift({ kind: item.kind, name: f.name, size: item.size, at: Date.now(), localId: item.localId }); 
       if (isTxt) { var r2 = new FileReader(); r2.onload = function () { item.read = true; fi.note = (fi.note + (fi.note ? '\n\n' : '') + '【' + f.name + '】\n' + String(r2.result)).slice(0, 1000); if (!fi.title) fi.title = f.name.replace(/\.[^.]+$/, '').slice(0, 50); render(); }; r2.readAsText(f); }
@@ -2571,10 +2574,10 @@
       sw('showTiers', '显示一级、二级标签（C4）', '只是界面分组标签，不影响权限。当前映射：运营者、负责人为一级，执行者为二级，待确认。') + '</div>';
     h += sec('公司与提醒') + '<div class="card"><label class="fld"><span>公司方向与长期目标</span><textarea data-set="direction" rows="3"' + (isOwner() ? '' : ' disabled') + '>' + esc(cs.direction) + '</textarea><small>AI 整理时用来判断新想法是否与现有业务形成闭环。由老板填写。</small></label>' +
       '<div class="row2"><label class="fld"><span>无动态提醒（天）</span><input type="number" min="1" max="30" data-set="staleDays" value="' + cs.staleDays + '"' + dis + '></label><label class="fld"><span>超预算阈值（元）</span><input type="number" min="0" step="1000" data-set="budgetThreshold" value="' + (cs.budgetThreshold || '') + '"' + dis + '></label></div></div>';
-    h += SRV ? sec('数据') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">服务器：' + esc(TMS.serverUrl()) + '</p><button class="btn danger block" data-do="clearDemo">清理演示数据</button></div>' :
+    h += SRV ? sec('数据') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">服务器：' + esc(TMS.serverUrl()) + '</p>' + (isOwner() ? '<button class="btn danger block" data-do="clearDemo">清理演示数据</button>' : '') + '</div>' :
       sec('演示工具') + '<div class="card">' + sw('demoAiFail', '模拟 AI 失败', '用来演示「AI 失败后运营者手写整理稿继续推进」。') +
       '<div class="callout">演示版里：账号是预设的；AI 整理和共创汇总由规则模拟生成，界面都标了「AI 模拟输出」；录音只在本机，不上传、不转写；通知只在 App 内。</div>' +
-      '<button class="btn block" data-do="clearDemo">清理演示数据（保留成员）</button><button class="btn danger block mt" data-do="reset">重置全部演示数据</button></div>';
+      (isOwner() ? '<button class="btn block" data-do="clearDemo">清理演示数据（保留成员）</button>' : '') + '<button class="btn danger block mt" data-do="reset">重置全部演示数据</button></div>';
     if (TM.hasRole(S, me, 'admin') || isOwner()) h += membersHTML();
     h += '</div>';
     return h;
@@ -2750,7 +2753,7 @@
       mr.ondataavailable = function (e) { chunks.push(e.data); };
       mr.onstop = function () {
         stream.getTracks().forEach(function (t) { t.stop(); });
-        var sec = Math.round((Date.now() - t0) / 1000), lid = 'b' + Date.now();
+        var sec = Math.round((Date.now() - t0) / 1000), lid = rid('b');
         blobs[lid] = keepBlob(lid, new Blob(chunks, { type: mr.mimeType || 'audio/webm' }));
         var am = { kind: 'audio', name: '录音 ' + Math.floor(sec / 60) + ':' + ('0' + sec % 60).slice(-2), durationSec: sec, localId: lid };
         if (cur().name === 'project' && pd) pd.files.push(am); else newMedia.push(am);
@@ -3162,8 +3165,8 @@
     if (el.dataset && el.dataset.aifile && el.files[0]) { var af = el.files[0]; if (!/\.(txt|md)$/i.test(af.name) && !/^text\//.test(af.type)) { toast('演示版只能读取 TXT、Markdown 文本文件', true); return; } var rd = new FileReader(); rd.onload = function () { var tx2 = String(rd.result).slice(0, 4000); if (!aiS.mode) aiS.mode = 'minutes'; aiHandle(tx2); renderAI(); }; rd.readAsText(af); return; }
     if (el.dataset && el.dataset.pref) { var pp = {}; pp[el.dataset.pref] = el.checked; act('member.update', { id: me, prefs: pp }, el.checked ? '已开启' : '已关闭'); return; }
     if (el.dataset && el.dataset.kbfile && el.files.length) { var fs = Array.prototype.slice.call(el.files), n = 0, bad = []; var next = function () { var f = fs.shift(); if (!f) { save(); render(); toast(n ? '已添加 ' + n + ' 份资料' + (bad.length ? '；' + bad.join('、') + ' 没读到内容' : '') : '没有添加成功：' + bad.join('、'), !n); return; } if (f.size > 600000) { bad.push(f.name + '（太大）'); return next(); } var rd = new FileReader(); rd.onload = function () { var body = String(rd.result || ''); var r = TM.act(S, me, 'kb.add', { title: f.name.replace(/\.(md|markdown|txt)$/i, ''), body: body, scope: 'team' }); if (r.ok) n++; else bad.push(f.name + '（' + r.error + '）'); next(); }; rd.onerror = function () { bad.push(f.name); next(); }; rd.readAsText(f); }; next(); el.value = ''; return; }
-    if (el.dataset && el.dataset.wfile && el.files.length) { var wm = Array.prototype.map.call(el.files, function (f) { var o = { kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, size: fmtSize(f.size) }; o.localId = 'w' + Date.now() + Math.random().toString(36).slice(2, 5); blobs[o.localId] = keepBlob(o.localId, f); return o; }); act('work.attach', { id: el.dataset.wfile, media: wm }, '已上传 ' + wm.length + ' 个文件' + (SRV ? '' : '（演示版不上传）')); return; }
-    if (el.dataset && el.dataset.ixfile && el.files.length) { var media = Array.prototype.map.call(el.files, function (f) { var o = { kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, size: fmtSize(f.size) }; o.localId = 'x' + Date.now() + Math.random().toString(36).slice(2, 5); blobs[o.localId] = keepBlob(o.localId, f); return o; }); act('idea.attach', { id: el.dataset.ixfile, media: media }, '已添加 ' + media.length + ' 个附件' + (SRV ? '' : '（演示版不上传）')); return; }
+    if (el.dataset && el.dataset.wfile && el.files.length) { var wm = Array.prototype.map.call(el.files, function (f) { var o = { kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, size: fmtSize(f.size) }; o.localId = rid('w'); blobs[o.localId] = keepBlob(o.localId, f); return o; }); act('work.attach', { id: el.dataset.wfile, media: wm }, '已上传 ' + wm.length + ' 个文件' + (SRV ? '' : '（演示版不上传）')); return; }
+    if (el.dataset && el.dataset.ixfile && el.files.length) { var media = Array.prototype.map.call(el.files, function (f) { var o = { kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, size: fmtSize(f.size) }; o.localId = rid('x'); blobs[o.localId] = keepBlob(o.localId, f); return o; }); act('idea.attach', { id: el.dataset.ixfile, media: media }, '已添加 ' + media.length + ' 个附件' + (SRV ? '' : '（演示版不上传）')); return; }
     if (el.dataset && el.dataset.speriod) { st.period = +el.value; render(); return; }
     if (el.dataset && el.dataset.wdue) { act('work.update', { id: el.dataset.wdue, due: el.value }, '已更新截止时间'); return; }
     if (el.dataset && el.dataset.as === 'milestone' && asg) { asg.milestone = el.checked; return; }

@@ -456,9 +456,39 @@ must(TM.act(bl, 'u_owner', 'idea.create', { note: '第一个想法' }), '新团�
 s = TM.migrate(fresh()); s.knowledge.push({ id: 'Ky', title: '自己的', body: 'y', scope: 'team', on: true, by: O, at: 1, size: 1 });
 rej(TM.act(s, DS, 'data.clearDemo', {}), '执行者清理数据');
 rej(TM.act(s, OP, 'data.clearDemo', {}), '运营者清理数据');
-must(TM.act(s, AD, 'data.clearDemo', {}), '管理员清理演示数据');
+rej(TM.act(s, AD, 'data.clearDemo', {}), '管理员清理数据');
+must(TM.act(s, O, 'data.clearDemo', {}), '老板清理演示数据');
 ok(!s.ideas.length && !s.workItems.length && !s.tasks.length && !s.todos.length && s.users.length === 7, '内容清空、成员保留');
 ok(s.knowledge.length === 1 && s.knowledge[0].id === 'Ky', '演示资料清掉、自己加的资料保留');
+
+// ===== 安全加固（代码审查发现的问题） =====
+s = TM.migrate(fresh());
+['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf'].forEach(n => { const r = TM.act(s, DS, n, {}); ok(r.ok === false && !r.ideas, '原型链上的名字不是操作：' + n); });
+// 动态记录按项目 / 任务可见性裁剪
+const evOk = (u) => { const v = TM.viewFor(s, u); return v.events.every(e => (!e.workId || v.workItems.some(w => w.id === e.workId)) && (!e.taskId || v.tasks.some(t => t.id === e.taskId)) && (e.ideaId || e.workId || e.taskId || TM.caps(s, u).members)); };
+[O, OP, LD, AX, DS, DV, AD].forEach(u => ok(evOk(u), '动态记录不越权：' + u));
+ok(TM.viewFor(s, AD).events.length === 0, '纯管理员看不到项目和任务动态');
+ok(TM.viewFor(s, DS).events.some(e => e.taskId === 'T1') && !TM.viewFor(s, DS).events.some(e => e.workId === 'W2'), '执行者看到自己任务的动态，看不到别的项目');
+// 偏好：白名单、限大小、只给本人
+must(TM.act(s, DS, 'member.update', { id: DS, prefs: { notifyImportant: false, evil: 'x'.repeat(100000) } }), '改自己的偏好');
+ok(TM.user(s, DS).prefs.notifyImportant === false && !('evil' in TM.user(s, DS).prefs), '偏好只收白名单键');
+rej(TM.act(s, DS, 'member.update', { id: DS, prefs: { notifyImportant: 'yes' } }), '偏好值类型不对');
+ok(TM.viewFor(s, DV).users.find(u => u.id === DS).prefs === undefined && TM.viewFor(s, DS).users.find(u => u.id === DS).prefs.notifyImportant === false, '别人的偏好不下发');
+// 管理员不能改老板资料
+rej(TM.act(s, AD, 'member.update', { id: O, name: '新老板' }), '管理员改老板姓名');
+rej(TM.act(s, AD, 'member.update', { id: O, title: '员工' }), '管理员改老板职位');
+must(TM.act(s, AD, 'member.update', { id: DS, title: '高级设计' }), '管理员可以改员工职位');
+// 设置项类型校验
+rej(TM.act(s, O, 'settings.update', { staleDays: 'abc' }), '无动态天数不是数字');
+rej(TM.act(s, O, 'settings.update', { staleDays: 0 }), '无动态天数超范围');
+rej(TM.act(s, O, 'settings.update', { ownerApprovalMode: 'everything' }), '老板确认范围取值不对');
+rej(TM.act(s, O, 'settings.update', { ownerFinalAdmin: 'yes' }), '开关不是布尔');
+must(TM.act(s, O, 'settings.update', { staleDays: 5, budgetThreshold: 8000, ownerApprovalMode: 'all' }), '合法设置');
+ok(s.settings.staleDays === 5 && s.settings.budgetThreshold === 8000, '设置已保存');
+// 演示专用迁移只作用于演示数据
+const real = TM.blank({ name: '王建国' }); delete real.todos;
+TM.migrate(real);
+ok(real.users[0].name === '王建国' && (real.todos || []).length === 0, '真实团队：老板叫王建国不会被改名，不会塞演示待办');
 
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

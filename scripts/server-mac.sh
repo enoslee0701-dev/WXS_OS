@@ -35,6 +35,7 @@ P
     sleep 1
     IP=$(ipconfig getifaddr en0 || ipconfig getifaddr en1 || echo 本机IP)
     echo "已安装并启动。同事在同一个 Wi-Fi 下用：http://$IP:${PORT:-8787}"
+    [ -f $DATA/setup-code.txt ] && echo "还没有创建团队。在 App 里创建团队时填初始化码：$(cat $DATA/setup-code.txt)"
     ;;
   uninstall) launchctl bootout gui/$(id -u)/$LABEL 2>/dev/null || true; rm -f $PLIST; echo 已卸载（数据保留在 $DATA）;;
   status) launchctl print gui/$(id -u)/$LABEL 2>/dev/null | grep -E "state|pid" || echo 未运行; curl -s -m 3 http://localhost:${PORT:-8787}/api/health; echo;;
