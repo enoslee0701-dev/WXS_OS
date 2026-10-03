@@ -115,6 +115,8 @@ var TMN = (function () {
         var q = {}; j[1].split('&').forEach(function (kv) { var p = kv.split('='); try { q[p[0]] = decodeURIComponent(p[1] || ''); } catch (x) {} });
         if (!/^https?:\/\//.test(q.server || '')) return;
         if (window.TMS && TMS.loggedIn()) { if (window.__tm && window.__tm.toast) window.__tm.toast('你已经登录了。要换账号，请先在「我的」里退出登录', true); return; }
+        // 防钓鱼：别人也能做这种链接，切换服务器前必须让用户确认地址
+        if (!window.confirm('要连接到这个团队服务器吗？\n\n' + q.server + (q.login ? '\n账号：' + q.login : '') + '\n\n只在扫描老板给你的二维码时才确认。如果不认识这个地址，请点取消。')) return;
         try { localStorage.setItem('tm_server', q.server); if (q.login) localStorage.setItem('tm_prefill_login', q.login); localStorage.setItem('tm_demo_chosen', '1'); } catch (x) {}
         location.hash = '#/login'; flush().then(function () { location.reload(); }, function () { location.reload(); }); return;
       }
