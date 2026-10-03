@@ -1069,6 +1069,18 @@ var TM = (function () {
     notify(s, usersWith(s, 'owner'), null, '今日早报', body, '#/inbox');
     return { sent: 1 };
   };
+  /* 截止提醒（服务器每天早上以系统身份执行）：明天截止、已逾期的任务提醒执行人本人；同一任务一天最多提醒一次 */
+  A['system.dueReminders'] = function (s, uid) {
+    need(uid === 'agent', '只有系统可以发提醒');
+    var today = todayStr(s), tomorrow = dateAdd(s, 1), n = 0;
+    s.tasks.forEach(function (t) {
+      if (!t.due || ['done', 'cancelled', 'submitted', 'owner_review'].indexOf(t.status) >= 0 || t.remindedOn === today) return;
+      var late = t.due < today, soon = t.due === tomorrow; if (!late && !soon) return;
+      notify(s, [t.ownerId], null, late ? '任务已逾期' : '任务明天截止', t.title + (late ? '（截止 ' + t.due + '）' : ''), '#/task/' + t.id);
+      t.remindedOn = today; n++;
+    });
+    return { sent: n };
+  };
   /* 日常清理（服务器每天以系统身份执行）：已读且超过 60 天的通知删掉，未读的保留 */
   A['system.housekeep'] = function (s, uid) {
     need(uid === 'agent', '只有系统可以清理');

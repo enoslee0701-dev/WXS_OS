@@ -469,7 +469,8 @@ async function dailyBrief() {
       if (code === 200) ai = out.text || '';
     }
     const n0 = S.notifications.length, r = TM.act(S, 'agent', 'system.dailyBrief', { ai });
-    if (r.ok && r.sent) changed(n0);
+    const r2 = TM.act(S, 'agent', 'system.dueReminders', {}); // 同一时间给执行人发截止提醒
+    if ((r.ok && r.sent) || (r2.ok && r2.sent)) changed(n0);
   } catch (e) { console.error('早报出错', e); }
 }
 function scheduleBrief() {

@@ -590,5 +590,15 @@ ok(br.sent === 1 && bn && bn.userId === O && /等你决策/.test(bn.body) && /Cl
 const quiet = TM.blank({ name: '老板' });
 ok(TM.act(quiet, 'agent', 'system.dailyBrief', {}).sent === 0 && !quiet.notifications.length, '没有需要关注的事就不发');
 
+// ===== 截止提醒 =====
+s = TM.migrate(fresh());
+const today0 = TM.todayStr(s), tmr = TM.dateAdd(s, 1);
+const tA = s.tasks.find(x => ['assigned', 'accepted', 'in_progress'].includes(x.status)); tA.due = tmr;
+const tB = s.tasks.find(x => x !== tA && ['assigned', 'accepted', 'in_progress', 'blocked'].includes(x.status)); tB.due = TM.dateAdd(s, -2);
+rej(TM.act(s, O, 'system.dueReminders', {}), '老板不能直接调用提醒');
+const rm = must(TM.act(s, 'agent', 'system.dueReminders', {}), '发截止提醒');
+ok(s.notifications.some(n => n.userId === tA.ownerId && n.title === '任务明天截止' && n.link === '#/task/' + tA.id) && s.notifications.some(n => n.userId === tB.ownerId && n.title === '任务已逾期'), '提醒执行人：明天截止、已逾期');
+ok(TM.act(s, 'agent', 'system.dueReminders', {}).sent === 0, '同一天不重复提醒');
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);
