@@ -3061,6 +3061,35 @@
   DO.back = function () { if (history.length > 1) history.back(); else location.hash = '#/home'; };
   DO.goNew = function () { newMedia = []; draft = { title: '', note: '', mode: 'text', big: false }; location.hash = '#/new'; };
 
+  /* Word（.docx）→ Markdown：在手机上解析，不经过服务器（docx 是 zip，取出 word/document.xml，按段落 / 标题 / 列表转换） */
+  function docxToMd(file) {
+    return file.arrayBuffer().then(function (buf) {
+      var u8 = new Uint8Array(buf), dv = new DataView(buf), eocd = -1;
+      for (var i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+      if (eocd < 0) throw new Error('不是有效的 Word 文件');
+      var n = dv.getUint16(eocd + 10, true), p = dv.getUint32(eocd + 16, true), ent = null, dec = new TextDecoder();
+      for (var k = 0; k < n; k++) {
+        var nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true);
+        var name = dec.decode(u8.subarray(p + 46, p + 46 + nl));
+        if (name === 'word/document.xml') ent = { method: dv.getUint16(p + 10, true), size: dv.getUint32(p + 20, true), off: dv.getUint32(p + 42, true) };
+        p += 46 + nl + xl + cl;
+      }
+      if (!ent) throw new Error('Word 文件里没有正文');
+      var lh = ent.off, start = lh + 30 + dv.getUint16(lh + 26, true) + dv.getUint16(lh + 28, true), raw = u8.subarray(start, start + ent.size);
+      if (ent.method === 0) return dec.decode(raw);
+      if (ent.method !== 8 || typeof DecompressionStream === 'undefined') throw new Error('这台设备不支持读取这种 Word 文件');
+      return new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+    }).then(function (xml) {
+      var doc = new DOMParser().parseFromString(xml, 'application/xml'), W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main', out = [];
+      Array.prototype.forEach.call(doc.getElementsByTagNameNS(W, 'p'), function (pp) {
+        var t = Array.prototype.map.call(pp.getElementsByTagNameNS(W, 't'), function (x) { return x.textContent; }).join('').trim(); if (!t) return;
+        var st = pp.getElementsByTagNameNS(W, 'pStyle')[0], sv = st ? (st.getAttributeNS(W, 'val') || st.getAttribute('w:val') || '') : '', h = /^(Heading|标题)\s*([1-3])$/i.exec(sv) || /^([1-3])$/.exec(sv);
+        var list = pp.getElementsByTagNameNS(W, 'numPr').length;
+        out.push(h ? new Array(+(h[2] || h[1]) + 1).join('#') + ' ' + t : list ? '- ' + t : t);
+      });
+      return out.join('\n\n');
+    });
+  }
   /* ---------- AI 知识库 ---------- */
   var kbTry = '';
   function kbSize(n) { return n >= 10000 ? (n / 10000).toFixed(1) + ' 万字' : n + ' 字'; }
@@ -3079,7 +3108,7 @@
     var h = ixHead('AI 知识库', '让 AI 更了解公司和老板的想法') +
       '<section class="ix2-card kb-intro"><span class="ix2-spark">' + hi('spark', 1.6) + '</span><div><b>AI 会参考这里的资料</b><p>把公司方向、规章制度、老板的思想和做事原则写成文档放在这里。AI 整理想法、给决策建议、找回记忆时，会引用相关的段落，并注明出自哪份资料。</p></div></section>' +
       (can ? '<a class="kb-voice" href="#/kb/voice"><span class="kb-vmic">' + ai2('mic', 1.8) + '</span><span class="kb-vt"><b>录音口述，AI 整理成规则</b><small>直接说出你的想法和做事原则，AI 自动分类成条，核对后存入知识库</small></span>' + hi('chev', 2) + '</a>' : '') +
-      (can ? '<div class="kb-add"><label class="kb-addb">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>' + '<b>上传文档</b><small>MD、TXT，可多选</small><input type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" multiple data-kbfile="1"></label><button class="kb-addb" data-do="kbNew">' + ai2('edit', 1.7) + '<b>直接写 / 粘贴</b><small>老板的想法、口述整理</small></button></div>' : '<p class="ix2-empty" style="margin:0 4px 12px">资料由老板和管理员维护，你可以查看公开给团队的资料。</p>') +
+      (can ? '<div class="kb-add"><label class="kb-addb">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>' + '<b>上传文档</b><small>Word、MD、TXT，可多选</small><input type="file" accept=".md,.markdown,.txt,.docx,text/markdown,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple data-kbfile="1"></label><button class="kb-addb" data-do="kbNew">' + ai2('edit', 1.7) + '<b>直接写 / 粘贴</b><small>老板的想法、口述整理</small></button></div>' : '<p class="ix2-empty" style="margin:0 4px 12px">资料由老板和管理员维护，你可以查看公开给团队的资料。</p>') +
       '<section class="ix2-card"><div class="ix2-sh"><b>' + pi('clip') + '资料（' + docs.length + '）</b><span class="ix2-date">' + on + ' 份启用</span></div>' +
       (docs.length ? docs.map(function (k) { return '<div class="kb-row' + (k.on ? '' : ' off') + '"><a href="#/kb/' + k.id + '"><span class="ix-fi ix-d">' + ai2('doc2', 1.7) + '</span><span class="ix-ft"><b>' + esc(k.title) + '</b><small>' + (k.source === 'voice' ? '口述整理 · ' : '') + kbSize(k.size) + ' · ' + (k.scope === 'ai_only' ? '仅 AI 参考，成员看不到' : '全员可看') + ' · ' + ago(k.at) + '</small></span></a>' + (can ? '<button class="ix2-eye' + (k.on ? ' on' : '') + '" data-do="kbToggle" data-id="' + k.id + '" role="switch" aria-checked="' + k.on + '" aria-label="' + (k.on ? '停用' : '启用') + ' ' + esc(k.title) + '"><i></i><span>' + (k.on ? '启用' : '停用') + '</span></button>' : '') + '</div>'; }).join('') : '<p class="ix2-empty">还没有资料。</p>') + '</section>' +
       '<section class="ix2-card"><div class="ix2-sh"><b>' + hi('spark', 1.6) + '试一试：AI 会引用什么</b></div><div class="kb-try"><input type="text" id="kbq" value="' + esc(kbTry) + '" placeholder="例如：明年要不要招两个开发" maxlength="60"><button class="ix2-btn blue" data-do="kbAsk">查一下</button></div>' +
@@ -3311,7 +3340,7 @@
     if (el.dataset && el.dataset.camfile && el.files.length) { addVideos(el.files); return; }
     if (el.dataset && el.dataset.aifile && el.files[0]) { var af = el.files[0]; if (!/\.(txt|md)$/i.test(af.name) && !/^text\//.test(af.type)) { toast('演示版只能读取 TXT、Markdown 文本文件', true); return; } var rd = new FileReader(); rd.onload = function () { var tx2 = String(rd.result).slice(0, 4000); if (!aiS.mode) aiS.mode = 'minutes'; aiHandle(tx2); renderAI(); }; rd.readAsText(af); return; }
     if (el.dataset && el.dataset.pref) { var pp = {}; pp[el.dataset.pref] = el.checked; act('member.update', { id: me, prefs: pp }, el.checked ? '已开启' : '已关闭'); return; }
-    if (el.dataset && el.dataset.kbfile && el.files.length) { var fs = Array.prototype.slice.call(el.files), n = 0, bad = []; var next = function () { var f = fs.shift(); if (!f) { save(); render(); toast(n ? '已添加 ' + n + ' 份资料' + (bad.length ? '；' + bad.join('、') + ' 没读到内容' : '') : '没有添加成功：' + bad.join('、'), !n); return; } if (f.size > 600000) { bad.push(f.name + '（太大）'); return next(); } var rd = new FileReader(); rd.onload = function () { var body = String(rd.result || ''); var r = TM.act(S, me, 'kb.add', { title: f.name.replace(/\.(md|markdown|txt)$/i, ''), body: body, scope: 'team' }); if (r.ok) n++; else bad.push(f.name + '（' + r.error + '）'); next(); }; rd.onerror = function () { bad.push(f.name); next(); }; rd.readAsText(f); }; next(); el.value = ''; return; }
+    if (el.dataset && el.dataset.kbfile && el.files.length) { var fs = Array.prototype.slice.call(el.files), n = 0, bad = []; var next = function () { var f = fs.shift(); if (!f) { save(); render(); toast(n ? '已添加 ' + n + ' 份资料' + (bad.length ? '；' + bad.join('、') + ' 没读到内容' : '') : '没有添加成功：' + bad.join('、'), !n); return; } if (f.size > (/\.docx$/i.test(f.name) ? 8000000 : 600000)) { bad.push(f.name + '（太大）'); return next(); } var addKb = function (body) { var r = TM.act(S, me, 'kb.add', { title: f.name.replace(/\.(md|markdown|txt|docx)$/i, ''), body: body, scope: 'team' }); if (r.ok) n++; else bad.push(f.name + '（' + r.error + '）'); next(); }; if (/\.docx$/i.test(f.name)) { docxToMd(f).then(addKb, function (e) { bad.push(f.name + '（' + (e && e.message || '读不出来') + '）'); next(); }); return; } var rd = new FileReader(); rd.onload = function () { addKb(String(rd.result || '')); }; rd.onerror = function () { bad.push(f.name); next(); }; rd.readAsText(f); }; next(); el.value = ''; return; }
     if (el.dataset && el.dataset.avatar && el.files.length) { avatarPick(el.files[0]); el.value = ''; return; }
     if (el.dataset && el.dataset.wfile && el.files.length) { var wm = Array.prototype.map.call(el.files, function (f) { var o = { kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, size: fmtSize(f.size) }; o.localId = rid('w'); blobs[o.localId] = keepBlob(o.localId, f); return o; }); act('work.attach', { id: el.dataset.wfile, media: wm }, '已上传 ' + wm.length + ' 个文件' + (SRV ? '' : '（演示版不上传）')); return; }
     if (el.dataset && el.dataset.ixfile && el.files.length) { var media = Array.prototype.map.call(el.files, function (f) { var o = { kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, size: fmtSize(f.size) }; o.localId = rid('x'); blobs[o.localId] = keepBlob(o.localId, f); return o; }); act('idea.attach', { id: el.dataset.ixfile, media: media }, '已添加 ' + media.length + ' 个附件' + (SRV ? '' : '（演示版不上传）')); return; }

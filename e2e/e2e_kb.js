@@ -19,5 +19,10 @@ const URL=(require('./_env').URL);
   await p.goto(URL+'#/me'); await p.evaluate(()=>localStorage.setItem('tm_user_v3','u_design')); await p.reload(); await p.goto(URL+'#/kb'); await p.waitForTimeout(150);
   ok(!(await p.locator('[data-kbfile]').count()) && !(await p.locator('.kb-row .ix2-eye').count()), '执行者只能查看');
   await p.evaluate(()=>localStorage.setItem('tm_user_v3','u_owner')); await p.reload(); await p.goto(URL+'#/kb'); await p.click('[data-do=kbNew]'); await p.click('.sheet [data-do=kbTpl]'); ok((await p.inputValue('.sheet textarea[name=body]')).includes('## 我怎么做决定') && await p.isChecked('.sheet input[name=scope][value=ai_only]'), '模板填入且默认仅 AI 参考');
+  // Word 文档：在手机上解析成 Markdown（标题、列表）
+  await p.goto(URL+'#/kb'); await p.waitForTimeout(150);
+  await p.setInputFiles('[data-kbfile]', require('path').join(__dirname,'fixtures','rules.docx')); await p.waitForTimeout(600);
+  const wd = await p.evaluate(()=>{ const k = window.__tm.S.knowledge.find(x=>x.title==='rules'); return k && k.body; });
+  ok(wd && wd.includes('# 团队做事原则') && wd.includes('## 花钱') && wd.includes('- 单笔超过五千元要先问老板') && wd.includes('试点两周'), '上传 Word 转成 Markdown：' + JSON.stringify(wd||'').slice(0,80));
   ok(!errs.length,'无脚本错误 '+errs.join(';')); console.log('知识库 E2E 通过',pass,'失败',fail); await b.close();
 })();
