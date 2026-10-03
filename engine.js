@@ -926,6 +926,63 @@ var TM = (function () {
       throw e;
     }
   }
+
+  /* ---------- 数据迁移（客户端缓存与服务器共用，幂等） ---------- */
+  function migrate(s) {
+    (function () { var o = user(s, 'u_owner'); if (o && o.name === '王建国') { o.name = 'Enos'; } if (!s.todos) seedTodos(s, Date.now()); if (s.users.some(function (u) { return !u.group; })) { var fr = seed(); s.users.forEach(function (u) { var f = fr.users.find(function (x) { return x.id === u.id; }); if (f && !u.group) { u.motto = f.motto; u.skills = f.skills; u.presence = f.presence; u.group = f.group; if (u.id === 'u_owner') u.title = f.title; } else if (!u.group) { u.group = '行政运营'; u.presence = 'offline'; u.skills = []; u.motto = ''; } }); } })();
+    kbInit(s);
+    s.ideas.forEach(function (d) { if (d.titleSource) return; var n = String(d.note || '').replace(/\s+/g, ''), t = String(d.title || '').replace(/\s+/g, ''); if (!t || /【|^\d+[.、]/.test(d.title) || (t.length >= 6 && n.indexOf(t) === 0)) { d.title = aiTitle(d); d.titleSource = 'ai'; } else d.titleSource = 'user'; });
+    return s;
+  }
+
+  /* ---------- 按身份裁剪数据：服务器只下发这个人能看到的内容 ---------- */
+  function viewFor(s, uid) {
+    var I = {}, W = {}, T = {};
+    s.ideas.forEach(function (d) { if (canViewIdea(s, uid, d)) I[d.id] = 1; });
+    s.workItems.forEach(function (w) { if (canViewWork(s, uid, w)) W[w.id] = 1; });
+    s.tasks.forEach(function (t) { if (W[t.workId] && canViewTask(s, uid, t)) T[t.id] = 1; });
+    var kb = {}; kbVisible(s, uid).forEach(function (k) { kb[k.id] = 1; });
+    var v = JSON.parse(JSON.stringify(stripFns(s)));
+    var byIdea = function (x) { return !x.ideaId || I[x.ideaId]; };
+    v.ideas = v.ideas.filter(function (d) { return I[d.id]; });
+    v.ideas.forEach(function (d) { var o = s.ideas.find(function (x) { return x.id === d.id; }); d.media = (d.media || []).filter(function (m) { return canSeeMediaItem(s, uid, o, m); }); });
+    v.suggestions = v.suggestions.filter(byIdea);
+    v.summaries = v.summaries.filter(byIdea);
+    v.events = v.events.filter(byIdea);
+    v.decisions = v.decisions.filter(function (x) { return (x.ideaId && I[x.ideaId]) || (x.workId && W[x.workId]) || (!x.ideaId && !x.workId && hasRole(s, uid, 'owner')); });
+    v.workItems = v.workItems.filter(function (w) { return W[w.id]; });
+    v.tasks = v.tasks.filter(function (t) { return T[t.id]; });
+    ['checklist', 'deliverables', 'comments'].forEach(function (k) { v[k] = (v[k] || []).filter(function (x) { return !x.taskId || T[x.taskId]; }); });
+    v.reviews = v.reviews.filter(function (x) { return x.taskId ? T[x.taskId] : W[x.workId]; });
+    v.notifications = v.notifications.filter(function (n) { return n.userId === uid; });
+    v.todos = (v.todos || []).filter(function (x) { return x.ownerId === uid || (x.people || []).indexOf(uid) >= 0; });
+    v.todoRecent = (v.todoRecent || []).filter(function (x) { return x.userId === uid; });
+    v.knowledge = (v.knowledge || []).filter(function (k) { return kb[k.id]; });
+    return v;
+  }
+
+  /* ---------- 新团队：只有老板一个人、没有任何示例内容 ---------- */
+  function blank(o, clock) {
+    o = o || {};
+    var s = seed(clock), owner = s.users.find(function (u) { return u.id === 'u_owner'; });
+    owner.name = txt(o.name) || '老板'; owner.title = txt(o.title) || '负责人';
+    owner.email = ''; owner.location = ''; owner.bio = ''; owner.motto = ''; owner.skills = []; owner.presence = 'online';
+    s.users = [owner];
+    clearContent(s);
+    s.knowledge = [];
+    s.settings.direction = '';
+    return migrate(s);
+  }
+  function clearContent(s) {
+    ['ideas', 'suggestions', 'summaries', 'workItems', 'tasks', 'checklist', 'deliverables', 'reviews', 'decisions', 'comments', 'events', 'notifications', 'todos', 'todoRecent'].forEach(function (k) { s[k] = []; });
+    if (s.knowledge) s.knowledge = s.knowledge.filter(function (k) { return !k.demo; });
+  }
+  /* 清理演示数据：保留成员、设置和自己添加的知识库资料，其余示例内容全部清空 */
+  A['data.clearDemo'] = function (s, uid) {
+    need(hasRole(s, uid, 'owner') || hasRole(s, uid, 'admin'), '只有老板或管理员可以清理数据');
+    clearContent(s);
+    return {};
+  };
   function stripFns(s) { var o = {}; Object.keys(s).forEach(function (k) { if (typeof s[k] !== 'function') o[k] = s[k]; }); return o; }
   function restore(s, snap) { Object.keys(snap).forEach(function (k) { s[k] = snap[k]; }); }
 
@@ -1070,7 +1127,7 @@ var TM = (function () {
   return {
     L: L, STAGES: STAGES, TONE: TONE, DAY: DAY, act: act, seed: seed, user: user, name: name, hasRole: hasRole, canInitiate: canInitiate, usersWith: usersWith,
     primaryRole: primaryRole, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
-    latestSummary: latestSummary, deriveAnalysis: deriveAnalysis, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, canCreateProject: canCreateProject, canAssign: canAssign, caps: caps, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
+    latestSummary: latestSummary, deriveAnalysis: deriveAnalysis, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, migrate: migrate, viewFor: viewFor, blank: blank, canCreateProject: canCreateProject, canAssign: canAssign, caps: caps, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
     nextForTask: nextForTask, PTYPE: PTYPE, GROUPS: GROUPS, seedTodos: seedTodos, ensureTodos: ensureTodos, nextForIdea: nextForIdea, ideaProgress: ideaProgress, workProgress: workProgress, TT: TT
   };
 })();

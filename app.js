@@ -12,9 +12,7 @@
   }
   function save() { try { localStorage.setItem(K, JSON.stringify(S)); } catch (e) {} }
   S = load();
-  (function () { var o = TM.user(S, 'u_owner'); if (o && o.name === '王建国') { o.name = 'Enos'; } if (!S.todos) TM.seedTodos(S, Date.now()); if (S.users.some(function (u) { return !u.group; })) { var fr = TM.seed(); S.users.forEach(function (u) { var f = fr.users.find(function (x) { return x.id === u.id; }); if (f && !u.group) { u.motto = f.motto; u.skills = f.skills; u.presence = f.presence; u.group = f.group; if (u.id === 'u_owner') u.title = f.title; } else if (!u.group) { u.group = '行政运营'; u.presence = 'offline'; u.skills = []; u.motto = ''; } }); } })();
-  TM.kbInit(S);
-  S.ideas.forEach(function (d) { if (d.titleSource) return; var n = String(d.note || '').replace(/\s+/g, ''), t = String(d.title || '').replace(/\s+/g, ''); if (!t || /【|^\d+[.、]/.test(d.title) || (t.length >= 6 && n.indexOf(t) === 0)) { d.title = TM.aiTitle(d); d.titleSource = 'ai'; } else d.titleSource = 'user'; });
+  TM.migrate(S);
   var PHOTOS = { u_owner: '__ENOS__' };
   try { me = localStorage.getItem(KU); } catch (e) {}
   if (me && !TM.user(S, me)) me = null;

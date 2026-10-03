@@ -1,15 +1,17 @@
 {
   "name": "team-ops",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
-  "description": "团队协同 App（演示版）：单文件 HTML，源码构建为 dist/team-ops.html",
+  "description": "团队协同 App：网页 / iOS（Capacitor）客户端 + 零依赖 Node 服务器",
   "scripts": {
     "build": "node build.js",
     "dev": "node scripts/dev.js",
-    "test": "node test.js",
+    "test": "node test.js && node test_server.js",
     "e2e": "node scripts/e2e.js",
     "check": "npm run build && npm test && npm run e2e",
-    "setup": "npx playwright install chromium"
+    "setup": "npx playwright install chromium",
+    "server": "node server/server.js",
+    "ios": "node build.js && npx cap copy ios && node scripts/ios.js"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",

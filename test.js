@@ -427,5 +427,38 @@ s.workItems.forEach(w => { if (w.operatorId === OP || w.leadId === OP) w.status 
 ok(!cap(OP).assign, '运营者手上没有进行中的项目时不能分配');
 ok(TM.canAssign(s, O) === s.workItems.some(w => ['planning', 'active', 'acceptance', 'blocked'].includes(w.status)), '老板有进行中项目即可分配');
 
+// ===== 服务器下发：按身份裁剪 =====
+s = TM.migrate(fresh());
+const vw = (u) => TM.viewFor(s, u);
+ok(vw(O).ideas.length === s.ideas.length && vw(O).workItems.length === s.workItems.length, '老板拿到全部想法和项目');
+ok(vw(DS).ideas.every(d => TM.canViewIdea(s, DS, d)) && vw(DS).ideas.length < s.ideas.length, '执行者只拿到看得到的想法');
+ok(!vw(OP).ideas.some(d => d.status === 'draft' && d.creatorId !== OP), '别人的草稿不下发');
+ok(vw(AD).ideas.length === 0 && vw(AD).workItems.length === 0 && vw(AD).tasks.length === 0, '管理员拿不到想法、项目、任务');
+ok(vw(DS).notifications.every(n => n.userId === DS) && vw(O).todos.every(x => x.ownerId === O || (x.people || []).includes(O)), '通知和个人待办只给本人');
+ok(vw(DV).tasks.every(t => vw(DV).workItems.some(w => w.id === t.workId)), '下发的任务都能找到所属项目');
+ok(vw(DS).checklist.every(c => vw(DS).tasks.some(t => t.id === c.taskId)), '清单跟着任务走');
+ok(vw(DS).seq === s.seq, '保留序号，客户端与服务器生成相同 ID');
+s.knowledge.push({ id: 'Kx', title: '只给 AI', body: 'x', scope: 'ai_only', on: true, by: O, at: 1, size: 1 });
+ok(vw(O).knowledge.some(k => k.id === 'Kx') && !vw(DS).knowledge.some(k => k.id === 'Kx'), '仅 AI 可见的资料不下发给员工');
+const before = JSON.stringify(s); vw(DS); ok(JSON.stringify(s) === before, '裁剪不改动原数据');
+// 同一份状态上执行同一操作，结果一致（客户端先执行、服务器再执行）
+const a1 = TM.migrate(fresh()), a2 = JSON.parse(JSON.stringify(a1));
+const x1 = TM.act(a1, O, 'idea.create', { note: '同步测试' }), x2 = TM.act(a2, O, 'idea.create', { note: '同步测试' });
+ok(x1.ok && x1.id === x2.id, '确定性 ID');
+
+// ===== 新团队与清理演示数据 =====
+const bl = TM.blank({ name: '王老板', title: '创始人' });
+ok(bl.users.length === 1 && bl.users[0].id === 'u_owner' && bl.users[0].name === '王老板' && TM.hasRole(bl, 'u_owner', 'owner'), '新团队只有老板');
+ok(!bl.ideas.length && !bl.workItems.length && !bl.todos.length && !bl.knowledge.length && !bl.notifications.length, '新团队没有示例内容');
+must(TM.act(bl, 'u_owner', 'member.add', { name: '小李', title: '设计', role: 'executor', group: '设计创意' }), '新团队可以添加成员');
+ok(bl.users.length === 2, '成员已添加');
+must(TM.act(bl, 'u_owner', 'idea.create', { note: '第一个想法' }), '新团队可以记录想法');
+s = TM.migrate(fresh()); s.knowledge.push({ id: 'Ky', title: '自己的', body: 'y', scope: 'team', on: true, by: O, at: 1, size: 1 });
+rej(TM.act(s, DS, 'data.clearDemo', {}), '执行者清理数据');
+rej(TM.act(s, OP, 'data.clearDemo', {}), '运营者清理数据');
+must(TM.act(s, AD, 'data.clearDemo', {}), '管理员清理演示数据');
+ok(!s.ideas.length && !s.workItems.length && !s.tasks.length && !s.todos.length && s.users.length === 7, '内容清空、成员保留');
+ok(s.knowledge.length === 1 && s.knowledge[0].id === 'Ky', '演示资料清掉、自己加的资料保留');
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);
