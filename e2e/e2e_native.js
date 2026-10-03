@@ -6,6 +6,7 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
 const FAKE = (opts) => {
   const o = opts || {};
   const ss = window.sessionStorage;
+  if (!o.welcome && !ss.getItem('__wl')) { localStorage.setItem('tm_demo_chosen', '1'); ss.setItem('__wl', '1'); }
   if (o.prefs && !ss.getItem('__fp_init')) { ss.setItem('__fp', JSON.stringify(o.prefs)); ss.setItem('__fp_init', '1'); }
   const P = () => JSON.parse(ss.getItem('__fp') || '{}'), setP = (x) => ss.setItem('__fp', JSON.stringify(x));
   const subs = {}; let cid = 0;
@@ -34,13 +35,18 @@ const FAKE = (opts) => {
     ok(await p.evaluate(() => TMN.native === false && !document.documentElement.classList.contains('native')), '浏览器里不启用原生层');
     await c.close(); }
 
-  // 1. 原生环境基础
-  let p = await mk();
+  // 1. 原生环境基础（首次打开：欢迎页）
+  let p = await mk({ welcome: true });
   ok(await p.evaluate(() => TMN.native && TMN.platform === 'ios' && document.documentElement.classList.contains('p-ios')), '识别为 iOS 原生');
   ok(await p.evaluate(() => window.SpeechRecognition === TMN.SpeechRecognition && window.webkitSpeechRecognition === TMN.SpeechRecognition), '语音识别换成原生实现');
   ok(await p.evaluate(() => __fake.calls.includes('SplashScreen.hide')), '加载后关闭启动屏');
   ok(await p.evaluate(() => !TMN.error), '桥接层无错误');
 
+  ok(await p.locator('.welcome [data-do=srvConnect]').count() === 1 && await p.locator('.acct').count() === 0, 'App 首次打开是欢迎页（连接服务器 / 看演示）');
+  await p.click('[data-do=demoChoose]'); await p.waitForTimeout(100);
+  ok(await p.locator('.acct').count() > 0, '选择看演示后出现演示账号');
+  await p.reload(); await p.waitForTimeout(300);
+  ok(await p.locator('.acct').count() > 0, '演示选择被记住');
   // 2. 数据双存
   await p.click('.acct:has-text("Enos")'); await p.waitForTimeout(500);
   let pf = await p.evaluate(() => __fake.prefs());

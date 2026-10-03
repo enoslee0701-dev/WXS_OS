@@ -150,8 +150,17 @@
     srvLogin: function (o) { srvL.url = o.server || srvL.url; srvBusy(true); TMS.login(srvL.url, (o.login || '').trim(), o.password || '').then(null, function (e) { srvBusy(false); if (e.needsSetup) { srvL.setup = true; srvL.err = ''; render(); } toast(e.error || '登录失败', true); }); },
     srvSetup: function (o) { srvL.url = o.server || srvL.url; srvBusy(true); TMS.setup(srvL.url, { name: (o.name || '').trim(), title: (o.title || '').trim(), login: (o.login || '').trim(), password: o.password || '', demo: !!o.demo }).then(null, function (e) { srvBusy(false); toast(e.error || '创建失败', true); }); }
   };
+  /* App（原生）首次打开：先问连团队服务器还是看演示；浏览器演示网页不受影响 */
+  function demoChosen() { try { return localStorage.getItem('tm_demo_chosen') === '1'; } catch (e) { return true; } }
+  function viewWelcome() {
+    return '<div class="login welcome"><div class="mark" aria-hidden="true">协同</div><h1>欢迎使用团队协同</h1><p>用科技让福音走得更远。连接你们团队的服务器，用老板分派给你的账号登录。</p>' +
+      '<button class="btn pri block wl-go" data-do="srvConnect">连接团队服务器</button>' +
+      '<button class="btn block wl-demo" data-do="demoChoose">先看看演示</button>' +
+      '<p class="muted wl-tip">服务器地址由老板提供，例如 http://192.168.1.20:8787。演示模式的数据只存在这台手机上。</p></div>';
+  }
   function viewLogin() {
     if (SRV) return viewSrvLogin();
+    if (typeof TMN !== 'undefined' && TMN.native && !demoChosen()) return viewWelcome();
     return '<div class="login"><div class="mark" aria-hidden="true">协同</div><h1>以谁的身份进入？</h1><p>每个账号按角色和权限看到不同内容。切换账号，可以把一件事从想法一路走到验收。</p>' +
       '<div class="list">' + S.users.map(function (u) {
         return '<div class="acct" role="button" tabindex="0" data-do="login" data-id="' + u.id + '">' + av(u.id) + '<div><b>' + esc(u.name) + '　<span class="muted" style="font-weight:400;font-size:14px">' + esc(u.title) + '</span></b><small>' + esc(ROLE_DESC[u.id] || '') + '</small></div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></div>';
@@ -2829,6 +2838,7 @@
   };
   DO.expandNote = function () { draft.big = !draft.big; render(); };
   DO.hmVerse = function () { hmV++; render(); };
+  DO.demoChoose = function () { try { localStorage.setItem('tm_demo_chosen', '1'); } catch (e) {} render(); };
   DO.srvConnect = function () { openSheet('连接团队服务器', field('服务器地址', '<input type="url" name="server" placeholder="例如：http://192.168.1.20:8787" autocapitalize="off" autocorrect="off" required>', '由老板在电脑或服务器上运行 npm run server 后得到的地址。'), '连接', function (o) { TMS.useServer(o.server); }); };
   DO.srvLocal = function () { TMS.useLocal(); };
   DO.srvLogout = function () { var n = TMS.outbox.length; openSheet('退出登录', '<p style="margin:0">' + (n ? '还有 <b>' + n + '</b> 项改动没同步到服务器，退出后会丢失。建议联网同步完再退出。' : '退出后需要重新输入账号密码。') + '</p>', '退出登录', function () { TMS.logout(); }, true); };

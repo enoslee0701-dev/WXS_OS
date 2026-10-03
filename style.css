@@ -2987,3 +2987,8 @@ body.home-lock .hm{min-height:calc(100vh / .86)}
 .ai-md h3,.ai-md h4,.ai-md h5{font-size:15px;margin:8px 0 4px}
 .ai-md p{margin:0 0 6px}
 .ai-sim.ai-real{color:#2148C0}
+
+/* App 首次打开欢迎页 */
+.welcome .wl-go{height:48px;margin-top:28px}
+.welcome .wl-demo{height:46px;margin-top:10px}
+.welcome .wl-tip{font-size:13px;margin-top:16px;line-height:1.6}
