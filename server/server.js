@@ -129,8 +129,9 @@ function send(res, code, obj) {
   }
   h['Content-Length'] = b.length; res.writeHead(code, h); res.end(b);
 }
-function body(req) {
-  return new Promise((ok, bad) => { let n = 0; const ch = []; req.on('data', d => { n += d.length; if (n > MAX_BODY) { bad(new Error('too large')); req.destroy(); } else ch.push(d); }); req.on('end', () => { try { const v = ch.length ? JSON.parse(Buffer.concat(ch).toString('utf8')) : {}; ok(v && typeof v === 'object' ? v : {}); } catch (e) { bad(e); } }); req.on('error', bad); });
+function body(req, limit) {
+  const max = limit || MAX_BODY;
+  return new Promise((ok, bad) => { let n = 0; const ch = []; req.on('data', d => { n += d.length; if (n > max) { bad(new Error('too large')); req.destroy(); } else ch.push(d); }); req.on('end', () => { try { const v = ch.length ? JSON.parse(Buffer.concat(ch).toString('utf8')) : {}; ok(v && typeof v === 'object' ? v : {}); } catch (e) { bad(e); } }); req.on('error', bad); });
 }
 const stateFor = (uid) => ({ version, state: TM.viewFor(S, uid) });
 // 操作结果只回传简单字段（新建记录的 ID 等），绝不回传对象
@@ -226,6 +227,12 @@ const routes = {
     if (!TM.canCreateProject(S, me.uid)) return [403, { error: '你不能新建项目' }];
     const text = String(b.text || '').trim(); if (text.length < 6) return [400, { error: '内容太少' }];
     return aiRun(me, 'project', () => AI.parseProject(S, me.uid, text));
+  },
+  'POST /api/ai/doc': async (req, url, b, me) => {
+    if (!TM.kbCan(S, me.uid)) return [403, { error: '只有老板或管理员可以整理知识库' }];
+    const data = String(b.data || ''); if (!/^[A-Za-z0-9+/=]+$/.test(data) || data.length < 16) return [400, { error: '文件格式不对' }];
+    if (Buffer.from(data.slice(0, 8), 'base64').toString('latin1').indexOf('%PDF') !== 0) return [400, { error: '只支持 PDF 文件' }];
+    return aiRun(me, 'doc', () => AI.pdfToMarkdown(data, b.name));
   },
   'POST /api/ai/advice': async (req, url, b, me) => {
     if (!isOwner(me.uid)) return [403, { error: '决策建议只给老板' }];
@@ -396,6 +403,7 @@ async function aiRun(me, kind, fn, system) {
   }
 }
 
+const BIG_BODY = new Set(['POST /api/ai/doc']); // 上传 PDF 给 AI 读，单独放宽请求体上限
 const PUBLIC = new Set(['GET /api/health', 'GET /api/setup', 'POST /api/setup', 'POST /api/login']);
 
 const server = http.createServer(async (req, res) => {
@@ -425,7 +433,7 @@ const server = http.createServer(async (req, res) => {
         me = auth(req, url); if (!me) return send(res, 401, { error: '请重新登录' });
         if (me.mustChange && !MUST_OK.has(key)) return send(res, 403, { error: '请先修改初始密码', mustChange: true });
       }
-      const b = req.method === 'POST' ? await body(req) : {};
+      const b = req.method === 'POST' ? await body(req, BIG_BODY.has(key) ? 15 * 1024 * 1024 : 0) : {};
       const [code, out] = await fn(req, url, b, me);
       return send(res, code, out);
     }

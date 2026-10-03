@@ -225,6 +225,7 @@ var TMS = (function () {
   // 决策弹窗开着时常规同步会推迟，这里直接应用（用户就是在等这份结果）
   api.aiAdvice = function (id) { return req('POST', '/api/ai/advice', { id: id }).then(function (r) { if (!api.outbox.length && !busy && r.version >= api.version && window.__tm) { api.version = r.version; put('tm_ver', r.version); keepLocal(r.state, window.__tm.S); window.__tm.setState(r.state); } return r; }); };
   api.aiProject = function (text) { return req('POST', '/api/ai/project', { text: text }); };
+  api.aiDoc = function (name, base64) { return req('POST', '/api/ai/doc', { name: name, data: base64 }); };
   api.aiKb = function (topic, text) { return req('POST', '/api/ai/kb', { topic: topic, text: text }); };
   /* ---------- 大缓存：完整数据超过 localStorage 容量时存 IndexedDB ---------- */
   var CDB = null;

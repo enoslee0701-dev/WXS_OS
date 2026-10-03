@@ -6,6 +6,7 @@ const until = async (fn, ms = 5000) => { const t0 = Date.now(); while (Date.now(
 let mode = 'ok', calls = 0, srv = null;
 const mock = http.createServer((req, res) => { let b = ''; req.on('data', d => b += d); req.on('end', () => {
   calls++; const body = JSON.parse(b || '{}');
+  if ((body.messages || []).some(m => Array.isArray(m.content) && m.content.some(c => c.type === 'document'))) { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ id: 'p', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: '# 年度计划\n- Claude 读出的要点' }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 } })); }
   if (mode === 'down') { res.writeHead(500, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ type: 'error', error: { type: 'api_error', message: 'x' } })); }
   const kb = body.output_config && body.output_config.format;
   const text = kb && kb.schema.properties.ptype ? JSON.stringify({ title: 'Claude 拟的项目', summary: '概要', ptype: 'event', lead: '林晓', tasks: [{ title: '订场地', owner: '周敏', expected: '确认单', criteria: '老板确认' }], people: ['林晓'], tags: ['聚会'] }) : kb && kb.schema.properties.verdict ? JSON.stringify({ verdict: 'needs_info', label: '建议先补充信息', reasons: ['没写预算'], risks: ['成本高'], checks: ['预算上限'], note: '先出方案再报我。' }) : kb && kb.schema.properties.suggested_route ? JSON.stringify({ title: '整理', summary: 's', background: 'b', problem: 'p', goal: 'g', overview: 'o', issues: [], directions: [], category: 'other', relation_to_direction: '', open_questions: [], exception_flags: [], suggested_route: 'operator_direct', suggested_tasks: [], confidence: 0.5 }) : kb ? JSON.stringify({ title: '老板口述：做决定', secs: [{ key: 'decide', items: ['新想法先小步试点两周，看反馈再决定。'] }, { key: 'money', items: ['单笔超过五千元的支出要先问老板。'] }] })
@@ -94,6 +95,12 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', d => b
   await p.click('[data-do=kbvMode]'); ok((await p.inputValue('#kbv-md')).includes('Claude 整理成条'), '来源标注为 Claude 整理');
   await p.click('[data-do=kbvMode]');
   await p.screenshot({ path: 'aireal-kb.png', fullPage: true });
+
+  // ---- 知识库上传 PDF：Claude 读出正文
+  await p.goto(URL + '#/kb'); await p.waitForTimeout(200);
+  ok((await p.textContent('.kb-addb small')).includes('PDF'), 'AI 启用后知识库可以上传 PDF');
+  await p.setInputFiles('[data-kbfile]', path.join(__dirname, 'fixtures', 'plan.pdf'));
+  ok(await until(async () => p.evaluate(() => (window.__tm.S.knowledge.find(k => k.title === 'plan') || {}).body || '').then(b => b.includes('Claude 读出的要点')), 8000), '上传 PDF 后存成资料');
 
   // ---- 员工：AI 仍是规则模拟，不调用 Claude
   await p.goto(URL + '#/me'); await p.waitForTimeout(100); await p.click('[data-do=srvLogout]'); await p.click('.sheet footer button[type=submit]');

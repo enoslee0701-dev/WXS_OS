@@ -10,6 +10,8 @@ const mock = http.createServer((req, res) => {
     const body = JSON.parse(b || '{}'); seen.push({ url: req.url, headers: req.headers, body });
     const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
     if (mode === '429') return reply(429, { type: 'error', error: { type: 'rate_limit_error', message: 'slow down' } });
+    const hasDoc = (body.messages || []).some(m => Array.isArray(m.content) && m.content.some(c => c.type === 'document'));
+    if (hasDoc) return reply(200, { id: 'msg_pdf', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: '# 年度计划\n- 第一季度：试点' }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 900, output_tokens: 30 } });
     const fmt = body.output_config && body.output_config.format;
     if (fmt && fmt.schema.properties.ptype) return reply(200, { id: 'msg_p', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ title: '年底感恩聚会', summary: '十二月办一次全队感恩聚会。', ptype: 'event', lead: '林晓', tasks: [{ title: '订场地', owner: '周敏', expected: '场地确认单', criteria: '老板确认' }, { title: '做海报', owner: '没这个人', expected: '海报', criteria: '好看' }], people: ['林晓', '周敏', '外人'], tags: ['聚会'] }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 300, output_tokens: 80 } });
     if (fmt && fmt.schema.properties.divergences) return setTimeout(() => reply(200, { id: 'msg_g', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ people: [{ name: '何静', points: ['内容成本高'] }, { name: '路人甲', points: ['x'] }], consensus: [{ point: '值得做', who: ['何静', '不存在的人'] }], divergences: [{ point: '先做哪个', sides: [{ view: '先做语音', who: ['刘洋'] }] }], risks: [], questions: [], next: ['Claude：先小范围试点'] }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 400, output_tokens: 120 } }), 30);
@@ -112,6 +114,13 @@ async function team(api) {
   ok(w.x && /Claude/.test(w.x.payload.overview) && w.x.payload.suggested_route === 'to_owner', '后台换成 Claude 整理稿');
   ok(w.st2 && w.st2.state.ideas.find(d => d.id === idea.r.id).title === '全队退修会', 'Claude 拟的标题生效');
   ok(w.st2 && w.st2.state.events.some(e => e.action === 'ai.analyze.real'), '动态里记录 Claude 完成整理');
+  // PDF → 知识库正文
+  const pdf = require('fs').readFileSync(require('path').join(__dirname, 'e2e', 'fixtures', 'plan.pdf')).toString('base64');
+  ok((await api('POST', '/api/ai/doc', { name: 'plan.pdf', data: pdf }, t.dev)).status === 403, '执行者不能让 AI 读 PDF');
+  ok((await api('POST', '/api/ai/doc', { name: 'x.pdf', data: Buffer.from('hello world, not a pdf at all, just some text padding padding padding padding padding').toString('base64') }, t.adm)).status === 400, '不是 PDF 被拒');
+  r = await api('POST', '/api/ai/doc', { name: 'plan.pdf', data: pdf }, t.adm);
+  const docQ = seen[seen.length - 1], blk = docQ.body.messages[0].content[0];
+  ok(r.status === 200 && r.text.includes('# 年度计划') && blk.type === 'document' && blk.source.media_type === 'application/pdf' && blk.source.data === pdf, 'Claude 读 PDF 整理成 Markdown');
   // 讨论总结：老板让 AI 总结 → 规则版立刻有 → 后台换成 Claude 版
   const coIdea = (await api('GET', '/api/state', null, t.boss)).state.suggestions[0].ideaId;
   r = await api('POST', '/api/act', { name: 'idea.digest', payload: { id: coIdea } }, t.boss);
@@ -128,9 +137,9 @@ async function team(api) {
   await new Promise(z => setTimeout(z, 2200)); mode = 'ok';
   const last = (await api('GET', '/api/state', null, t.boss)).state.summaries.filter(x => x.ideaId === idea.r.id && x.kind === 'analysis').pop();
   ok(last.payload.overview === '运营者手写的整理稿', '人工改过的整理稿不被 AI 覆盖');
-  // 管理员已用 3 次（1 次成功 + 拒答 + 限流），上限 5：并发 3 个请求只能成功 2 个
+  // 管理员已用 4 次（1 次提问 + 拒答 + 限流 + 读 PDF），上限 5：并发 3 个请求只能成功 1 个
   const conc = await Promise.all([1, 2, 3].map(() => api('POST', '/api/ai/ask', { q: '并发' }, t.adm)));
-  ok(conc.filter(x => x.status === 200).length === 2 && conc.filter(x => x.status === 429).length === 1, '并发请求也不会超过每日上限');
+  ok(conc.filter(x => x.status === 200).length === 1 && conc.filter(x => x.status === 429).length === 2, '并发请求也不会超过每日上限');
   const us = await api('GET', '/api/usage', null, t.adm);
   ok(us.ai.enabled && us.ai.month.calls >= 5 && us.ai.month.usd > 0 && us.ai.byKind.ask >= 1 && us.ai.byKind.analyze >= 1, '使用情况统计 AI 次数和估算费用');
   // 后台 AI 进行中服务器被杀：重启后只补做这一个

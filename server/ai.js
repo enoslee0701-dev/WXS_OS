@@ -227,4 +227,14 @@ async function parseProject(S, uid, text) {
   };
 }
 
-module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, parseProject, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };
+/* PDF → Markdown（知识库上传 PDF）：Claude 读文档，整理出正文 */
+async function pdfToMarkdown(base64, name) {
+  const r = await call({
+    system: [{ type: 'text', text: '你把上传的 PDF 文档的正文整理成 Markdown，存进团队的知识库。保留标题层级（#、##）、列表和要点；去掉页眉页脚、页码、目录；不总结、不改写、不加评论，只整理原文。' }],
+    messages: [{ role: 'user', content: [{ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 }, title: String(name || '').slice(0, 100) }, { type: 'text', text: '请输出这份文档整理后的 Markdown 正文。' }] }],
+    effort: 'low', maxTokens: 16000
+  });
+  return { text: r.text, truncated: r.truncated, usage: r.usage };
+}
+
+module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, parseProject, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };
