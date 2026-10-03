@@ -169,6 +169,11 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   const ex = await get('/api/export', boss);
   ok(ex.status === 200 && ex.state.users.length >= 3 && ex.accounts.length >= 2 && !JSON.stringify(ex).includes('"hash"') && !JSON.stringify(ex).includes('"salt"'), '老板导出全部数据（不含密码）');
   ok((await get('/api/export', liTok2)).status === 403, '执行者不能导出');
+  // 8.95 响应压缩
+  const raw = await new Promise((ok) => require('http').get(B + '/api/state', { headers: { Authorization: 'Bearer ' + boss, 'Accept-Encoding': 'gzip' } }, (r) => { const ch = []; r.on('data', d => ch.push(d)); r.on('end', () => ok({ enc: r.headers['content-encoding'], body: Buffer.concat(ch) })); }));
+  ok(raw.enc === 'gzip' && JSON.parse(require('zlib').gunzipSync(raw.body)).state.users.length >= 3, '数据接口 gzip 压缩');
+  const raw2 = await new Promise((ok) => require('http').get(B + '/api/state', { headers: { Authorization: 'Bearer ' + boss } }, (r) => { const ch = []; r.on('data', d => ch.push(d)); r.on('end', () => ok({ enc: r.headers['content-encoding'], body: Buffer.concat(ch) })); }));
+  ok(!raw2.enc && JSON.parse(raw2.body).state.users.length >= 3, '不支持压缩的客户端拿到原文');
   // 9. 重启后数据还在
   srv.kill(); await new Promise(z => setTimeout(z, 200)); srv = await start();
   r = await get('/api/state', boss);

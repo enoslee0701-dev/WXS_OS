@@ -117,7 +117,18 @@ function pushNew(list) {
 }
 
 /* ---------- HTTP ---------- */
-function send(res, code, obj) { if (res.headersSent) return; const b = JSON.stringify(obj); res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(b); }
+/* 响应压缩：完整数据用久了会到几 MB，压缩后只有几百 KB（brotli / gzip，按客户端支持选） */
+const zlib = require('zlib');
+function send(res, code, obj) {
+  if (res.headersSent) return;
+  let b = Buffer.from(JSON.stringify(obj)); const h = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', Vary: 'Accept-Encoding' };
+  const ae = String((res.req && res.req.headers['accept-encoding']) || '');
+  if (b.length > 1024) {
+    if (/\bbr\b/.test(ae)) { b = zlib.brotliCompressSync(b, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5 } }); h['Content-Encoding'] = 'br'; }
+    else if (/\bgzip\b/.test(ae)) { b = zlib.gzipSync(b, { level: 6 }); h['Content-Encoding'] = 'gzip'; }
+  }
+  h['Content-Length'] = b.length; res.writeHead(code, h); res.end(b);
+}
 function body(req) {
   return new Promise((ok, bad) => { let n = 0; const ch = []; req.on('data', d => { n += d.length; if (n > MAX_BODY) { bad(new Error('too large')); req.destroy(); } else ch.push(d); }); req.on('end', () => { try { const v = ch.length ? JSON.parse(Buffer.concat(ch).toString('utf8')) : {}; ok(v && typeof v === 'object' ? v : {}); } catch (e) { bad(e); } }); req.on('error', bad); });
 }
@@ -421,7 +432,9 @@ const server = http.createServer(async (req, res) => {
       if (!fs.existsSync(WEB)) return send(res, 404, { error: '请先运行 npm run build' });
       // 同源网页版：告诉前端走服务器模式
       const html = fs.readFileSync(WEB, 'utf8').replace('<head>', '<head><meta name="tm-server" content="same-origin">');
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' }); return res.end(html);
+      const hh = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', Vary: 'Accept-Encoding' };
+      let hb = Buffer.from(html); if (/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) { hb = zlib.gzipSync(hb); hh['Content-Encoding'] = 'gzip'; }
+      res.writeHead(200, hh); return res.end(hb);
     }
     send(res, 404, { error: '没有这个地址' });
   } catch (e) {
