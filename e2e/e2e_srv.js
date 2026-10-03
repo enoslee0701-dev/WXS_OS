@@ -65,6 +65,27 @@ let srv = null;
   await api('POST', '/api/act', { name: 'member.update', payload: { id: li, motto: '实时同步测试' } }, bossTok);
   ok(await until(async () => (await B.textContent('#app')).includes('实时同步测试')), '员工页面实时收到更新');
 
+  // ---- 附件：老板在项目里上传图片 → 员工在另一台设备打开（从服务器读取）
+  const wangR = await api('POST', '/api/act', { name: 'member.add', payload: { name: '小王', title: '运营', role: 'operator', group: '行政运营' } }, bossTok);
+  const wang = wangR.state.users.find(u => u.name === '小王').id;
+  const pj = await api('POST', '/api/act', { name: 'project.create', payload: { title: '新官网', ptype: 'tech', operatorId: wang, goal: '上线', tasks: [{ title: '画首页', ownerId: li, expected: '设计稿', criteria: '老板认可' }] } }, bossTok);
+  ok(pj.ok && pj.r.workId, '建了一个有小李任务的项目 ' + (pj.error || ''));
+  const wid = pj.r.workId;
+  await A.goto(URL + '#/work/' + wid); await A.waitForTimeout(300); await A.click('[data-do=wTab][data-t=files]'); await A.waitForTimeout(150);
+  await A.click('.wf-up'); await A.waitForSelector('.sheet.on');
+  await A.setInputFiles('.sheet input[data-wfile]:not([accept]):not([capture])', path.join(__dirname, 'fixtures', 'pic.jpg')); await A.waitForTimeout(300);
+  const lid = await A.evaluate((w) => { const x = window.__tm.S.workItems.find(v => v.id === w); return x && (x.files || []).map(f => f.localId).filter(Boolean).pop(); }, wid);
+  ok(!!lid, '附件记录带文件 ID');
+  ok(await until(async () => (await fetch(URL + 'api/files/' + lid + '?token=' + bossTok)).status === 200, 8000), '附件已上传到服务器');
+  ok(await until(async () => (await B.evaluate(() => TMS.uploading || 0)) === 0 && (await A.evaluate(() => TMS.uploading || 0)) === 0), '上传队列清空');
+  await B.goto(URL + '#/work/' + wid); await B.waitForTimeout(400);
+  const t0 = Date.now(); const seen = await until(async () => (await B.evaluate((w) => !!window.__tm.S.workItems.find(v => v.id === w), wid)), 15000);
+  ok(seen && Date.now() - t0 < 4000, '员工能看到这个项目（实时）');
+  await B.click('[data-do=wTab][data-t=files]'); await B.waitForTimeout(150);
+  await B.click('[data-do=wfOpen]'); await B.waitForSelector('.sheet img');
+  ok(await until(async () => B.evaluate(() => { const i = document.querySelector('.sheet img'); return i && i.complete && i.naturalWidth > 0 && /\/api\/files\//.test(i.src); })), '员工在另一台设备打开了老板上传的图片');
+  await B.evaluate(() => document.querySelectorAll('.scrim.on').forEach(x => x.click()));
+
   // ---- 离线：员工记待办，联网后自动补发
   await B.context().setOffline(true);
   await B.goto(URL + '#/todo/new/manual').catch(() => {}); await B.waitForTimeout(200);

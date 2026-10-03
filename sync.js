@@ -34,7 +34,7 @@ var TMS = (function () {
     clearTimeout(pillT);
     pillT = setTimeout(function () {
       if (!pill) { pill = document.createElement('div'); pill.id = 'sync-pill'; pill.setAttribute('role', 'status'); document.body.appendChild(pill); }
-      var n = api.outbox.length, off = api.status === 'offline';
+      var n = api.outbox.length + (api.uploading || 0), off = api.status === 'offline';
       pill.textContent = off ? (n ? '离线 · ' + n + ' 项待同步' : '离线，联网后自动同步') : n ? '同步中…' : '';
       pill.className = off ? 'off' : n ? 'busy' : '';
     }, off0() ? 0 : 1200);
@@ -151,6 +151,43 @@ var TMS = (function () {
   api.accounts = function () { return req('GET', '/api/accounts'); };
   api.setAccount = function (o) { return req('POST', '/api/accounts', o); };
   api.disable = function (uid, d) { return req('POST', '/api/accounts/disable', { uid: uid, disabled: d }); };
+  /* ---------- 附件上传：先存 IndexedDB 排队，上传成功再删；断网、App 被关掉都不会丢 ---------- */
+  var IDB = null, upBusy = false, upT = null, upDelay = 3000;
+  api.uploading = 0;
+  function idb() {
+    if (IDB) return IDB;
+    IDB = new Promise(function (ok, bad) { try { var r = indexedDB.open('tm_uploads', 1); r.onupgradeneeded = function () { r.result.createObjectStore('q', { keyPath: 'id' }); }; r.onsuccess = function () { ok(r.result); }; r.onerror = function () { bad(r.error); }; } catch (e) { bad(e); } });
+    return IDB;
+  }
+  function tx(mode, fn) { return idb().then(function (db) { return new Promise(function (ok, bad) { var t = db.transaction('q', mode), st = t.objectStore('q'), r = fn(st); t.oncomplete = function () { ok(r && r.result); }; t.onerror = function () { bad(t.error); }; }); }); }
+  function pump() {
+    if (upBusy || !api.loggedIn()) return;
+    upBusy = true;
+    tx('readonly', function (st) { return st.getAll(); }).then(function (items) {
+      api.uploading = (items || []).length; setStatus(api.status);
+      var it = items && items[0]; if (!it) { upBusy = false; return; }
+      return fetch(api.base + '/api/files/' + encodeURIComponent(it.id), { method: 'PUT', headers: { Authorization: 'Bearer ' + api.token, 'Content-Type': it.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(it.name || '') }, body: it.blob })
+        .then(function (r) {
+          if (r.status === 401) { upBusy = false; return expired(); }
+          // 成功，或服务器明确拒绝（太大、ID 冲突）：都从队列移除，避免卡住后面的文件
+          if (r.ok || (r.status >= 400 && r.status < 500)) {
+            if (!r.ok) r.json().then(function (j) { toast('附件「' + (it.name || '') + '」没能上传：' + (j.error || r.status), true); }, function () {});
+            return tx('readwrite', function (st) { return st.delete(it.id); }).then(function () { upBusy = false; upDelay = 3000; pump(); });
+          }
+          throw new Error('server ' + r.status);
+        });
+    }).catch(function () { upBusy = false; clearTimeout(upT); upT = setTimeout(pump, upDelay); upDelay = Math.min(upDelay * 2, 60000); });
+  }
+  api.upload = function (id, blob, name) {
+    if (!api.loggedIn() || !id || !blob) return;
+    tx('readwrite', function (st) { return st.put({ id: String(id), blob: blob, name: name || blob.name || '', type: blob.type || '', at: Date.now() }); }).then(pump, function () {
+      // 没有 IndexedDB（极少数环境）：直接上传一次
+      fetch(api.base + '/api/files/' + encodeURIComponent(id), { method: 'PUT', headers: { Authorization: 'Bearer ' + api.token, 'Content-Type': blob.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(name || blob.name || '') }, body: blob }).catch(function () {});
+    });
+  };
+  api.fileUrl = function (id) { return api.loggedIn() && id ? api.base + '/api/files/' + encodeURIComponent(id) + '?token=' + encodeURIComponent(api.token) : null; };
+  if (api.loggedIn()) { window.addEventListener('load', pump); window.addEventListener('online', function () { upDelay = 3000; pump(); }); }
+
   api.flush = flush; api.pull = pull;
   return api;
 })();

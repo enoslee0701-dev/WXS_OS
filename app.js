@@ -14,6 +14,9 @@
   S = load();
   TM.migrate(S);
   var PHOTOS = { u_owner: '__ENOS__' };
+  /* 附件：本机预览用 blob URL；服务器模式下同时在后台上传（localId 即服务器文件 ID），别的设备从服务器读取 */
+  function keepBlob(id, data) { var u = URL.createObjectURL(data); if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.upload(id, data, data && data.name); return u; }
+  function blobUrl(id) { return id ? (blobs[id] || (typeof TMS !== 'undefined' && TMS.loggedIn() ? TMS.fileUrl(id) : null)) : null; }
   try { me = localStorage.getItem(KU); } catch (e) {}
   if (me && !TM.user(S, me)) me = null;
 
@@ -435,7 +438,7 @@
   }
   function mediaListHTML(ms, editable, viewOk) {
     return (ms || []).map(function (m, i) {
-      var b = m.localId && blobs[m.localId];
+      var b = m.localId && blobUrl(m.localId);
       var inner = b ? (m.kind === 'video' ? '<video controls playsinline src="' + b + '" style="width:100%;border-radius:10px;max-height:240px;background:#000"></video>' : '<audio controls src="' + b + '"></audio>') : '<span>' + esc(m.name) + '</span>';
       var tag = m.demo ? '<span class="tag sim">演示素材</span>' : b ? '<span class="tag">仅本机</span>' : m.localId ? '<span class="tag">本次打开已结束，录音未保留</span>' : '<span class="tag">未上传</span>';
       return '<div class="media">' + (m.kind === 'audio' ? micIcon() : m.kind === 'video' ? ni('cam') : fileIcon()) + '<div style="flex:1;min-width:0">' + (b ? '' : '') + inner + '<div>' + tag + '</div></div>' + (editable ? '<button type="button" class="btn ghost" data-do="rmMedia" data-i="' + i + '">移除</button>' : '') + '</div>';
@@ -505,7 +508,7 @@
         (pd.otherOpen ? '<div class="np-more">' + PT_MORE.map(function (t) { var on = pd.ptype === t[0]; return '<button type="button" class="np-type np-' + t[0] + (on ? ' on' : '') + '" data-do="pType" data-k="' + t[0] + '">' + (on ? '<i class="np-ok">' + ni('check', 2.6) + '</i>' : '') + '<span class="np-tl"><b>' + t[1] + '</b><small>' + t[2] + '</small></span></button>'; }).join('') + '</div>' : '') + '</section>' +
         '<section class="cx-card np-card"><div class="vr-ch">' + pi('clip') + '<div><b>添加附件 <span class="p-opt-l">（可选）</span></b><small>上传相关文档、图片或链接，支持多种格式</small></div></div>' +
         '<label class="cx-drop np-drop">' + CLOUD + '<b>点击或拖拽文件到这里</b><em>支持图片、文档、PDF 等，单个文件不超过 50MB</em><input type="file" multiple data-pfile="1"></label>' +
-        pd.files.map(function (f, i) { return '<div class="media">' + (f.kind === 'audio' ? micIcon() : fileIcon()) + '<div style="flex:1;min-width:0">' + (f.localId && blobs[f.localId] ? '<audio controls src="' + blobs[f.localId] + '"></audio>' : esc(f.name)) + '<div><span class="tag">未上传，仅本机</span></div></div><button type="button" class="btn ghost" data-do="pRmFile" data-i="' + i + '">移除</button></div>'; }).join('') + '</section>' +
+        pd.files.map(function (f, i) { return '<div class="media">' + (f.kind === 'audio' ? micIcon() : fileIcon()) + '<div style="flex:1;min-width:0">' + (f.localId && blobUrl(f.localId) ? '<audio controls src="' + blobUrl(f.localId) + '"></audio>' : esc(f.name)) + '<div><span class="tag">未上传，仅本机</span></div></div><button type="button" class="btn ghost" data-do="pRmFile" data-i="' + i + '">移除</button></div>'; }).join('') + '</section>' +
         '<section class="cx-card np-card np-voice"><div class="vr-ch">' + ni('mic', 1.6) + '<div><b>语音输入 <span class="p-opt-l">（可选）</span></b><small>用语音快速记录你的想法' + (SR ? '' : '（当前浏览器不支持转文字）') + '</small></div>' +
         (rec ? '<button type="button" class="np-rec on" data-do="pRecStop"><span class="dot"></span><span id="rectime">录音中 0:00</span></button>' : '<button type="button" class="np-rec" data-do="pRecStart"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 10v4M9 7v10M13 9v6M17 6v12M21 10v4"/></svg>开始录音</button>') + '</div></section>' +
         '<button class="np-ailink" data-do="goProjectAI">' + hi('spark', 1.5) + '没想好怎么写？录音或上传视频，让 AI 帮你生成' + hi('chev', 2) + '</button>' +
@@ -647,7 +650,7 @@
       mr.onstop = function () {
         stream.getTracks().forEach(function (t) { t.stop(); });
         var lid = 'b' + Date.now(), sec = Math.round((Date.now() - ai.t0) / 1000);
-        blobs[lid] = URL.createObjectURL(new Blob(chunks, { type: mr.mimeType || 'audio/webm' }));
+        blobs[lid] = keepBlob(lid, new Blob(chunks, { type: mr.mimeType || 'audio/webm' }));
         ai.pending = { kind: 'audio', name: '录音 ' + fmtSec(sec), durationSec: sec, localId: lid };
         var text = ai.transcript.trim();
         if (text) runParse(text, '录音 ' + fmtSec(sec) + '，已识别 ' + text.length + ' 字');
@@ -772,7 +775,7 @@
   }
   function titleField(val, key) { return '<label class="p-fld"><span>标题（可不填，AI 会起）</span><input type="text" data-cap="' + key + '.title" maxlength="50" placeholder="比如：办公室换网线" value="' + esc(val) + '"></label>'; }
   function clipHTML(m, i, kind) {
-    var b = m.localId && blobs[m.localId];
+    var b = m.localId && blobUrl(m.localId);
     var player = b ? (m.kind === 'video' ? '<video controls playsinline src="' + b + '"></video>' : '<audio controls src="' + b + '"></audio>') : '<span>' + esc(m.name) + '</span>';
     return '<div class="c-clip">' + '<div class="c-clip-h"><span>' + ni(m.kind === 'video' ? 'cam' : 'mic') + esc(m.name) + '</span><button type="button" class="btn ghost" data-do="capRmClip" data-k="' + kind + '" data-i="' + i + '">删除</button></div>' + player + '</div>';
   }
@@ -825,7 +828,7 @@
         mr.onstop = function () {
           stream.getTracks().forEach(function (t) { t.stop(); });
           if (vo.discard) { vo.discard = false; vo.state = 'idle'; render(); return; } var sec = Math.round(vo.acc / 1000), lid = 'b' + Date.now();
-          blobs[lid] = URL.createObjectURL(new Blob(chunks, { type: mr.mimeType || 'audio/webm' }));
+          blobs[lid] = keepBlob(lid, new Blob(chunks, { type: mr.mimeType || 'audio/webm' }));
           vo.clips.push({ kind: 'audio', name: '录音 ' + fmtSec(sec), durationSec: sec, localId: lid }); vo.state = 'idle'; render();
         };
         mr.start(); voLevels(stream); voSR();
@@ -846,7 +849,7 @@
   /* —— 三个记录页（与语音记录同一风格） —— */
   function addVideos(files) {
     var added = 0, big = 0;
-    Array.prototype.forEach.call(files, function (cf) { if (!/^video\//.test(cf.type) && !/\.(mp4|mov|m4v|webm|avi)$/i.test(cf.name)) return; if (cf.size > VMAX) { big++; return; } var cl = 'v' + Date.now() + added; blobs[cl] = URL.createObjectURL(cf); cam.clips.push({ kind: 'video', name: cf.name + '（' + fmtSize(cf.size) + '）', fname: cf.name, size: fmtSize(cf.size), localId: cl }); added++; });
+    Array.prototype.forEach.call(files, function (cf) { if (!/^video\//.test(cf.type) && !/\.(mp4|mov|m4v|webm|avi)$/i.test(cf.name)) return; if (cf.size > VMAX) { big++; return; } var cl = 'v' + Date.now() + added; blobs[cl] = keepBlob(cl, cf); cam.clips.push({ kind: 'video', name: cf.name + '（' + fmtSize(cf.size) + '）', fname: cf.name, size: fmtSize(cf.size), localId: cl }); added++; });
     render(); toast(big ? big + ' 个视频超过 2GB，未添加' : added ? '已添加 ' + added + ' 个视频（未上传）' : '请选择视频文件', !!big || !added);
   }
   function addFiles(files) {
@@ -854,7 +857,7 @@
     Array.prototype.forEach.call(files, function (f) {
       var isImg = /^image\//.test(f.type), isVid = /^video\//.test(f.type), isTxt = /\.(txt|md)$/i.test(f.name) || /^text\//.test(f.type);
       var item = { kind: isImg ? 'image' : isVid ? 'video' : 'file', name: f.name, size: fmtSize(f.size) };
-      if (isImg || isVid) { item.localId = 'i' + Date.now() + Math.random().toString(36).slice(2, 6); blobs[item.localId] = URL.createObjectURL(f); }
+      item.localId = 'i' + Date.now() + Math.random().toString(36).slice(2, 6); blobs[item.localId] = keepBlob(item.localId, f);
       fi.files.push(item);
       rf.unshift({ kind: item.kind, name: f.name, size: item.size, at: Date.now(), localId: item.localId }); 
       if (isTxt) { var r2 = new FileReader(); r2.onload = function () { item.read = true; fi.note = (fi.note + (fi.note ? '\n\n' : '') + '【' + f.name + '】\n' + String(r2.result)).slice(0, 1000); if (!fi.title) fi.title = f.name.replace(/\.[^.]+$/, '').slice(0, 50); render(); }; r2.readAsText(f); }
@@ -887,7 +890,7 @@
     return vrHero('SHARE YOUR VIDEO', '上传视频', '用影像记录你的想法，让好内容被看见。') +
       '<section class="cx-card cx-up"><label class="cx-drop" data-drop="cam">' + '<span class="cx-dropic">' + CLOUD + '</span><b>点击上传视频</b><small>或拖拽文件到这里</small><em>支持 MP4、MOV 等常见格式 · 单个文件不超过 2GB</em><input type="file" accept="video/*" multiple data-camfile="1"></label>' +
       '<div class="cx-picks">' + pick(false, pi('img'), '从相册选择') + pick(true, '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8.5A1.5 1.5 0 0 1 5.5 7h2l1.5-2h6L16.5 7h2A1.5 1.5 0 0 1 20 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 17.5z"/><circle cx="12" cy="13" r="3.5"/></svg>', '拍摄视频') + '</div></section>' +
-      cam.clips.map(function (m, i) { var b = m.localId && blobs[m.localId]; return '<section class="cx-card cx-vid"><span class="cx-thumb">' + (b ? '<video src="' + b + '#t=0.5" muted playsinline preload="metadata" data-vmeta="' + i + '"></video>' : '') + '<i>' + pi('play') + '</i><em>' + (m.durationSec ? fmtSec(m.durationSec) : '--:--') + '</em></span><div class="cx-vi"><b>' + esc(m.fname || m.name) + '</b><small>' + esc(m.size || '') + (m.durationSec ? ' · ' + fmtSec(m.durationSec) : '') + '</small><span class="cx-prog"><i style="width:100%"></i></span><small class="cx-local">已添加到本机 · 演示版不上传</small></div><button class="cx-x" data-do="capRmClip" data-k="cam" data-i="' + i + '" aria-label="移除">' + ai2('x', 2) + '</button></section>'; }).join('') +
+      cam.clips.map(function (m, i) { var b = m.localId && blobUrl(m.localId); return '<section class="cx-card cx-vid"><span class="cx-thumb">' + (b ? '<video src="' + b + '#t=0.5" muted playsinline preload="metadata" data-vmeta="' + i + '"></video>' : '') + '<i>' + pi('play') + '</i><em>' + (m.durationSec ? fmtSec(m.durationSec) : '--:--') + '</em></span><div class="cx-vi"><b>' + esc(m.fname || m.name) + '</b><small>' + esc(m.size || '') + (m.durationSec ? ' · ' + fmtSec(m.durationSec) : '') + '</small><span class="cx-prog"><i style="width:100%"></i></span><small class="cx-local">已添加到本机 · 演示版不上传</small></div><button class="cx-x" data-do="capRmClip" data-k="cam" data-i="' + i + '" aria-label="移除">' + ai2('x', 2) + '</button></section>'; }).join('') +
       '<section class="cx-card"><div class="vr-ch">' + pi('img') + '<div><b>标题（可不填）</b></div></div><input class="cx-in" type="text" data-cap="cam.title" maxlength="100" placeholder="给这个视频起个标题..." value="' + esc(cam.title) + '"><div class="n-cnt" id="cc-cam-title">' + cam.title.length + '/100</div></section>' +
       '<section class="cx-card"><div class="vr-ch">' + ai2('doc2', 1.6) + '<div><b>补充说明（可不填）</b></div></div><textarea class="cx-in" data-cap="cam.note" rows="3" maxlength="500" placeholder="简单介绍一下这个视频的内容...">' + esc(cam.note) + '</textarea><div class="n-cnt" id="cc-cam-note">' + cam.note.length + '/500</div></section>' +
       '<section class="cx-card"><div class="vr-ch">' + TAGI + '<div><b>添加标签（可多选）</b></div></div>' + tagRow(VID_TAGS.concat(cam.tags.filter(function (t) { return !VID_TAGS.some(function (x) { return x[0] === t; }); }).map(function (t) { return [t]; })), cam.tags, 'camTag') + '</section>' +
@@ -943,7 +946,7 @@
       '<p class="c-hint cx-priv">' + ti('lock', 1.6) + '你的文件仅用于内容提取，演示版不会上传。</p>';
   }
   function fileRow(f, right, attrs) {
-    var b = f.localId && blobs[f.localId];
+    var b = f.localId && blobUrl(f.localId);
     var th = b && f.kind === 'image' ? '<img src="' + b + '" alt="">' : b && f.kind === 'video' ? '<video src="' + b + '#t=0.5" muted playsinline preload="metadata"></video>' : f.kind === 'video' ? '<i class="cx-vth"></i>' : f.kind === 'link' ? pi('clip') : ai2('doc2', 1.6);
     return '<div class="cx-frow"' + (attrs ? ' role="button" tabindex="0" ' + attrs : '') + '><span class="cx-fth">' + th + '</span><span class="cx-fi"><b>' + esc(f.name) + '</b><small>' + esc((f.size ? f.size + ' · ' : '') + (f.at ? whenTxt(f.at) : f.read ? '已读取文字' : '')) + (f.demo ? ' · 示例' : '') + '</small></span>' + right + '</div>';
   }
@@ -1776,7 +1779,7 @@
     var out = [], add = function (o) { out.push(o); };
     vIdeas().forEach(function (d) {
       add({ type: 'idea', icon: 'bulb', title: d.title || d.note.slice(0, 20) || '未命名想法', text: (d.title || '') + ' ' + d.note + ' ' + (d.tags || []).join(' '), at: d.lastActivity || d.createdAt, href: '#/idea/' + d.id, src: L.idea[d.status] + (d.creatorId === me ? '，你发起' : '，' + TM.name(S, d.creatorId) + ' 发起') });
-      if (TM.canViewMedia(S, me, d)) d.media.forEach(function (m) { if (!TM.canSeeMediaItem(S, me, d, m)) return; add({ type: m.kind === 'audio' ? 'audio' : m.kind === 'video' ? 'video' : m.kind === 'image' ? 'image' : 'file', icon: m.kind === 'audio' ? 'mic' : m.kind === 'video' ? 'vcam' : m.kind === 'image' ? 'img' : 'doc2', title: m.name, text: m.name + ' ' + (d.title || '') + ' ' + d.note, at: d.createdAt, href: '#/idea/' + d.id, src: '在想法「' + (d.title || '未命名') + '」里', blob: m.localId && blobs[m.localId] ? m : null }); });
+      if (TM.canViewMedia(S, me, d)) d.media.forEach(function (m) { if (!TM.canSeeMediaItem(S, me, d, m)) return; add({ type: m.kind === 'audio' ? 'audio' : m.kind === 'video' ? 'video' : m.kind === 'image' ? 'image' : 'file', icon: m.kind === 'audio' ? 'mic' : m.kind === 'video' ? 'vcam' : m.kind === 'image' ? 'img' : 'doc2', title: m.name, text: m.name + ' ' + (d.title || '') + ' ' + d.note, at: d.createdAt, href: '#/idea/' + d.id, src: '在想法「' + (d.title || '未命名') + '」里', blob: m.localId && blobUrl(m.localId) ? m : null }); });
       S.suggestions.filter(function (x) { return x.ideaId === d.id; }).forEach(function (x) { add({ type: 'note', icon: 'cmt', title: '建议：' + x.body.slice(0, 24), text: x.body, at: x.at, href: '#/idea/' + d.id, src: TM.name(S, x.authorId) + ' 在「' + (d.title || '') + '」' }); });
     });
     vWork().forEach(function (w) { add({ type: 'project', icon: 'proj', title: w.title, text: w.title + ' ' + (w.goal || '') + ' ' + (w.desc || '') + ' ' + (w.keyResults || ''), at: w.lastActivity || w.createdAt, href: '#/work/' + w.id, src: '项目，' + L.work[w.status] }); });
@@ -1807,7 +1810,7 @@
     var desc = (types.length ? '类型：' + types.map(function (t) { return { audio: '录音', video: '视频', file: '文件', image: '图片', idea: '想法', project: '项目', task: '任务', todo: '待办', decision: '决策', note: '建议/留言' }[t]; }).join('、') + '；' : '') + (since || until < Infinity ? '时间已限定；' : '') + (kws.length ? '关键词：' + kws.join('、') : '');
     if (!hits.length) return botSay('没找到相关内容' + (desc ? '（' + esc(desc) + '）' : '') + '。可以换个说法，比如只说一个关键词「年会」，或「上周的录音」。', true);
     botSay('<b>找到 ' + hits.length + ' 条相关内容</b>' + (desc ? '<p class="muted" style="font-size:12.5px">' + esc(desc) + '</p>' : '') + '<div class="rc-list">' + hits.slice(0, 8).map(function (x) {
-      var o = x.o, b2 = o.blob && blobs[o.blob.localId];
+      var o = x.o, b2 = o.blob && blobUrl(o.blob.localId);
       return '<a class="rc-item" href="' + o.href + '" data-do="aiGo" data-h="' + o.href + '"><span class="rc-ic">' + ai2(o.icon, 1.6) + '</span><span class="rc-t"><b>' + esc(o.title) + '</b><small>' + esc(o.src) + ' · ' + whenTxt(o.at) + '</small></span></a>' + (b2 ? (o.type === 'audio' ? '<audio controls src="' + b2 + '"></audio>' : o.type === 'video' ? '<video controls playsinline src="' + b2 + '" style="width:100%;border-radius:10px"></video>' : '') : '');
     }).join('') + '</div>' + (hits.length > 8 ? '<p class="muted" style="font-size:12.5px">还有 ' + (hits.length - 8) + ' 条，说得具体一点能更快找到。</p>' : ''), true);
   }
@@ -1970,10 +1973,10 @@
     var nHide = d.media.filter(function (m) { return m.hidden; }).length;
     if (!all.length) return h + '<p class="ix2-empty">发起人没有呈现附件。</p></section>';
     if (nHide && all.length === d.media.length) h += '<p class="ix2-hint">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l18 18M10.6 6.1A9.7 9.7 0 0 1 12 6c5 0 8.5 4.5 9.5 6-.5.8-1.6 2.2-3.1 3.5M6.6 7.6C4.6 9 3.3 10.9 2.5 12c1 1.5 4.5 6 9.5 6 1.6 0 3-.4 4.3-1.1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>' + '有 ' + nHide + ' 个附件设为「不呈现」，只有你、上传人和老板能看到。</p>';
-    var imgs = all.filter(function (x) { return x[0].kind === 'image' && !x[0].hidden && x[0].localId && blobs[x[0].localId]; });
-    if (imgs.length) h += '<div class="ix2-thumbs">' + imgs.map(function (x) { return '<button data-do="ixOpen" data-i="' + x[1] + '" aria-label="查看 ' + esc(x[0].name) + '"><img src="' + blobs[x[0].localId] + '" alt=""></button>'; }).join('') + '</div>';
+    var imgs = all.filter(function (x) { return x[0].kind === 'image' && !x[0].hidden && x[0].localId && blobUrl(x[0].localId); });
+    if (imgs.length) h += '<div class="ix2-thumbs">' + imgs.map(function (x) { return '<button data-do="ixOpen" data-i="' + x[1] + '" aria-label="查看 ' + esc(x[0].name) + '"><img src="' + blobUrl(x[0].localId) + '" alt=""></button>'; }).join('') + '</div>';
     h += all.map(function (x) { var m = x[0], i = x[1];
-      var k = m.kind === 'link' ? ['ix-l', 'link'] : fileKind(m), b = m.localId && blobs[m.localId], canDel = (m.by === me || d.creatorId === me || isOwner()) && !TM.ideaLocked(d);
+      var k = m.kind === 'link' ? ['ix-l', 'link'] : fileKind(m), b = m.localId && blobUrl(m.localId), canDel = (m.by === me || d.creatorId === me || isOwner()) && !TM.ideaLocked(d);
       var meta = [m.kind === 'link' ? String(m.url || m.name || '').replace(/^https?:\/\//, '').slice(0, 28) : m.size, m.durationSec ? fmtSec(m.durationSec) : '', m.by ? nm(m.by) : '', m.at ? ago(m.at) : ago(d.createdAt)].filter(Boolean).join(' · ');
       var canShow = d.creatorId === me || m.by === me || isOwner(), orig = !m.by;
       return '<div class="ix-file ix2-file' + (m.hidden ? ' off' : '') + '"><button class="ix2-fo" data-do="ixOpen" data-i="' + i + '"><span class="ix-fi ' + k[0] + '">' + (k[1] === 'link' ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>' : ai2(k[1], 1.7)) + '</span><span class="ix-ft"><b>' + esc(m.name) + '</b><small>' + esc(meta) + (m.kind !== 'link' && !b ? ' · 本机未缓存' : '') + '</small>' + (orig || m.hidden ? '<span class="ix2-fl">' + (orig ? '<em>记录时上传</em>' : '') + (m.hidden ? '<em class="h">不呈现</em>' : '') + '</span>' : '') + '</span></button>' +
@@ -1982,7 +1985,7 @@
         (b && m.kind === 'audio' ? '<audio controls src="' + b + '"></audio>' : b && m.kind === 'video' ? '<video controls playsinline src="' + b + '"></video>' : '') + '</div>';
     }).join('');
     var wk = TM.ideaLocked(d) && S.workItems.find(function (w) { return w.ideaId === d.id && TM.canViewWork(S, me, w); });
-    return h + (TM.ideaLocked(d) ? '<p class="ix2-note lock">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>' + '已形成项目，附件已锁定。' + (wk ? '新资料请加到<a href="#/work/' + wk.id + '">项目</a>里。' : '') + '</p>' : '<p class="ix2-note">演示版：附件只保存在这台设备，刷新后只保留文件名。</p>') + '</section>';
+    return h + (TM.ideaLocked(d) ? '<p class="ix2-note lock">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>' + '已形成项目，附件已锁定。' + (wk ? '新资料请加到<a href="#/work/' + wk.id + '">项目</a>里。' : '') + '</p>' : '<p class="ix2-note">' + (SRV ? '附件会上传到团队服务器。' : '演示版：附件只保存在这台设备，刷新后只保留文件名。') + '</p>') + '</section>';
   }
   function refsHTML(refs, title) { if (!refs || !refs.length) return ''; return '<div class="kb-refs"><h5>' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/></svg>' + (title || '参考的公司资料') + '</h5>' + refs.map(function (r) { return '<a class="kb-ref" href="#/kb/' + r.id + '"><b>《' + esc(r.title.replace(/（示例）$/, '')) + '》' + (r.head ? ' · ' + esc(r.head) : '') + '</b><span>' + esc(r.text) + '</span></a>'; }).join('') + '</div>'; }
   function advHTML(dc, fold) {
@@ -2361,7 +2364,7 @@
     return '<div class="wm-sum"><span><b>' + mem.length + '</b> 位成员 · 进行中 <b>' + doing + '</b> 项</span>' + (mg ? '<button class="wx-link" data-do="goAssignWork" data-arg="' + w.id + '">' + ti('plus2', 2) + '邀请成员</button>' : '') + '</div><div class="list wm-list">' + rows + '</div><p class="wx-tip">成员来自负责人、跟进运营者、验收人和任务参与者。要加人，给他分配一个任务即可。</p>';
   }
   var LINKI = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>';
-  function wfIcon(m) { var k = m.kind === 'link' ? ['ix-l', 'link'] : fileKind(m), b = m.localId && blobs[m.localId]; return '<span class="ix-fi wf-ic ' + k[0] + '">' + (b && m.kind === 'image' ? '<img src="' + b + '" alt="">' : k[1] === 'link' ? LINKI : ai2(k[1], 1.7)) + '</span>'; }
+  function wfIcon(m) { var k = m.kind === 'link' ? ['ix-l', 'link'] : fileKind(m), b = m.localId && blobUrl(m.localId); return '<span class="ix-fi wf-ic ' + k[0] + '">' + (b && m.kind === 'image' ? '<img src="' + b + '" alt="">' : k[1] === 'link' ? LINKI : ai2(k[1], 1.7)) + '</span>'; }
   function wFilesTab(w, d, mg) {
     var up = (w.files || []).slice().sort(function (a, b) { return b.at - a.at; });
     var dl = S.deliverables.filter(function (f) { var t = T_(f.taskId); return t && t.workId === w.id && TM.canViewTask(S, me, t); }).sort(function (a, b) { return b.at - a.at; });
@@ -2371,7 +2374,7 @@
     var h = '<div class="wf-head"><span><b>' + (up.length + dl.length + src.length) + ' 个文件</b><small>项目文件 ' + up.length + ' · 交付物 ' + dl.length + ' · 来源想法 ' + src.length + '</small></span>' + (canUp ? '<button class="wf-up" data-do="wUpload">' + ti('plus2', 2.2) + '上传</button>' : '') + '</div>';
     h += sec('项目文件', up.length, up.map(function (m) {
       var meta = [m.kind === 'link' ? String(m.url || '').replace(/^https?:\/\//, '').slice(0, 26) : m.size, nm(m.by), ago(m.at)].filter(Boolean).join(' · ');
-      var canDel = m.by === me || mg, b = m.localId && blobs[m.localId];
+      var canDel = m.by === me || mg, b = m.localId && blobUrl(m.localId);
       return '<div class="row wf"><button class="wf-o" data-do="wfOpen" data-fid="' + m.id + '">' + wfIcon(m) + '<span class="wf-t"><b>' + esc(m.name) + '</b><small>' + esc(meta) + (m.kind !== 'link' && !b ? ' · 本机未缓存' : '') + '</small></span></button>' + (canDel ? '<button class="wf-x" data-do="wfDel" data-fid="' + m.id + '" aria-label="删除 ' + esc(m.name) + '">×</button>' : '') + '</div>';
     }), '<button class="wf-empty" data-do="' + (canUp ? 'wUpload' : 'noop') + '">' + ai2('doc2', 1.7) + '<span><b>' + (canUp ? '上传项目资料' : '还没有项目文件') + '</b><small>方案、图片、表格、录音或链接，成员都能看到</small></span></button>');
     h += sec('交付物', dl.length, dl.map(function (f) { var t = T_(f.taskId); return '<a class="row wf" href="#/task/' + t.id + '">' + '<span class="ix-fi wf-ic ix-x">' + ai2('check', 1.8) + '</span><span class="wf-t"><b>' + esc(f.note || f.url) + '</b><small>交付物 · ' + esc(t.title) + ' · ' + esc(nm(f.by)) + ' · ' + ago(f.at) + '</small></span>' + hi('chev', 2) + '</a>'; }), '<p class="wx-empty">任务提交的交付物会出现在这里。</p>');
@@ -2413,11 +2416,11 @@
     wUpload: function () { var id = cur().id;
       var o = function (cap, acc, icon, t, s2) { return '<label class="ix2-opt"><input type="file" data-wfile="' + id + '"' + (acc ? ' accept="' + acc + '"' : '') + (cap ? ' capture="' + cap + '"' : '') + ' multiple><span class="ix2-oi">' + icon + '</span><b>' + t + '</b><small>' + s2 + '</small></label>'; };
       openSheet('上传到项目', '<div class="ix2-opts">' + o('environment', 'image/*', ai2('img', 1.7), '拍照', '用相机拍一张') + o('', 'image/*,video/*', ai2('vcam', 1.7), '相册', '图片或视频') + o('', '', ai2('doc2', 1.7), '文件', 'PDF、Excel、Word 等') + o('', 'audio/*', ai2('mic', 1.7), '录音', '选择一段录音') +
-        '<button type="button" class="ix2-opt" data-do="wLink"><span class="ix2-oi">' + LINKI + '</span><b>链接</b><small>网页、云盘地址</small></button></div><p class="muted" style="font-size:13px;margin:10px 0 0">项目成员都能看到。每个项目最多 50 个文件；演示版不上传，文件只保存在这台设备。</p>', '关闭', function () { closeSheet(); }); },
+        '<button type="button" class="ix2-opt" data-do="wLink"><span class="ix2-oi">' + LINKI + '</span><b>链接</b><small>网页、云盘地址</small></button></div><p class="muted" style="font-size:13px;margin:10px 0 0">项目成员都能看到。每个项目最多 50 个文件；' + (SRV ? '文件会上传到团队服务器，同事都能打开。' : '演示版不上传，文件只保存在这台设备。') + '</p>', '关闭', function () { closeSheet(); }); },
     wLink: function () { var id = cur().id; openSheet('添加链接', field('链接地址', '<input type="url" name="url" placeholder="https://" required>') + field('名称（可选）', '<input type="text" name="name" maxlength="40" placeholder="例如：设计稿">'), '添加', function (o) { var u = (o.url || '').trim(); act('work.attach', { id: id, media: [{ kind: 'link', url: u, name: (o.name || '').trim() || u.replace(/^https?:\/\//, '').slice(0, 40) }] }, '已添加链接'); }); },
     wfOpen: function (el) { var w = W(cur().id), m = (w.files || []).find(function (f) { return f.id === el.dataset.fid; }); if (!m) return;
       if (m.kind === 'link') { if (m.url) window.open(m.url, '_blank', 'noopener'); return; }
-      var b = m.localId && blobs[m.localId]; if (!b) return toast('演示版没有上传，这个文件只在添加它的设备上、刷新前能打开', true);
+      var b = m.localId && blobUrl(m.localId); if (!b) return toast('演示版没有上传，这个文件只在添加它的设备上、刷新前能打开', true);
       if (m.kind === 'image') return openSheet(m.name, '<img src="' + b + '" alt="' + esc(m.name) + '" style="width:100%;border-radius:14px">', '关闭', function () { closeSheet(); });
       if (m.kind === 'audio') return openSheet(m.name, '<audio controls src="' + b + '" style="width:100%"></audio>', '关闭', function () { closeSheet(); });
       if (m.kind === 'video') return openSheet(m.name, '<video controls playsinline src="' + b + '" style="width:100%;border-radius:14px"></video>', '关闭', function () { closeSheet(); });
@@ -2718,7 +2721,7 @@
       mr.onstop = function () {
         stream.getTracks().forEach(function (t) { t.stop(); });
         var sec = Math.round((Date.now() - t0) / 1000), lid = 'b' + Date.now();
-        blobs[lid] = URL.createObjectURL(new Blob(chunks, { type: mr.mimeType || 'audio/webm' }));
+        blobs[lid] = keepBlob(lid, new Blob(chunks, { type: mr.mimeType || 'audio/webm' }));
         var am = { kind: 'audio', name: '录音 ' + Math.floor(sec / 60) + ':' + ('0' + sec % 60).slice(-2), durationSec: sec, localId: lid };
         if (cur().name === 'project' && pd) pd.files.push(am); else newMedia.push(am);
         clearInterval(rec.timer); rec = null; render();
@@ -2843,9 +2846,9 @@
   DO.ixAttach = function () { var id = cur().id;
     var o = function (cap, acc, icon, t, s) { return '<label class="ix2-opt"><input type="file" data-ixfile="' + id + '"' + (acc ? ' accept="' + acc + '"' : '') + (cap ? ' capture="' + cap + '"' : '') + ' multiple><span class="ix2-oi">' + icon + '</span><b>' + t + '</b><small>' + s + '</small></label>'; };
     openSheet('添加附件', '<div class="ix2-opts">' + o('environment', 'image/*', ai2('img', 1.7), '拍照', '用相机拍一张') + o('', 'image/*,video/*', ai2('vcam', 1.7), '相册', '图片或视频') + o('', '', ai2('doc2', 1.7), '文件', 'PDF、Excel、Word 等') + o('', 'audio/*', ai2('mic', 1.7), '录音', '选择或录一段') +
-      '<button type="button" class="ix2-opt" data-do="ixLink"><span class="ix2-oi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></span><b>链接</b><small>网页、云盘地址</small></button></div><p class="muted" style="font-size:13.5px;margin:10px 0 0">单个想法最多 30 个附件。演示版不上传，文件只保存在这台设备。</p>', '关闭', function () { closeSheet(); }); };
+      '<button type="button" class="ix2-opt" data-do="ixLink"><span class="ix2-oi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></span><b>链接</b><small>网页、云盘地址</small></button></div><p class="muted" style="font-size:13.5px;margin:10px 0 0">单个想法最多 30 个附件。' + (SRV ? '文件会上传到团队服务器，同事都能打开。' : '演示版不上传，文件只保存在这台设备。') + '</p>', '关闭', function () { closeSheet(); }); };
   DO.ixLink = function () { var id = cur().id; openSheet('添加链接', field('链接地址', '<input type="url" name="url" placeholder="https://" required>') + field('名称（可选）', '<input type="text" name="name" maxlength="40" placeholder="例如：招聘方案草稿">'), '添加', function (o) { var u = (o.url || '').trim(); act('idea.attach', { id: id, media: [{ kind: 'link', url: u, name: (o.name || '').trim() || u.replace(/^https?:\/\//, '').slice(0, 40) }] }, '已添加链接'); }); };
-  DO.ixOpen = function (el) { var d = I(cur().id), m = d && d.media[+el.dataset.i]; if (!m) return; if (m.kind === 'link') { var u = m.url || (/^https?:/.test(m.name) ? m.name : ''); if (u) window.open(u, '_blank', 'noopener'); else toast('这个链接没有地址', true); return; } var b = m.localId && blobs[m.localId]; if (!b) return toast('演示版没有上传，这个文件只在添加它的设备上、刷新前能打开', true); if (m.kind === 'image') return openSheet(m.name, '<img src="' + b + '" alt="' + esc(m.name) + '" style="width:100%;border-radius:14px;display:block">', '关闭', function () { closeSheet(); }); if (m.kind === 'audio' || m.kind === 'video') return; window.open(b, '_blank'); };
+  DO.ixOpen = function (el) { var d = I(cur().id), m = d && d.media[+el.dataset.i]; if (!m) return; if (m.kind === 'link') { var u = m.url || (/^https?:/.test(m.name) ? m.name : ''); if (u) window.open(u, '_blank', 'noopener'); else toast('这个链接没有地址', true); return; } var b = m.localId && blobUrl(m.localId); if (!b) return toast('演示版没有上传，这个文件只在添加它的设备上、刷新前能打开', true); if (m.kind === 'image') return openSheet(m.name, '<img src="' + b + '" alt="' + esc(m.name) + '" style="width:100%;border-radius:14px;display:block">', '关闭', function () { closeSheet(); }); if (m.kind === 'audio' || m.kind === 'video') return; window.open(b, '_blank'); };
   DO.advAdopt = function (el) { var f = el.closest('form'); var r = f.querySelector('input[name=status][value=' + el.dataset.v + ']'); if (r) r.checked = true; var n = f.querySelector('textarea[name=note]'); if (n) { n.value = el.dataset.n; n.focus(); } toast('已填入建议，可以修改后再提交'); };
   DO.ixDigest = function () { var r = act('idea.digest', { id: cur().id }, 'AI 已总结全部讨论'); if (r.ok) setTimeout(function () { var g = document.querySelector('.dg'); if (g) g.scrollIntoView({ block: 'nearest' }); }, 50); };
   DO.goH = function (el) { location.hash = el.dataset.h; };
@@ -3119,8 +3122,8 @@
     if (el.dataset && el.dataset.aifile && el.files[0]) { var af = el.files[0]; if (!/\.(txt|md)$/i.test(af.name) && !/^text\//.test(af.type)) { toast('演示版只能读取 TXT、Markdown 文本文件', true); return; } var rd = new FileReader(); rd.onload = function () { var tx2 = String(rd.result).slice(0, 4000); if (!aiS.mode) aiS.mode = 'minutes'; aiHandle(tx2); renderAI(); }; rd.readAsText(af); return; }
     if (el.dataset && el.dataset.pref) { var pp = {}; pp[el.dataset.pref] = el.checked; act('member.update', { id: me, prefs: pp }, el.checked ? '已开启' : '已关闭'); return; }
     if (el.dataset && el.dataset.kbfile && el.files.length) { var fs = Array.prototype.slice.call(el.files), n = 0, bad = []; var next = function () { var f = fs.shift(); if (!f) { save(); render(); toast(n ? '已添加 ' + n + ' 份资料' + (bad.length ? '；' + bad.join('、') + ' 没读到内容' : '') : '没有添加成功：' + bad.join('、'), !n); return; } if (f.size > 600000) { bad.push(f.name + '（太大）'); return next(); } var rd = new FileReader(); rd.onload = function () { var body = String(rd.result || ''); var r = TM.act(S, me, 'kb.add', { title: f.name.replace(/\.(md|markdown|txt)$/i, ''), body: body, scope: 'team' }); if (r.ok) n++; else bad.push(f.name + '（' + r.error + '）'); next(); }; rd.onerror = function () { bad.push(f.name); next(); }; rd.readAsText(f); }; next(); el.value = ''; return; }
-    if (el.dataset && el.dataset.wfile && el.files.length) { var wm = Array.prototype.map.call(el.files, function (f) { var o = { kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, size: fmtSize(f.size) }; o.localId = 'w' + Date.now() + Math.random().toString(36).slice(2, 5); blobs[o.localId] = URL.createObjectURL(f); return o; }); act('work.attach', { id: el.dataset.wfile, media: wm }, '已上传 ' + wm.length + ' 个文件（演示版不上传）'); return; }
-    if (el.dataset && el.dataset.ixfile && el.files.length) { var media = Array.prototype.map.call(el.files, function (f) { var o = { kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, size: fmtSize(f.size) }; o.localId = 'x' + Date.now() + Math.random().toString(36).slice(2, 5); blobs[o.localId] = URL.createObjectURL(f); return o; }); act('idea.attach', { id: el.dataset.ixfile, media: media }, '已添加 ' + media.length + ' 个附件（演示版不上传）'); return; }
+    if (el.dataset && el.dataset.wfile && el.files.length) { var wm = Array.prototype.map.call(el.files, function (f) { var o = { kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, size: fmtSize(f.size) }; o.localId = 'w' + Date.now() + Math.random().toString(36).slice(2, 5); blobs[o.localId] = keepBlob(o.localId, f); return o; }); act('work.attach', { id: el.dataset.wfile, media: wm }, '已上传 ' + wm.length + ' 个文件' + (SRV ? '' : '（演示版不上传）')); return; }
+    if (el.dataset && el.dataset.ixfile && el.files.length) { var media = Array.prototype.map.call(el.files, function (f) { var o = { kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, size: fmtSize(f.size) }; o.localId = 'x' + Date.now() + Math.random().toString(36).slice(2, 5); blobs[o.localId] = keepBlob(o.localId, f); return o; }); act('idea.attach', { id: el.dataset.ixfile, media: media }, '已添加 ' + media.length + ' 个附件' + (SRV ? '' : '（演示版不上传）')); return; }
     if (el.dataset && el.dataset.speriod) { st.period = +el.value; render(); return; }
     if (el.dataset && el.dataset.wdue) { act('work.update', { id: el.dataset.wdue, due: el.value }, '已更新截止时间'); return; }
     if (el.dataset && el.dataset.as === 'milestone' && asg) { asg.milestone = el.checked; return; }

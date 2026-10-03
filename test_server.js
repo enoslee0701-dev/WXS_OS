@@ -4,7 +4,7 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-srv-')), PORT = 18000 + Math.floor(Math.random() * 2000);
 const B = 'http://127.0.0.1:' + PORT;
 function start() {
-  const p = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: DIR }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const p = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: DIR, MAX_FILE_MB: '1' }, stdio: ['ignore', 'pipe', 'pipe'] });
   p.stderr.on('data', d => { const t = String(d); if (!/ExperimentalWarning|act 异常/.test(t)) process.stderr.write(t); });
   return new Promise(r => p.stdout.on('data', d => { if (/已启动/.test(String(d))) r(p); }));
 }
@@ -94,10 +94,28 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   for (let i = 0; i < 10; i++) await post('/api/login', { login: 'xiaowang', password: 'x' + i });
   ok((await post('/api/login', { login: 'xiaowang', password: rs.password })).status === 429, '连续输错 10 次后暂时锁定');
 
+  // 8.5 附件
+  const up = (id, body, tok, type) => fetch(B + '/api/files/' + id, { method: 'PUT', headers: { 'Content-Type': type || 'text/plain', 'X-File-Name': encodeURIComponent('会议记录.txt'), ...(tok ? { Authorization: 'Bearer ' + tok } : {}) }, body });
+  const liTok2 = (await post('/api/login', { login: 'xiaoli', password: 'li123456' })).token;
+  ok((await up('f_abc123', 'hello', null)).status === 401, '没登录不能上传');
+  ok((await up('bad id!', 'x', boss)).status === 400, '非法文件 ID');
+  let ur = await up('f_abc123', '0123456789 附件内容', boss);
+  ok(ur.status === 200 && (await ur.json()).size > 10, '老板上传附件');
+  ok((await up('f_abc123', 'hack', liTok2)).status === 409, '别人不能覆盖这个文件');
+  ok((await up('f_abc123', '0123456789 附件内容 v2', boss)).status === 200, '上传人重传（断网重试）可以覆盖');
+  let gr = await fetch(B + '/api/files/f_abc123?token=' + liTok2);
+  ok(gr.status === 200 && (await gr.text()) === '0123456789 附件内容 v2' && /会议记录/.test(decodeURIComponent(gr.headers.get('content-disposition'))), '成员用链接令牌读取附件（含文件名）');
+  gr = await fetch(B + '/api/files/f_abc123', { headers: { Authorization: 'Bearer ' + liTok2, Range: 'bytes=2-5' } });
+  ok(gr.status === 206 && (await gr.text()) === '2345' && gr.headers.get('content-range') === 'bytes 2-5/' + Buffer.byteLength('0123456789 附件内容 v2'), '分段读取（iPhone 播放视频需要）');
+  ok((await fetch(B + '/api/files/f_abc123')).status === 401, '没登录不能读取');
+  ok((await fetch(B + '/api/files/f_none00?token=' + liTok2)).status === 404, '不存在的文件');
+  ok((await up('f_big001', Buffer.alloc(1.5 * 1024 * 1024), boss, 'application/octet-stream')).status === 413, '超过大小上限被拒');
+  ok(!fs.readdirSync(path.join(DIR, 'files')).some(f => f.includes('.part-') || f === 'f_big001'), '被拒的文件不留残片');
   // 9. 重启后数据还在
   srv.kill(); await new Promise(z => setTimeout(z, 200)); srv = await start();
   r = await get('/api/state', boss);
   ok(r.status === 200 && r.state.users.length === 3 && r.state.ideas.length === 1 && r.state.ideas[0].note === '改过的草稿', '重启后数据和会话都在');
+  ok((await (await fetch(B + '/api/files/f_abc123?token=' + boss)).text()).endsWith('v2'), '重启后附件还在');
   ok(fs.readdirSync(path.join(DIR, 'backups')).length === 1, '每天一份备份');
   // 10. 演示团队
   srv.kill(); fs.rmSync(DIR, { recursive: true, force: true }); fs.mkdirSync(DIR);

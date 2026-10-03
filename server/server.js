@@ -11,8 +11,9 @@ const TM = require('../engine.js');
 const PORT = +process.env.PORT || 8787, HOST = process.env.HOST || '0.0.0.0';
 const DATA = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const WEB = path.join(__dirname, '..', 'dist', 'team-ops.html');
-const SESSION_DAYS = 90, MAX_BODY = 2 * 1024 * 1024;
-fs.mkdirSync(path.join(DATA, 'backups'), { recursive: true });
+const SESSION_DAYS = 90, MAX_BODY = 2 * 1024 * 1024, MAX_FILE = (+process.env.MAX_FILE_MB || 500) * 1024 * 1024;
+const FILES = path.join(DATA, 'files');
+fs.mkdirSync(path.join(DATA, 'backups'), { recursive: true }); fs.mkdirSync(FILES, { recursive: true });
 
 /* ---------- 数据库 ---------- */
 const db = new DatabaseSync(path.join(DATA, 'team.db'));
@@ -20,6 +21,7 @@ db.exec(`PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v TEXT);
 CREATE TABLE IF NOT EXISTS creds(uid TEXT PRIMARY KEY, login TEXT UNIQUE COLLATE NOCASE, salt TEXT, hash TEXT, must_change INTEGER DEFAULT 1, disabled INTEGER DEFAULT 0, created INTEGER, last_login INTEGER);
 CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY, uid TEXT, created INTEGER, seen INTEGER, agent TEXT);
+CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY, uid TEXT, name TEXT, type TEXT, size INTEGER, created INTEGER);
 CREATE TABLE IF NOT EXISTS ops(seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, uid TEXT, action TEXT, payload TEXT, ok INTEGER, error TEXT);`);
 const q = (sql) => db.prepare(sql);
 const getMeta = (k) => { const r = q('SELECT v FROM meta WHERE k=?').get(k); return r ? r.v : null; };
@@ -153,12 +155,50 @@ const routes = {
     return [200, { ok: true }];
   }
 };
+/* ---------- 附件：客户端用自己生成的随机 localId 作为文件 ID 上传，其他设备按 ID 读取 ---------- */
+const FILE_ID = /^[A-Za-z0-9_-]{4,64}$/;
+function putFile(req, res, id, me) {
+  if (!FILE_ID.test(id)) return send(res, 400, { error: '文件 ID 不对' });
+  const old = q('SELECT * FROM files WHERE id=?').get(id);
+  if (old && old.uid !== me.uid) return send(res, 409, { error: '文件 ID 已被占用' });
+  const len = +req.headers['content-length'] || 0;
+  if (len > MAX_FILE) return send(res, 413, { error: '文件太大（上限 ' + Math.round(MAX_FILE / 1048576) + 'MB）' });
+  const tmp = path.join(FILES, id + '.part-' + crypto.randomBytes(4).toString('hex')), out = fs.createWriteStream(tmp);
+  let n = 0, bad = false;
+  req.on('data', d => { n += d.length; if (n > MAX_FILE && !bad) { bad = true; req.unpipe(out); out.destroy(); fs.rm(tmp, () => {}); send(res, 413, { error: '文件太大' }); req.destroy(); } });
+  req.pipe(out);
+  out.on('finish', () => {
+    if (bad) return;
+    fs.renameSync(tmp, path.join(FILES, id));
+    let name = ''; try { name = decodeURIComponent(req.headers['x-file-name'] || ''); } catch (e) {}
+    const type = String(req.headers['content-type'] || 'application/octet-stream').slice(0, 100);
+    q(`INSERT INTO files(id,uid,name,type,size,created) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,type=excluded.type,size=excluded.size`).run(id, me.uid, name.slice(0, 200), type, n, Date.now());
+    send(res, 200, { id, size: n });
+  });
+  out.on('error', () => { if (!bad) send(res, 500, { error: '保存文件失败' }); });
+}
+function getFile(req, res, id) {
+  const f = FILE_ID.test(id) && q('SELECT * FROM files WHERE id=?').get(id);
+  const p = f && path.join(FILES, id);
+  if (!f || !fs.existsSync(p)) return send(res, 404, { error: '文件不存在或还没上传完' });
+  const size = fs.statSync(p).size, h = { 'Content-Type': f.type, 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=31536000, immutable', 'Content-Disposition': "inline; filename*=UTF-8''" + encodeURIComponent(f.name || id) };
+  const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (m) { // 视频 / 录音在 iPhone 上播放需要分段读取
+    let a = m[1] === '' ? size - +m[2] : +m[1], z = m[1] !== '' && m[2] !== '' ? +m[2] : size - 1;
+    if (a < 0 || a >= size || z >= size || a > z) { res.writeHead(416, { 'Content-Range': 'bytes */' + size }); return res.end(); }
+    res.writeHead(206, { ...h, 'Content-Range': `bytes ${a}-${z}/${size}`, 'Content-Length': z - a + 1 });
+    return fs.createReadStream(p, { start: a, end: z }).pipe(res);
+  }
+  res.writeHead(200, { ...h, 'Content-Length': size }); fs.createReadStream(p).pipe(res);
+}
+
 const PUBLIC = new Set(['GET /api/health', 'GET /api/setup', 'POST /api/setup', 'POST /api/login']);
 
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-File-Name, Range');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length');
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   const url = new URL(req.url, 'http://x');
   try {
@@ -167,6 +207,11 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
       res.write('event: v\ndata: ' + JSON.stringify({ version }) + '\n\n');
       const c = { res, uid: me.uid }; clients.add(c); req.on('close', () => clients.delete(c)); return;
+    }
+    const fm = /^\/api\/files\/([^/]+)$/.exec(url.pathname);
+    if (fm && (req.method === 'PUT' || req.method === 'GET')) {
+      const me = auth(req, url); if (!me) return send(res, 401, { error: '请重新登录' });
+      return req.method === 'PUT' ? putFile(req, res, fm[1], me) : getFile(req, res, fm[1]);
     }
     const key = req.method + ' ' + url.pathname, fn = routes[key];
     if (fn) {
