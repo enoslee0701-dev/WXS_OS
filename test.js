@@ -549,5 +549,15 @@ rej(TM.act(sm0, 'u_owner', 'idea.claim', { id: ni1.id }), '有了运营者后老
 must(TM.act(sm0, 'u_owner', 'project.create', { title: '新 App', ptype: 'product', leadId: 'u_owner', tasks: [] }), '没有负责人时老板可以自任产品项目负责人');
 rej(TM.act(sm0, 'u_owner', 'project.create', { title: '新 App2', ptype: 'product', leadId: xl, tasks: [] }), '执行者不能当负责人');
 
+// ===== 最小团队（老板 + 1 名执行者）完整闭环 =====
+const mt = TM.blank({ name: '老板' }); must(TM.act(mt, 'u_owner', 'member.add', { name: '小李', title: '行政', role: 'executor', group: '行政运营' }), '加执行者');
+const mli = mt.users[1].id, mp = must(TM.act(mt, 'u_owner', 'project.create', { title: '换打印机', ptype: 'admin', tasks: [{ title: '买打印机', ownerId: mli, expected: '照片', criteria: '能打印' }] }), '建项目派任务');
+const mtk = mt.tasks.find(x => x.workId === mp.workId).id;
+['accept', 'start'].forEach(a => must(TM.act(mt, mli, 'task.transition', { id: mtk, action: a }), '执行者 ' + a));
+must(TM.act(mt, mli, 'task.transition', { id: mtk, action: 'submit', note: '装好了' }), '提交');
+must(TM.act(mt, 'u_owner', 'task.review', { id: mtk, verdict: 'pass', note: '好' }), '老板验收');
+must(TM.act(mt, 'u_owner', 'work.close', { id: mp.workId }), '老板确认项目完成');
+ok(mt.workItems.find(w => w.id === mp.workId).status === 'done', '最小团队闭环走通');
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);
