@@ -38,6 +38,7 @@ var TM = (function () {
   function canInitiate(s, uid) { var u = user(s, uid); return !!u && u.roles.some(function (a) { return a.role === 'owner' || (a.role === 'lead' && a.canInitiate); }); }
   /* 跟进人：团队里有运营者就是运营者；还没有运营者的小团队，由老板兼任（否则建不了项目、想法没人认领） */
   function followUsers(s) { var ops = usersWith(s, 'operator'); return ops.length ? ops : usersWith(s, 'owner'); }
+  function leadUsers(s) { var l = usersWith(s, 'lead'); return l.length ? l : usersWith(s, 'owner'); }
   function canFollow(s, uid) { return hasRole(s, uid, 'operator') || (hasRole(s, uid, 'owner') && !usersWith(s, 'operator').length); }
   function usersWith(s, r) { return s.users.filter(function (u) { return hasRole(s, u.id, r); }).map(function (u) { return u.id; }); }
   function primaryRole(s, uid) { var order = ['owner', 'operator', 'lead', 'executor', 'admin']; for (var i = 0; i < order.length; i++) if (hasRole(s, uid, order[i])) return order[i]; return 'executor'; }
@@ -554,8 +555,9 @@ var TM = (function () {
     var opId = p.operatorId || (op ? uid : followUsers(s)[0]); need(opId && canFollow(s, opId), '请选择跟进运营者');
     var leadId = p.leadId || null;
     if (lead && !owner && !op) leadId = uid;
-    if (kind === 'product') need(leadId && hasRole(s, leadId, 'lead'), '产品开发项目请指定项目负责人');
-    if (leadId) need(hasRole(s, leadId, 'lead'), '项目负责人必须是负责人角色');
+    // 还没有负责人的小团队：老板可以自己担任产品项目负责人
+    if (kind === 'product') need(leadId && leadUsers(s).indexOf(leadId) >= 0, '产品开发项目请指定项目负责人');
+    if (leadId) need(leadUsers(s).indexOf(leadId) >= 0, '项目负责人必须是负责人角色');
     var reviewerId = p.reviewerId || leadId || opId; need(user(s, reviewerId), '请选择验收人');
     var tasks = (p.tasks || []).filter(function (t) { return txt(t.title); });
     var leadDept = leadId && (user(s, leadId).roles.find(function (a) { return a.role === 'lead'; }) || {}).dept;
@@ -1219,7 +1221,7 @@ var TM = (function () {
 
   return {
     L: L, STAGES: STAGES, TONE: TONE, DAY: DAY, act: act, seed: seed, user: user, name: name, hasRole: hasRole, canInitiate: canInitiate, usersWith: usersWith,
-    primaryRole: primaryRole, followUsers: followUsers, canFollow: canFollow, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
+    primaryRole: primaryRole, followUsers: followUsers, canFollow: canFollow, leadUsers: leadUsers, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
     latestSummary: latestSummary, deriveAnalysis: deriveAnalysis, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, migrate: migrate, viewFor: viewFor, blank: blank, canCreateProject: canCreateProject, canAssign: canAssign, caps: caps, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
     nextForTask: nextForTask, PTYPE: PTYPE, GROUPS: GROUPS, seedTodos: seedTodos, ensureTodos: ensureTodos, nextForIdea: nextForIdea, ideaProgress: ideaProgress, workProgress: workProgress, TT: TT
   };

@@ -546,6 +546,8 @@ must(TM.act(sm0, 'u_owner', 'idea.route', { id: ni0.id, kind: 'admin', tasks: [{
 must(TM.act(sm0, 'u_owner', 'member.add', { name: '小王', title: '运营', role: 'operator', group: '行政运营' }), '后来有了运营者');
 let ni1 = must(TM.act(sm0, 'u_owner', 'idea.create', { note: '换投影' }), '再记想法'); must(TM.act(sm0, 'u_owner', 'idea.submit', { id: ni1.id, path: 'direct' }), '提交');
 rej(TM.act(sm0, 'u_owner', 'idea.claim', { id: ni1.id }), '有了运营者后老板不再认领');
+must(TM.act(sm0, 'u_owner', 'project.create', { title: '新 App', ptype: 'product', leadId: 'u_owner', tasks: [] }), '没有负责人时老板可以自任产品项目负责人');
+rej(TM.act(sm0, 'u_owner', 'project.create', { title: '新 App2', ptype: 'product', leadId: xl, tasks: [] }), '执行者不能当负责人');
 
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

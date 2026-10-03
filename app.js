@@ -764,7 +764,7 @@
     pRmFile: function (el) { pd.files.splice(+el.dataset.i, 1); render(); },
     pRecStart: pRecStart, pRecStop: pRecStop,
     pPick: function (el) { var k = el.dataset.k, ids, empty = '', t2;
-      if (k === 'leadId') { ids = S.users.filter(function (u) { return TM.hasRole(S, u.id, 'lead'); }).map(function (u) { return u.id; }); t2 = '选择负责人'; if (TM.PTYPE[pd.ptype][1] !== 'product') empty = '不指定，由运营者推进'; }
+      if (k === 'leadId') { ids = TM.leadUsers(S); t2 = '选择负责人'; if (TM.PTYPE[pd.ptype][1] !== 'product') empty = '不指定，由运营者推进'; }
       else if (k === 'operatorId') { ids = TM.followUsers(S); t2 = '选择跟进运营'; }
       else { ids = S.users.filter(function (u) { return !u.roles.every(function (a) { return a.role === 'admin'; }); }).map(function (u) { return u.id; }); t2 = '选择验收人'; empty = '默认：负责人，没有时由运营者验收'; }
       npPick(t2, ids, pd[k], empty, function (v) { pd[k] = v; }); },
