@@ -1026,6 +1026,24 @@ var TM = (function () {
     ev(s, { ideaId: d.id, actor: 'agent', action: 'ai.analyze.real', text: 'Claude 完成整理 · 建议：' + L.route[np.suggested_route] });
     return {};
   };
+  /* Claude 讨论总结：服务器后台以系统身份替换规则版（期间老板又让总结了一版就不覆盖） */
+  A['idea.digestResult'] = function (s, uid, p) {
+    need(uid === 'agent', '只有系统可以写入 AI 总结');
+    var d = s.ideas.find(function (x) { return x.id === p.id; }); need(d, '想法不存在');
+    var sm = latestSummary(s, d.id, 'digest'); need(sm && sm.id === p.summaryId && sm.payload.simulated, '总结已经更新过，不覆盖');
+    var a = p.payload || {}, str = function (v, n) { return txt(v).slice(0, n); };
+    var names = s.users.map(function (u) { return u.name; }), who = function (v) { return (Array.isArray(v) ? v : []).map(function (x) { return str(x, 20); }).filter(function (x) { return names.indexOf(x) >= 0; }).slice(0, 8); };
+    var pts = function (v) { return (Array.isArray(v) ? v : []).slice(0, 6).map(function (x) { return { point: str(x && x.point, 120), who: who(x && x.who), src: [] }; }).filter(function (x) { return x.point; }); };
+    sm.payload = Object.assign({}, sm.payload, {
+      simulated: false, model: str(p.model, 40),
+      people: (Array.isArray(a.people) ? a.people : []).slice(0, 12).map(function (x) { return { name: str(x && x.name, 20), points: (Array.isArray(x && x.points) ? x.points : []).map(function (t) { return str(t, 120); }).filter(Boolean).slice(0, 4) }; }).filter(function (x) { return names.indexOf(x.name) >= 0 && x.points.length; }),
+      consensus: pts(a.consensus), risks: pts(a.risks), questions: pts(a.questions),
+      divergences: (Array.isArray(a.divergences) ? a.divergences : []).slice(0, 4).map(function (v) { return { point: str(v && v.point, 120), sides: (Array.isArray(v && v.sides) ? v.sides : []).slice(0, 4).map(function (x) { return { view: str(x && x.view, 120), who: who(x && x.who) }; }).filter(function (x) { return x.view; }) }; }).filter(function (v) { return v.point && v.sides.length; }),
+      next: (Array.isArray(a.next) ? a.next : []).map(function (t) { return str(t, 100); }).filter(Boolean).slice(0, 5)
+    });
+    if (!sm.payload.next.length) sm.payload.next = ['再听听大家的意见'];
+    return {};
+  };
   /* Claude 给老板的决策建议：服务器以系统身份写到决策上（换设备也能看到，不重复收费） */
   A['decision.aiAdvice'] = function (s, uid, p) {
     need(uid === 'agent', '只有系统可以写入 AI 建议');

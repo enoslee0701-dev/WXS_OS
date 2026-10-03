@@ -11,6 +11,7 @@ const mock = http.createServer((req, res) => {
     const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
     if (mode === '429') return reply(429, { type: 'error', error: { type: 'rate_limit_error', message: 'slow down' } });
     const fmt = body.output_config && body.output_config.format;
+    if (fmt && fmt.schema.properties.divergences) return setTimeout(() => reply(200, { id: 'msg_g', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ people: [{ name: '何静', points: ['内容成本高'] }, { name: '路人甲', points: ['x'] }], consensus: [{ point: '值得做', who: ['何静', '不存在的人'] }], divergences: [{ point: '先做哪个', sides: [{ view: '先做语音', who: ['刘洋'] }] }], risks: [], questions: [], next: ['Claude：先小范围试点'] }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 400, output_tokens: 120 } }), 30);
     if (fmt && fmt.schema.properties.verdict) return setTimeout(() => reply(200, { id: 'msg_d', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ verdict: 'needs_info', label: '建议先补充信息', reasons: ['原文没有写预算'], risks: ['招错人代价高'], checks: ['每月预算上限'], note: '请先出招聘方案再报我。' }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 600, output_tokens: 90 } }), 30);
     if (fmt && fmt.schema.properties.suggested_route) return setTimeout(() => reply(200, { id: 'msg_a', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ title: '全队退修会', summary: '十二月办退修会', background: '团队需要休整', problem: '日期未定', goal: '定下日期和场地', overview: 'Claude：建议十二月中旬办两天一夜的退修会。', issues: ['场地未定'], directions: ['先定日期', '再订场地'], category: 'admin', relation_to_direction: '无', open_questions: ['具体日期？'], exception_flags: ['over_budget'], suggested_route: 'to_owner', suggested_tasks: [{ title: '找三个场地', expected_output: '候选清单', acceptance_criteria: '老板选定', suggested_due_days: 7 }], confidence: 0.8 }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 500, output_tokens: 200 } }), mode === 'slow' ? 1500 : 50);
     const isKb = fmt;
@@ -105,6 +106,12 @@ async function team(api) {
   ok(w.x && /Claude/.test(w.x.payload.overview) && w.x.payload.suggested_route === 'to_owner', '后台换成 Claude 整理稿');
   ok(w.st2 && w.st2.state.ideas.find(d => d.id === idea.r.id).title === '全队退修会', 'Claude 拟的标题生效');
   ok(w.st2 && w.st2.state.events.some(e => e.action === 'ai.analyze.real'), '动态里记录 Claude 完成整理');
+  // 讨论总结：老板让 AI 总结 → 规则版立刻有 → 后台换成 Claude 版
+  const coIdea = (await api('GET', '/api/state', null, t.boss)).state.suggestions[0].ideaId;
+  r = await api('POST', '/api/act', { name: 'idea.digest', payload: { id: coIdea } }, t.boss);
+  ok(r.ok, '老板让 AI 总结讨论');
+  let dg = null; for (let i = 0; i < 40 && !dg; i++) { const st3 = await api('GET', '/api/state', null, t.boss); const x = st3.state.summaries.filter(y => y.ideaId === coIdea && y.kind === 'digest').pop(); if (x && x.payload.simulated === false) dg = x; else await new Promise(z => setTimeout(z, 100)); }
+  ok(dg && dg.payload.next[0].includes('Claude') && dg.payload.people.length === 1 && JSON.stringify(dg.payload.consensus[0].who) === '["何静"]', '讨论总结换成 Claude 版（不存在的人名被过滤）');
   // 人工先改了整理稿：AI 结果不覆盖
   mode = 'slow';
   idea = await api('POST', '/api/act', { name: 'idea.create', payload: { note: '会议室投影仪坏了，换一台' } }, t.boss);

@@ -504,5 +504,13 @@ ok(JSON.stringify(smA.payload.exception_flags) === '["over_budget"]' && smA.payl
 ok(s.ideas.find(x => x.id === ai1.id).title === '团队退修会（12 月中旬）', 'AI 拟的标题生效');
 rej(TM.act(s, 'agent', 'idea.aiResult', { id: ai1.id, summaryId: 'S-old', payload: {} }), '整理稿已更新时不覆盖');
 
+// ===== Claude 决策建议写入 =====
+s = TM.migrate(fresh());
+const pd1 = s.decisions.find(x => x.status === 'pending');
+rej(TM.act(s, O, 'decision.aiAdvice', { id: pd1.id, advice: {} }), '老板不能伪造 AI 建议');
+must(TM.act(s, 'agent', 'decision.aiAdvice', { id: pd1.id, model: 'claude-opus-5-5', advice: { verdict: 'maybe', label: '建议先补充信息', reasons: ['a', '', 'b'], note: 'x'.repeat(500) } }), '系统写入 AI 建议');
+const pd2 = s.decisions.find(x => x.id === pd1.id); // 被拒的操作会回滚、替换对象，重新取
+ok(pd2.ai.verdict === 'needs_info' && pd2.ai.reasons.length === 2 && pd2.ai.note.length === 300 && pd2.ai.model === 'claude-opus-5-5', 'AI 建议字段清洗');
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

@@ -311,12 +311,13 @@ function getFile(req, res, id, me) {
 const analyzing = new Set();
 function autoAnalyze(added) {
   if (!AI.enabled() || process.env.AI_AUTO_ANALYZE === '0') return;
-  added.filter(x => x.kind === 'analysis' && x.authorType === 'agent' && x.payload && x.payload.simulated).forEach(sm => {
+  added.filter(x => (x.kind === 'analysis' || x.kind === 'digest') && x.authorType === 'agent' && x.payload && x.payload.simulated).forEach(sm => {
     if (analyzing.has(sm.id)) return; analyzing.add(sm.id);
-    aiRun({ uid: 'agent' }, 'analyze', () => AI.analyzeIdea(S, sm.ideaId), true).then(([code, out]) => {
+    const dig = sm.kind === 'digest';
+    aiRun({ uid: 'agent' }, dig ? 'digest' : 'analyze', () => dig ? AI.digestDiscussion(S, sm.ideaId) : AI.analyzeIdea(S, sm.ideaId), true).then(([code, out]) => {
       analyzing.delete(sm.id);
       if (code !== 200 || !S) return;
-      const n0 = S.notifications.length, r = TM.act(S, 'agent', 'idea.aiResult', { id: sm.ideaId, summaryId: sm.id, model: AI.MODEL, payload: out.payload });
+      const n0 = S.notifications.length, r = TM.act(S, 'agent', dig ? 'idea.digestResult' : 'idea.aiResult', { id: sm.ideaId, summaryId: sm.id, model: AI.MODEL, payload: out.payload });
       if (r.ok) changed(n0);
     }, () => analyzing.delete(sm.id));
   });

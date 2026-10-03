@@ -2159,7 +2159,7 @@
       sec('顾虑与风险', 'warn', p.risks.map(function (c) { return '<li>' + esc(c.point) + w(c.who) + '</li>'; })) +
       sec('待回答的问题', 'warn', p.questions.map(function (c) { return '<li>' + esc(c.point) + w(c.who) + '</li>'; })) +
       '<h5>各人观点</h5>' + p.people.map(function (x) { return '<div class="dg-p"><b>' + esc(x.name) + '</b>' + x.points.map(function (t) { return '<span>' + esc(t) + '</span>'; }).join('') + '</div>'; }).join('') +
-      refsHTML(p.refs, '相关的公司资料') + '<p class="ix2-advf">第 ' + sm.version + ' 版 · ' + ago(sm.at) + ' · AI 模拟总结，仅供参考</p></div>' +
+      refsHTML(p.refs, '相关的公司资料') + '<p class="ix2-advf">第 ' + sm.version + ' 版 · ' + ago(sm.at) + ' · ' + (p.simulated === false ? 'Claude 总结' : 'AI 模拟总结') + '，仅供参考</p></div>' +
       '<button class="ix2-more" data-do="ixFold" aria-expanded="false"><span>展开完整总结</span>' + hi('chev', 2) + '</button>' + btn + '</div>';
   }
   function discHTML(d) {

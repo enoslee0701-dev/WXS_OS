@@ -176,4 +176,26 @@ async function adviseDecision(S, decisionId) {
   return { advice: o, usage: r.usage };
 }
 
-module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, adviseDecision, snapshot, MODEL, LIMIT };
+/* 讨论总结（后台自动，只给老板看） */
+const PT = { type: 'object', additionalProperties: false, required: ['point', 'who'], properties: { point: { type: 'string' }, who: { type: 'array', items: { type: 'string' }, description: '提出人的姓名' } } };
+const DIGEST_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['people', 'consensus', 'divergences', 'risks', 'questions', 'next'],
+  properties: {
+    people: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'points'], properties: { name: { type: 'string' }, points: { type: 'array', items: { type: 'string' } } } }, description: '每个人的主要观点' },
+    consensus: { type: 'array', items: PT }, risks: { type: 'array', items: PT }, questions: { type: 'array', items: PT },
+    divergences: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['point', 'sides'], properties: { point: { type: 'string' }, sides: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['view', 'who'], properties: { view: { type: 'string' }, who: { type: 'array', items: { type: 'string' } } } } } } } },
+    next: { type: 'array', items: { type: 'string' }, description: '建议老板的下一步，2–4 条' }
+  }
+};
+async function digestDiscussion(S, ideaId) {
+  const d = S.ideas.find(x => x.id === ideaId); if (!d) throw { status: 404, error: '想法不存在' };
+  const sug = S.suggestions.filter(x => x.ideaId === d.id).sort((a, b) => a.at - b.at);
+  const byId = Object.fromEntries(sug.map(x => [x.id, x]));
+  const lines = sug.map(x => '- ' + TM.name(S, x.authorId) + (x.replyTo && byId[x.replyTo] ? '（回复 ' + TM.name(S, byId[x.replyTo].authorId) + '）' : '') + '：' + String(x.body).slice(0, 500)).join('\n');
+  const system = [{ type: 'text', text: `你把团队对一个想法的讨论总结给老板看。用简体中文；忠于原话，不替任何人加观点；who 只填讨论里出现过的人名；分歧要写清各方立场。` }];
+  const r = await call({ system, messages: [{ role: 'user', content: `想法：${d.title || ''}\n原文：${String(d.note || '').slice(0, 3000)}\n\n讨论（按时间）：\n${lines}` }], schema: DIGEST_SCHEMA, effort: 'medium', maxTokens: 8000 });
+  let o; try { o = JSON.parse(r.text); } catch (e) { throw { status: 502, error: 'AI 返回的格式不对' }; }
+  return { payload: o, usage: r.usage };
+}
+
+module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, snapshot, MODEL, LIMIT };
