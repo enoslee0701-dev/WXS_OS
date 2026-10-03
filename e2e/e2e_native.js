@@ -14,11 +14,12 @@ const FAKE = (opts) => {
   const M = (n, ms) => ({ name: n, methods: ms.map(x => ({ name: x, rtype: 'promise' })).concat([{ name: 'addListener', rtype: 'callback' }, { name: 'removeListener', rtype: 'promise' }, { name: 'removeAllListeners', rtype: 'promise' }]) });
   window.webkit = { messageHandlers: { bridge: { postMessage() {} } } };
   window.Capacitor = {
-    PluginHeaders: [M('Preferences', ['get', 'set', 'remove', 'keys']), M('Clipboard', ['write', 'read']), M('App', ['exitApp']), M('StatusBar', ['setStyle']), M('Keyboard', ['setAccessoryBarVisible']), M('SplashScreen', ['hide', 'show']), M('Speech', ['available', 'checkPermissions', 'requestPermissions', 'start', 'stop']), M('PushNotifications', ['checkPermissions', 'requestPermissions', 'register'])],
+    PluginHeaders: [M('Preferences', ['get', 'set', 'remove', 'keys']), M('Clipboard', ['write', 'read']), M('App', ['exitApp']), M('StatusBar', ['setStyle']), M('Keyboard', ['setAccessoryBarVisible']), M('SplashScreen', ['hide', 'show']), M('Speech', ['available', 'checkPermissions', 'requestPermissions', 'start', 'stop']), M('PushNotifications', ['checkPermissions', 'requestPermissions', 'register']), M('Haptics', ['impact', 'notification'])],
     nativeCallback(pl, m, a, cb) { const k = pl + ':' + a.eventName; (subs[k] = subs[k] || []).push(cb); return String(++cid); },
     nativePromise(pl, m, a) {
       F.calls.push(pl + '.' + m);
       if (pl === 'Preferences') { const p = P(); if (m === 'get') return Promise.resolve({ value: p[a.key] == null ? null : p[a.key] }); if (m === 'set') { p[a.key] = a.value; setP(p); } if (m === 'remove') { delete p[a.key]; setP(p); } return Promise.resolve({}); }
+      if (pl === 'Haptics') { F.haptics = (F.haptics || []).concat(m + ':' + (a.type || a.style)); return Promise.resolve(); }
       if (pl === 'Clipboard' && m === 'write') { F.clip = a.string; return Promise.resolve(); }
       if (pl === 'Speech' && m === 'requestPermissions') return Promise.resolve({ speech: F.perm, microphone: F.perm });
       if (pl === 'Speech' && m === 'start') F.lang = a.lang;
@@ -53,6 +54,8 @@ const c0route = (p) => p.context().route('http://join.test:8787/**', r => r.fulf
   ok(await p.locator('.acct').count() > 0, '选择看演示后出现演示账号');
   await p.reload(); await p.waitForTimeout(300);
   ok(await p.locator('.acct').count() > 0, '演示选择被记住');
+  await p.evaluate(() => { window.__tm.toast('好了'); window.__tm.toast('不行', true); });
+  ok(JSON.stringify(await p.evaluate(() => __fake.haptics)) === '["impact:LIGHT","notification:ERROR"]', '提示时触感反馈：成功轻震、出错提示震动');
   // 2. 数据双存
   await p.click('.acct:has-text("Enos")'); await p.waitForTimeout(500);
   let pf = await p.evaluate(() => __fake.prefs());

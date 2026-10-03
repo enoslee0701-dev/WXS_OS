@@ -79,7 +79,7 @@
   function unread() { return S.notifications.filter(function (n) { return n.userId === me && !n.read; }).length; }
 
   var toastT;
-  function toast(msg, bad) { var el = document.getElementById('toast'); el.textContent = wordsFix(msg); el.className = 'toast on' + (bad ? ' bad' : ''); clearTimeout(toastT); toastT = setTimeout(function () { el.className = 'toast' + (bad ? ' bad' : ''); }, bad ? 3600 : 2200); }
+  function toast(msg, bad) { if (typeof TMN !== 'undefined' && TMN.haptic) TMN.haptic(bad ? 'error' : 'success'); var el = document.getElementById('toast'); el.textContent = wordsFix(msg); el.className = 'toast on' + (bad ? ' bad' : ''); clearTimeout(toastT); toastT = setTimeout(function () { el.className = 'toast' + (bad ? ' bad' : ''); }, bad ? 3600 : 2200); }
   function act(a, p, okMsg) {
     var r = TM.act(S, me, a, p);
     if (!r.ok) { toast(r.error, true); return r; }
