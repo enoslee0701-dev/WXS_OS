@@ -29,6 +29,7 @@ const FAKE = (opts) => {
     }
   };
 };
+const c0route = (p) => p.context().route('http://join.test:8787/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true,"setup":true}' }));
 (async () => {
   const b = await chromium.launch();
   const mk = async (opts) => { const c = await b.newContext({ ...devices['iPhone 13'] }); await c.addInitScript(FAKE, opts || null); const p = await c.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message)); p.errs = errs; await p.goto(URL); await p.waitForTimeout(300); return p; };
@@ -69,6 +70,16 @@ const FAKE = (opts) => {
   ok(await p.evaluate(() => __fake.clip) === '普通文字', '普通文字原样复制');
   await p.evaluate(() => __fake.emit('App', 'appUrlOpen', { url: 'teamops://ideas' })); await p.waitForTimeout(150);
   ok(p.url().endsWith('#/ideas'), '深链接打开对应页面');
+
+  // 3.5 扫老板给的二维码加入：未登录时记下服务器和账号，刷新后登录页自动填好
+  await p.evaluate(() => { localStorage.removeItem('tm_user_v3'); });
+  await c0route(p);
+  await p.evaluate(() => __fake.emit('App', 'appUrlOpen', { url: 'teamops://join?server=' + encodeURIComponent('http://join.test:8787') + '&login=xiaoli' }));
+  await p.waitForTimeout(1200);
+  ok(await p.evaluate(() => localStorage.getItem('tm_server')) === 'http://join.test:8787', '扫码加入：记下服务器地址');
+  ok(await p.locator('input[name=login]').inputValue().catch(() => '') === 'xiaoli' && await p.locator('input[name=server]').inputValue().catch(() => '') === 'http://join.test:8787', '扫码加入：登录页自动填好服务器和账号');
+  await p.evaluate(() => { localStorage.removeItem('tm_server'); localStorage.removeItem('tm_prefill_login'); localStorage.setItem('tm_user_v3', 'u_owner'); });
+  await p.reload(); await p.waitForTimeout(300);
 
   // 4. 语音识别：连续模式按停顿切句
   const r1 = await p.evaluate(async () => {

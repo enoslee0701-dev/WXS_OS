@@ -149,7 +149,7 @@
         '<button class="btn pri block" type="submit"' + (srvL.busy ? ' disabled' : '') + '>' + (srvL.busy ? '正在创建…' : '创建团队') + '</button></form>';
     } else {
       h += '<h1>登录</h1><p>使用老板或管理员分派给你的账号登录。</p><form class="srv-form" data-form="srvLogin">' + urlF +
-        field('账号', '<input type="text" name="login" autocapitalize="off" autocorrect="off" autocomplete="username" required>') +
+        field('账号', '<input type="text" name="login" value="' + esc(srvPrefill()) + '" autocapitalize="off" autocorrect="off" autocomplete="username" required>') +
         field('密码', '<input type="password" name="password" autocomplete="current-password" required>') +
         (srvL.probed && srvL.err && TMS.sameOrigin ? '<p class="srv-err">' + esc(srvL.err) + '</p>' : '') +
         '<button class="btn pri block" type="submit"' + (srvL.busy ? ' disabled' : '') + '>' + (srvL.busy ? '正在登录…' : '登录') + '</button></form>' +
@@ -188,6 +188,7 @@
     [/演示版：附件只保存在这台设备，刷新后只保留文件名。/g, '附件会上传到团队服务器。']
   ];
   function wordsFix(h) { return SRV && typeof h === 'string' ? SRV_WORDS.reduce(function (x, r) { return x.replace(r[0], r[1]); }, h) : h; }
+  function srvPrefill() { try { return localStorage.getItem('tm_prefill_login') || ''; } catch (e) { return ''; } }
   function srvBusy(b) { srvL.busy = b; var x = document.querySelector('.srv-form button[type=submit]'); if (x) { x.disabled = b; if (!x.dataset.t) x.dataset.t = x.textContent; x.textContent = b ? (x.closest('[data-form=srvSetup]') ? '正在创建…' : '正在登录…') : x.dataset.t; } }
   var SRVF = {
     srvLogin: function (o) { srvL.url = o.server || srvL.url; srvBusy(true); TMS.login(srvL.url, (o.login || '').trim(), o.password || '').then(null, function (e) { srvBusy(false); if (e.needsSetup) { srvL.setup = true; srvL.err = ''; render(); } toast(e.error || '登录失败', true); }); },
@@ -2956,8 +2957,10 @@
       TMS.changePassword(o.old || '', o.password).then(function () { closeSheet(); toast('密码已修改'); }, function (e) { toast(e.error || '修改失败', true); });
     }); };
   function showCred(u, login, pw) {
-    openSheet('账号已就绪', '<p style="margin:0 0 10px">把下面的信息发给 <b>' + esc(u.name) + '</b>：</p><div class="cred"><div><span>服务器</span><b>' + esc(TMS.serverUrl()) + '</b></div><div><span>账号</span><b id="cred-l">' + esc(login) + '</b></div><div><span>初始密码</span><b id="cred-p">' + esc(pw) + '</b></div></div><p class="muted" style="font-size:13.5px;margin:10px 0 0">密码只显示这一次。对方首次登录后需要改成自己的密码。</p>', '复制并关闭', function () {
-      var t = '团队协同 登录信息\n服务器：' + TMS.serverUrl() + '\n账号：' + login + '\n初始密码：' + pw;
+    var join = 'teamops://join?server=' + encodeURIComponent(TMS.serverUrl()) + '&login=' + encodeURIComponent(login), qr = '';
+    try { var qq = qrcode(0, 'M'); qq.addData(join); qq.make(); qr = '<div class="cred-qr">' + qq.createSvgTag(4, 2) + '<small>让 TA 用 iPhone 相机扫一下，自动打开 App 并填好服务器和账号（密码请单独告诉 TA）</small></div>'; } catch (e) {}
+    openSheet('账号已就绪', qr + '<p style="margin:0 0 10px">把下面的信息发给 <b>' + esc(u.name) + '</b>：</p><div class="cred"><div><span>服务器</span><b>' + esc(TMS.serverUrl()) + '</b></div><div><span>账号</span><b id="cred-l">' + esc(login) + '</b></div><div><span>初始密码</span><b id="cred-p">' + esc(pw) + '</b></div></div><p class="muted" style="font-size:13.5px;margin:10px 0 0">密码只显示这一次。对方首次登录后需要改成自己的密码。</p>', '复制并关闭', function () {
+      var t = '团队协同 登录信息\n服务器：' + TMS.serverUrl() + '\n账号：' + login + '\n初始密码：' + pw + '\n在手机上点这个链接直接打开 App：' + join;
       try { navigator.clipboard.writeText(t).then(function () { toast('已复制，可以发给对方'); }, function () { toast('请手动记下账号和密码'); }); } catch (e) { toast('请手动记下账号和密码'); }
       closeSheet(); });
   }

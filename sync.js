@@ -149,6 +149,7 @@ var TMS = (function () {
   function establish(base, res) {
     put('tm_server', api.sameOrigin ? null : base); put('tm_token', res.token); put('tm_ft', res.fileToken || null); put('tm_ver', res.version);
     if (g('tm_outbox_uid') !== res.uid) { put('tm_outbox', null); put('tm_outbox_uid', null); }
+    put('tm_prefill_login', null);
     var j = JSON.stringify(res.state), big = false;
     try { localStorage.setItem(K, j); } catch (e) { big = true; try { localStorage.removeItem(K); } catch (x) {} }
     put('tm_boot', JSON.stringify({ users: res.state.users, settings: res.state.settings, seq: res.state.seq, real: res.state.real }));

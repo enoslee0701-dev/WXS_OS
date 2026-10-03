@@ -109,7 +109,17 @@ var TMN = (function () {
     cb.writeText = function (t) { return Clip.write({ string: deep(t) }); };
   }
   if (App) {
-    App.addListener('appUrlOpen', function (e) { var m = String(e && e.url || '').match(/^teamops:\/\/(.*)$/); if (m) location.hash = '#/' + m[1]; });
+    App.addListener('appUrlOpen', function (e) {
+      var u = String(e && e.url || ''), j = u.match(/^teamops:\/\/join\?(.*)$/);
+      if (j) { // 扫老板给的二维码加入：记下服务器地址和账号，登录页自动填好
+        var q = {}; j[1].split('&').forEach(function (kv) { var p = kv.split('='); try { q[p[0]] = decodeURIComponent(p[1] || ''); } catch (x) {} });
+        if (!/^https?:\/\//.test(q.server || '')) return;
+        if (window.TMS && TMS.loggedIn()) { if (window.__tm && window.__tm.toast) window.__tm.toast('你已经登录了。要换账号，请先在「我的」里退出登录', true); return; }
+        try { localStorage.setItem('tm_server', q.server); if (q.login) localStorage.setItem('tm_prefill_login', q.login); localStorage.setItem('tm_demo_chosen', '1'); } catch (x) {}
+        location.hash = '#/login'; flush().then(function () { location.reload(); }, function () { location.reload(); }); return;
+      }
+      var m = u.match(/^teamops:\/\/(.*)$/); if (m) location.hash = '#/' + m[1];
+    });
     App.addListener('pause', function () { flush(); });
     App.addListener('backButton', function (e) { if (location.hash && location.hash !== '#/home' && e && e.canGoBack) history.back(); else App.exitApp(); });
   }

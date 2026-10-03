@@ -51,6 +51,7 @@ let srv = null;
   await A.fill('.sheet input[name=login]', 'xiaoli'); await A.click('.sheet footer button[type=submit]');
   await A.waitForSelector('.sheet .cred');
   const pw = (await A.textContent('#cred-p')).trim();
+  ok(await A.locator('.sheet .cred-qr svg').count() === 1, '账号卡片上有加入二维码');
   ok(/^[a-z2-9]{4}-[a-z2-9]{4}$/.test(pw) && (await A.textContent('.cred')).includes(URL.slice(0, -1)), '显示账号、初始密码和服务器地址');
   await A.click('.sheet footer button[type=submit]'); await A.waitForTimeout(150);
   ok(await until(async () => (await api('GET', '/api/state', null, bossTok)).state.users.length === 2), '成员已同步到服务器');
