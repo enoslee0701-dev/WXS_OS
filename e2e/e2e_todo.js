@@ -1,0 +1,73 @@
+const { chromium, devices } = require('playwright');
+const URL=(require('./_env').URL);
+let pass=0,fail=0;const ok=(c,m)=>{if(c)pass++;else{fail++;console.log('✗',m);}};
+(async()=>{const b=await chromium.launch();const c=await b.newContext({...devices['iPhone 13']});
+await c.route(/fonts\.(googleapis|gstatic)\.com/, r=>r.fulfill({status:200,contentType:'text/css',body:''}));
+const p=await c.newPage();const errs=[];p.on('pageerror',e=>{errs.push(e.message);console.log('STACK',e.stack.split('\n').slice(0,3).join(' | '))});p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
+const toast=async()=>p.textContent('#toast');
+await p.goto(URL);await p.click('.acct:has-text("Enos")');
+await p.click('.tabs a:has-text("任务")');await p.waitForTimeout(200);
+ok(await p.locator('.tk-top').count()===0 && await p.locator('.tk-compact .tk-month').count()===1,'任务页无顶部标题栏，保留月份选择');
+ok(await p.locator('.t-chk.sys').evaluateAll(a=>a.every(e=>getComputedStyle(e).borderTopStyle==='solid')),'勾选圈统一实线');
+ok(await p.locator('.tk-days button').count()===15,'两周 15 天日期条');ok(await p.locator('[data-do=tdView]').count()===0,'不再有视图切换');
+const n=await p.locator('.t-card').count();ok(n>=5,'今天有 '+n+' 条待办（系统+个人）');
+ok(await p.locator('.t-card',{hasText:'决策'}).locator('.t-time.red').count()===1,'高优先级决策时间标红');
+await p.screenshot({path:'td-list.png',fullPage:true});
+await p.click('[data-do=tdFilter][data-f=hi]');ok(await p.locator('.t-card').count()>=1 && await p.locator('.t-card .tg-hi').count()===await p.locator('.t-card').count(),'高优先级筛选');
+await p.click('[data-do=tdFilter][data-f=all]');
+const before=await p.locator('.t-card:not(.done)').count();
+await p.locator('.t-card',{hasText:'回复合作方邮件'}).locator('[data-do=tdToggle]').click();
+ok(await p.locator('.t-card:not(.done)').count()===before-1,'勾选完成');
+await p.click('[data-do=tdShowDone]');ok(await p.locator('.t-card.done',{hasText:'回复合作方邮件'}).count()===1,'已完成可展开');
+await p.locator('.t-card',{hasText:'整理 Q3'}).locator('.t-main').click();await p.waitForSelector('.sheet h2:has-text("编辑待办")');
+await p.fill('.sheet input[name=time]','19:30');await p.click('.sheet footer button[type=submit]');await p.waitForTimeout(150);
+ok((await p.locator('.t-card',{hasText:'整理 Q3'}).textContent()).includes('19:30'),'编辑时间');
+await p.screenshot({path:'td-group.png',fullPage:true});
+await p.click('#tkdays .today + button');ok(await p.locator('.t-card',{hasText:'准备周会资料'}).count()===1,'切到明天看到周会');
+// 两周日期条
+ok(await p.locator('#tkdays button').count()===15 && await p.evaluate(()=>{const s=document.getElementById('tkdays');return s.scrollWidth>s.clientWidth}),'日期条两周可滑动');
+ok(await p.evaluate(()=>{const t=document.querySelector('#tkdays .today').getBoundingClientRect();return t.left>=0&&t.left<40}),'默认从今天开始显示本周');
+// 日历
+await p.click('[data-do=tdCal]');ok(await p.locator('.t-cal-g button').count()===42,'展开日历 6 周');
+ok(await p.locator('.t-cal-g button.today').count()===1 && await p.locator('.t-cal-g em.b, .t-cal-g em.r').count()>=2,'今天标记与待办圆点');
+await p.screenshot({path:'td-cal.png'});
+await p.click('[data-do=tdMonth][data-n="1"]');ok((await p.textContent('.t-cal-h b')).includes('月'),'翻到下个月');
+await p.locator('.t-cal-g button:not(.out)').nth(14).click();await p.waitForTimeout(100);
+ok(await p.locator('.t-cal').count()===0 && await p.locator('.tk-days button.on').count()===1,'选日期后收起，日期条跟随');
+await p.click('[data-do=tdCal]');await p.click('.t-cal-today');ok((await p.textContent('.tk-days button.on span'))==='今天','回到今天');
+// 新建
+await p.click('.t-fab');await p.waitForTimeout(150);
+ok(await p.locator('.t-way').count()===2 && await p.locator('.t-tgrid button').count()===6,'新建页：两种方式 + 6 个模板');
+ok(await p.locator('.t-ritem').count()===3,'近期使用 3 条');
+await p.screenshot({path:'td-new.png',fullPage:true});
+await p.click('.t-tgrid [data-t=meeting]');await p.waitForTimeout(150);
+ok((await p.inputValue('[data-tf=title]'))==='会议纪要：','模板预填标题');
+await p.fill('[data-tf=title]','会议纪要：本周同工会');await p.click('[data-do=tfSet][data-k=priority][data-v=hi]');await p.click('[data-do=tfPerson][data-u=u_op]');
+await p.click('[data-do=tfSave]');await p.waitForTimeout(200);
+ok(p.url().endsWith('#/tasks') && await p.locator('.t-card',{hasText:'本周同工会'}).count()===1,'手动创建成功');
+await p.goto(URL+'#/todo/new');ok(await p.locator('.t-ritem').first().textContent().then(t=>t.includes('本周同工会')),'近期使用更新');
+await p.click('[data-do=tdClearRecent]');ok(await p.locator('.t-ritem').count()===0,'清空近期使用');
+// AI
+await p.goto(URL+'#/todo/new/ai');await p.waitForTimeout(150);
+ok(await p.locator('[data-do=taGen]').isDisabled(),'没内容时生成按钮不可点');
+await p.screenshot({path:'td-ai.png',fullPage:true});
+await p.click('[data-do=taTab][data-t=file]');
+await p.setInputFiles('[data-tafile]',{name:'周会.txt',mimeType:'text/plain',buffer:Buffer.from('明天上午10点和陈立开周会。周五前回复合作方邮件，紧急。今晚8点整理财务报表')});
+await p.waitForTimeout(300);ok((await p.inputValue('[data-ta=text]')).includes('陈立'),'读取文本文件');
+await p.click('[data-do=taGen]');await p.waitForSelector('.sheet h2:has-text("AI 生成的待办")');
+const cnt=await p.locator('.t-res').count();const t0=await p.inputValue('.t-res input[name=title0]');const tm0=await p.inputValue('.t-res input[name=time0]');const pr1=await p.inputValue('.t-res select[name=pr1]');const tm2=await p.inputValue('.t-res input[name=time2]');
+console.log('解析:',cnt,'条 |',t0,tm0,'| 第2条优先级',pr1,'| 第3条时间',tm2);
+ok(cnt===3 && tm0==='10:00' && pr1==='hi' && tm2==='20:00','拆出 3 条并识别时间和优先级');
+ok(await p.locator('.t-res').first().locator('.av').count()===1,'识别相关人陈立');
+await p.screenshot({path:'td-ai-res.png'});
+await p.click('.sheet footer button[type=submit]');await p.waitForTimeout(200);
+ok(p.url().endsWith('#/tasks') && (await toast()).includes('3'),'AI 添加 3 条待办');
+await p.goto(URL+'#/todo/new/ai');await p.click('[data-do=taTab][data-t=video]');await p.setInputFiles('[data-tavideo]',{name:'a.mp4',mimeType:'video/mp4',buffer:Buffer.from('x')});
+await p.waitForSelector('.sheet h2:has-text("视频已选择")');ok(true,'视频如实提示');
+// 首页同步
+await p.goto(URL+'#/tasks');ok(await p.locator('.t-card').count()>=3,'任务页含个人待办');
+// 权限：别人看不到
+await p.goto(URL+'#/home');await p.waitForTimeout(80);await p.click('[data-do=switch]');await p.click('.acct:has-text("周敏")');await p.click('.tabs a:has-text("任务")');
+ok(await p.locator('.t-card',{hasText:'整理 Q3'}).count()===0,'个人待办别人看不到');
+ok(errs.length===0,'无报错 '+errs.join('|'));
+console.log(`待办 E2E 通过 ${pass}，失败 ${fail}`);await b.close();process.exit(fail?1:0);})().catch(e=>{console.error(e);process.exit(1)});

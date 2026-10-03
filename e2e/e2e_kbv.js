@@ -1,0 +1,37 @@
+const { chromium } = require('playwright');
+const URL=(require('./_env').URL);
+(async () => {
+  const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 390, height: 844 } });
+  const errs=[]; p.on('pageerror', e => errs.push(e.message)); let pass=0,fail=0; const ok=(c,m)=>{c?pass++:(fail++,console.log('✗',m));};
+  const as = async u => { await p.goto(URL); await p.evaluate(u=>{localStorage.clear();localStorage.setItem('tm_user_v3',u);},u); await p.reload(); };
+  await as('u_owner'); await p.goto(URL+'#/kb'); await p.waitForTimeout(150);
+  ok(await p.locator('.kb-voice').count()===1, '知识库有录音口述入口');
+  await p.click('.kb-voice'); await p.waitForTimeout(150); ok(p.url().endsWith('#/kb/voice'), '进入口述页');
+  ok(await p.locator('.kbv-mic').count()===1 && await p.locator('.kbv-eg').count()===1, '大录音按钮和示例说法');
+  await p.click('[data-do=kbvMake]'); ok((await p.textContent('#toast')).includes('内容太少'), '没内容不能整理');
+  await p.click('[data-do=kbvTopic][data-v=decide]'); ok(await p.locator('[data-do=kbvTopic].on[data-v=decide]').count()===1, '选主题');
+  await p.fill('#kbv-text','嗯，然后我觉得每周一早上开个短会，十分钟就够。'); ok((await p.textContent('#kbv-n')).startsWith('2'), '打字时字数更新');
+  await p.click('[data-do=kbvSample]'); ok((await p.inputValue('#kbv-text')).includes('试点两周'), '示例口述填入');
+  await p.screenshot({ path: 'kbv1.png', fullPage: true });
+  await p.click('[data-do=kbvMake]'); await p.waitForSelector('.kbv-out', { timeout: 3000 });
+  const secs = await p.locator('.kbv-sec h3').allTextContents(); console.log('主题:', secs.join(' | '));
+  ok(['怎么做决定','用人','钱和预算','团队相处','我常说的话'].every(k=>secs.some(x=>x.includes(k))), '按主题归类');
+  const rules = await p.locator('.kbv-rule').allTextContents();
+  ok(!rules.some(r=>/^嗯|我说几点/.test(r)), '去掉口头语');
+  ok(rules.some(r=>r.includes('「凡事凭爱心而做」——')), '常说的话提炼成「话——意思」');
+  ok((await p.inputValue('#kbv-title')).startsWith('老板口述：'), '自动拟标题');
+  await p.screenshot({ path: 'kbv2.png', fullPage: true });
+  const n0 = rules.length; await p.click('.kbv-rule >> nth=0 >> button'); ok(await p.locator('.kbv-rule').count()===n0-1, '可删掉一条');
+  await p.fill('#kbv-title','老板的决策与用人原则');
+  await p.click('[data-do=kbvScope][data-v=team]'); ok(await p.locator('[data-do=kbvScope].on[data-v=team]').count()===1 && (await p.inputValue('#kbv-title'))==='老板的决策与用人原则', '切换可见范围不丢标题');
+  await p.click('[data-do=kbvMode]'); ok((await p.inputValue('#kbv-md')).includes('## 用人'), '可改全文');
+  await p.click('[data-do=kbvMode]');
+  await p.click('[data-do=kbvSave]'); await p.waitForTimeout(200);
+  ok(/#\/kb\/K/.test(p.url()), '保存后进入资料详情');
+  const body = await p.textContent('.kb-md'); ok(body.includes('怎么做决定') && body.includes('口述原文'), '文档含分类规则和口述原文');
+  await p.goto(URL+'#/kb'); await p.waitForTimeout(100); ok(await p.locator('.kb-row',{hasText:'口述整理'}).count()===1, '列表标注口述整理');
+  await p.fill('#kbq','新想法要不要试点'); await p.click('[data-do=kbAsk]'); await p.waitForTimeout(100); ok((await p.textContent('main')).includes('老板的决策与用人原则'), 'AI 能引用口述整理的规则');
+  // 权限
+  await as('u_op'); await p.goto(URL+'#/kb/voice'); await p.waitForTimeout(150); ok((await p.textContent('main')).includes('只有老板和管理员'), '非老板不能录入');
+  ok(!errs.length,'无脚本错误 '+errs.join(';')); console.log('口述成规则 E2E 通过',pass,'失败',fail); await b.close();
+})();

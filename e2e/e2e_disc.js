@@ -1,0 +1,33 @@
+const { chromium } = require('playwright');
+const URL=(require('./_env').URL);
+(async () => {
+  const b = await chromium.launch(); const p = await b.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const errs=[]; p.on('pageerror', e => errs.push(e.message)); let pass=0,fail=0; const ok=(c,m)=>{c?pass++:(fail++,console.log('✗',m));};
+  await p.goto(URL); await p.evaluate(()=>{localStorage.clear();localStorage.setItem('tm_user_v3','u_owner');}); await p.reload();
+  await p.goto(URL+'#/idea/I2'); await p.waitForTimeout(200);
+  ok(await p.locator('.dz-card .dz-m').count()>=2 && await p.isVisible('.dz-card .dz-m >> nth=0'), '讨论直接在详情页显示');
+  const vis0 = await p.locator('.dz-t:visible').count(); ok(vis0<=2, '默认最多两条');
+  await p.locator('.dz-card').scrollIntoViewIfNeeded(); await p.screenshot({path:'dz1.png'});
+  const more = p.locator('.dz-card [data-do=ixFold]'); if (await more.count()) { await more.click(); ok(await p.locator('.dz-t:visible').count() > vis0 || await p.isVisible('.dz-more'), '展开全部'); }
+  await p.fill('.dz-form textarea','我同意先做 3 期试点'); await p.click('.dz-form button[type=submit]'); await p.waitForTimeout(200);
+  ok((await p.textContent('.dz-card')).includes('先做 3 期试点') && p.url().endsWith('#/idea/I2'), '在详情页直接发建议');
+  await p.click('.dz-rep >> nth=0'); await p.fill('.dz-form textarea','回复一下'); await p.click('.dz-form button[type=submit]'); await p.waitForTimeout(200);
+  ok(await p.locator('.dz-m.re').count()>=1, '回复成缩进');
+  await p.goto(URL+'#/idea/I2/talk'); await p.waitForTimeout(250); ok(p.url().endsWith('#/idea/I2'), '旧讨论子页自动回到详情页');
+  await p.goto(URL+'#/idea/I2'); await p.waitForTimeout(150);
+  await p.click('[data-do=ixDigest]'); await p.waitForTimeout(200);
+  ok(await p.locator('.dg .dg-next li').count()>=1 && !(await p.isVisible('.dg-body')), '老板生成总结，默认显示建议下一步');
+  await p.click('.dg [data-do=ixFold]'); ok((await p.textContent('.dg-body')).includes('各人观点'), '展开完整总结');
+  await p.locator('.dg').scrollIntoViewIfNeeded(); await p.screenshot({path:'dg.png'});
+  await p.click('[data-do=icOpen]'); await p.waitForSelector('#ic-panel'); ok(await p.locator('.ic-chips button').count()===5, '打开 AI 对话');
+  await p.click('.ic-chips button:has-text("分歧")'); await p.waitForTimeout(150); ok((await p.textContent('.ic-a >> nth=-1')).includes('何静'), '问分歧：指出谁的观点');
+  await p.click('.ic-chips button:has-text("谁还没发言")'); await p.waitForTimeout(150); ok((await p.textContent('.ic-a >> nth=-1')).includes('还没表态'), '问谁没发言');
+  await p.fill('#ic-q','录制门槛'); await p.press('#ic-q','Enter'); await p.waitForTimeout(150); ok((await p.textContent('.ic-a >> nth=-1')).includes('林晓'), '自由提问：从讨论中找到');
+  await p.locator('#ic-panel').scrollIntoViewIfNeeded(); await p.screenshot({path:'ic.png'});
+  await p.evaluate(()=>localStorage.setItem('tm_user_v3','u_lead')); await p.reload(); await p.waitForTimeout(200);
+  ok(await p.locator('[data-do=icOpen]').count()===1, '发起人（负责人）也能问 AI');
+  ok(!(await p.locator('.dg').count()) && !(await p.locator('[data-do=ixDigest]').count()), '非老板看不到总结和按钮');
+  await p.evaluate(()=>localStorage.setItem('tm_user_v3','u_design')); await p.reload(); await p.waitForTimeout(200);
+  ok(!(await p.locator('[data-do=icOpen]').count()), '普通执行者没有 AI 对话');
+  ok(!errs.length,'无脚本错误 '+errs.join(';')); console.log('讨论 E2E 通过',pass,'失败',fail); await b.close();
+})();

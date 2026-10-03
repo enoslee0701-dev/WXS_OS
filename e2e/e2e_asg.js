@@ -1,0 +1,44 @@
+const { chromium, devices } = require('playwright');
+const URL=(require('./_env').URL);
+let pass=0,fail=0;const ok=(c,m)=>{if(c)pass++;else{fail++;console.log('✗',m);}};
+(async()=>{const b=await chromium.launch();const c=await b.newContext({...devices['iPhone 13']});
+await c.route(/fonts\.(googleapis|gstatic)\.com/, r=>r.fulfill({status:200,contentType:'text/css',body:''}));
+const p=await c.newPage();const errs=[];p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
+const toast=async()=>p.textContent('#toast');const sub=async()=>{await p.click('.sheet footer button[type=submit]');await p.waitForTimeout(120);};
+await p.goto(URL);await p.click('.acct:has-text("陈立")');await p.goto(URL+'#/work');await p.waitForTimeout(100);await p.click('.w-plus');await p.click('.sheet [data-do=quickAssign]');await p.waitForTimeout(150);
+ok(p.url().endsWith('#/assign'),'首页「分配任务」进入页面');
+await p.click('[data-do=asCreate]');ok((await toast()).includes('标题'),'无标题不能创建');
+await p.fill('[data-as=title]','完成 App 首页视觉优化');ok((await p.textContent('#asc-title'))==='完成 App 首页视觉优化'.length+'/50','标题计数');
+await p.click('[data-do=asWrite]');ok((await p.inputValue('[data-as=desc]')).startsWith('1.'),'AI 帮我写');
+await p.click('[data-do=asSet][data-k=ttype][data-v=设计]');await p.click('[data-do=asSet][data-k=priority][data-v=hi]');
+await p.check('[data-as=milestone]');
+await p.click('[data-do=asPickWork]');ok(await p.locator('.sheet .as-pi').count()>=1,'所属项目可选');await sub();
+await p.click('[data-do=asCreate]');ok((await toast()).includes('负责人'),'无负责人不能创建');
+await p.screenshot({path:'as-manual.png',fullPage:true});
+// AI
+await p.click('[data-do=asTab][data-t=ai]');await p.waitForTimeout(120);
+const first=await p.locator('.as-cand').first().locator('.as-cn b').textContent();const pct=await p.locator('.as-cand').first().locator('.as-cn i').nth(1).textContent();
+console.log('AI 首推:',first,pct);ok(first==='何静','设计任务首推 UI 设计何静');
+ok(await p.locator('.as-cand.on').count()===1,'默认选中首推');
+ok(await p.locator('.as-cols button').count()===3,'推荐 3 位协作者');
+await p.screenshot({path:'as-ai.png',fullPage:true});
+await p.click('.as-more');ok(await p.locator('.as-cand').count()>3,'展开更多候选人');
+await p.click('[data-do=asRe]');ok((await toast()).includes('重新'),'重新推荐');
+await p.click('[data-do=asConfirm]');await p.waitForTimeout(200);
+await p.click('[data-do=wTab][data-t=tasks]');ok(p.url().includes('#/work/') && await p.locator('.list .row',{hasText:'首页视觉优化'}).count()===1,'确认分配后任务出现在项目里');
+await p.locator('.list .row',{hasText:'首页视觉优化'}).click();await p.waitForTimeout(120);
+ok((await p.textContent('main')).includes('按 AI 推荐'),'任务记录标注 AI 推荐 + 人工确认');
+ok((await p.textContent('main')).includes('里程碑'),'里程碑留痕');
+// 手动路径 + 项目详情入口
+await p.goto(URL+'#/work/W1');await p.click('.actions .btn:has-text("新建任务")');await p.waitForTimeout(120);
+ok(p.url().endsWith('#/assign/W1'),'项目详情进入分配并预选项目');
+await p.fill('[data-as=title]','数据埋点方案');await p.click('[data-do=asTpl]');await p.check('.sheet input[value="1"]');await sub();
+ok((await p.inputValue('[data-as=desc]')).includes('自测'),'参考模板');
+await p.click('[data-do=asPickOwner]');await p.check('.sheet input[value=u_dev]');await sub();
+await p.click('[data-do=asPickCollab]');await p.check('.sheet input[value=u_design]');await sub();
+ok(await p.locator('.as-collab .av').count()===1,'添加协作者');
+await p.click('[data-do=asCreate]');await p.waitForTimeout(200);ok(p.url().endsWith('#/work/W1'),'手动创建任务成功');
+// 权限
+await p.goto(URL+'#/home');await p.waitForTimeout(80);await p.click('[data-do=switch]');await p.click('.acct:has-text("周敏")');await p.goto(URL+'#/work');await p.waitForTimeout(100);await p.click('.w-plus');await p.click('.sheet [data-do=quickAssign]');ok((await toast()).includes('负责人'),'执行者不能分配');
+ok(errs.length===0,'无报错 '+errs.join('|'));
+console.log(`分配 E2E 通过 ${pass}，失败 ${fail}`);await b.close();process.exit(fail?1:0);})().catch(e=>{console.error(e);process.exit(1)});
