@@ -6,11 +6,22 @@
   var filt = { ideas: 'all', work: null };
 
   /* ---------- 存储 ---------- */
+  var SRV_ON = typeof TMS !== 'undefined' && TMS.loggedIn();
   function load() {
     try { var raw = localStorage.getItem(K); if (raw) { var x = JSON.parse(raw); if (x && x.v === 3) return x; } } catch (e) {}
+    // 服务器模式：完整缓存太大存在 IndexedDB 里（异步），先用小的「启动骨架」（成员、设置）启动，绝不能退回演示数据
+    if (SRV_ON) { try { var b = JSON.parse(localStorage.getItem('tm_boot') || 'null'); if (b && b.users) { var sh = TM.blank({}); sh.users = b.users; sh.settings = b.settings || sh.settings; sh.seq = b.seq || sh.seq; sh.real = b.real; sh.loading = true; return sh; } } catch (e) {} var e0 = TM.blank({}); e0.loading = true; return e0; }
     return TM.seed();
   }
-  function save() { try { localStorage.setItem(K, JSON.stringify(S)); } catch (e) {} }
+  function save() {
+    var j = JSON.stringify(S);
+    try { localStorage.setItem(K, j); } catch (e) {
+      // 超过 localStorage 容量（约 5MB，团队用久了会到）：完整数据改存 IndexedDB
+      try { localStorage.removeItem(K); } catch (x) {}
+      if (SRV_ON) TMS.cacheBig(j);
+    }
+    if (SRV_ON) try { localStorage.setItem('tm_boot', JSON.stringify({ users: S.users, settings: S.settings, seq: S.seq, real: S.real })); } catch (e) {}
+  }
   S = load();
   TM.migrate(S);
   var PHOTOS = { u_owner: '__ENOS__' };

@@ -28,11 +28,12 @@ var TMN = (function () {
       var v = null; try { v = ls.getItem(k); } catch (e) {}
       return v == null ? Prefs.remove({ key: k }) : Prefs.set({ key: k, value: v });
     })).then(function () {
-      var all = []; try { for (var i = 0; i < ls.length; i++) { var k = ls.key(i); if (k && k.indexOf(PFX) === 0 && k !== BK) all.push(k); } } catch (e) {}
+      var srv = ls.getItem('tm_server') != null, all = []; try { for (var i = 0; i < ls.length; i++) { var k = ls.key(i); if (k && k.indexOf(PFX) === 0 && k !== BK && !(srv && k === MAIN)) all.push(k); } } catch (e) {}
       return Prefs.set({ key: BK, value: JSON.stringify(all) });
     }).catch(function () {});
   }
-  function mark(k) { if (String(k).indexOf(PFX) !== 0) return; dirty[k] = 1; if (!timer) timer = setTimeout(flush, 300); }
+  // 服务器模式下的完整数据缓存不镜像到原生存储（可能几 MB；服务器才是源头，随时能重新拉取）
+  function mark(k) { if (String(k).indexOf(PFX) !== 0) return; if (k === MAIN && ls.getItem('tm_server') != null) return; dirty[k] = 1; if (!timer) timer = setTimeout(flush, 300); }
   var proto = Object.getPrototypeOf(ls), oSet = proto.setItem, oRm = proto.removeItem;
   proto.setItem = function (k, v) { oSet.call(this, k, v); if (this === ls) mark(k); };
   proto.removeItem = function (k) { oRm.call(this, k); if (this === ls) mark(k); };
@@ -46,7 +47,7 @@ var TMN = (function () {
         .then(function (got) { if (got.some(Boolean)) { location.reload(); return true; } ready = true; return false; });
     }
     ready = true;
-    try { for (var i = 0; i < ls.length; i++) { var k = ls.key(i); if (k && k.indexOf(PFX) === 0) dirty[k] = 1; } } catch (e) {}
+    try { var srv0 = ls.getItem('tm_server') != null; for (var i = 0; i < ls.length; i++) { var k = ls.key(i); if (k && k.indexOf(PFX) === 0 && !(srv0 && k === MAIN)) dirty[k] = 1; } } catch (e) {}
     return flush().then(function () { return false; });
   }) : Promise.resolve(false)).catch(function () { ready = true; return false; });
   api.flush = flush;

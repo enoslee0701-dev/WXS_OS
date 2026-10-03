@@ -113,8 +113,9 @@ var TMS = (function () {
     }, function (e) { if (e.status === 401) expired(); else setStatus('offline'); });
   }
   function expired() {
+    clearBig();
     // 发件箱保留：同一个人重新登录后继续补发（换了人就清掉）
-    ['tm_token', 'tm_ft', 'tm_ver', 'tm_must', K, KU].forEach(function (k) { put(k, null); });
+    ['tm_token', 'tm_ft', 'tm_ver', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); });
     toast('登录已过期，请重新登录', true); setTimeout(function () { location.hash = '#/login'; reloadSafe(); }, 800);
   }
 
@@ -148,24 +149,28 @@ var TMS = (function () {
   function establish(base, res) {
     put('tm_server', api.sameOrigin ? null : base); put('tm_token', res.token); put('tm_ft', res.fileToken || null); put('tm_ver', res.version);
     if (g('tm_outbox_uid') !== res.uid) { put('tm_outbox', null); put('tm_outbox_uid', null); }
-    put(K, JSON.stringify(res.state)); put(KU, res.uid); put('tm_must', res.mustChange ? '1' : null);
-    location.hash = '#/home'; reloadSafe();
+    var j = JSON.stringify(res.state), big = false;
+    try { localStorage.setItem(K, j); } catch (e) { big = true; try { localStorage.removeItem(K); } catch (x) {} }
+    put('tm_boot', JSON.stringify({ users: res.state.users, settings: res.state.settings, seq: res.state.seq, real: res.state.real }));
+    put(KU, res.uid); put('tm_must', res.mustChange ? '1' : null);
+    location.hash = '#/home';
+    if (big) api.cacheBig(j).then(reloadSafe, reloadSafe); else reloadSafe();
   }
   api.serverUrl = function () { return api.sameOrigin ? location.origin : api.base; };
   api.probe = function (server) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'GET', '/api/health').then(function (r) { return { base: b, setup: r.setup }; }); };
   api.login = function (server, login, password) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'POST', '/api/login', { login: login, password: password }).then(function (res) { establish(b, res); }); };
   api.setup = function (server, o) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'POST', '/api/setup', o).then(function (res) { establish(b, res); }); };
   api.useServer = function (server) { put('tm_server', norm(server) || 'http://'); put(K, null); put(KU, null); location.hash = '#/login'; reloadSafe(); };
-  api.useLocal = function () { ['tm_server', 'tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; reloadSafe(); };
+  api.useLocal = function () { ['tm_server', 'tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; reloadSafe(); };
   api.logout = function () {
-    var done = function () { ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; reloadSafe(); };
+    var done = function () { clearBig(); ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; reloadSafe(); };
     var out = function () { req('POST', '/api/logout').then(done, done); };
     // 先注销这台手机的推送（退出后会话就失效了），再退出
     var pt = g('tm_push_token'); if (pt) req('POST', '/api/devices/remove', { token: pt }).then(out, out); else out();
   };
   api.changePassword = function (old, pw) { return req('POST', '/api/password', { old: old, password: pw }).then(function (r) { api.mustChange = false; put('tm_must', null); flush(); pump(); return r; }); };
   api.registerDevice = function (t) { if (api.loggedIn() && t) req('POST', '/api/devices', { token: t, platform: 'ios' }).catch(function () {}); };
-  api.deactivate = function (pw) { return req('POST', '/api/account/deactivate', { password: pw }).then(function (r) { ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', K, KU].forEach(function (k) { put(k, null); }); return r; }); };
+  api.deactivate = function (pw) { return req('POST', '/api/account/deactivate', { password: pw }).then(function (r) { ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); return r; }); };
   api.usage = function () { return req('GET', '/api/usage'); };
   api.exportAll = function () { return req('GET', '/api/export'); };
   api.accounts = function () { return req('GET', '/api/accounts'); };
@@ -220,6 +225,21 @@ var TMS = (function () {
   api.aiAdvice = function (id) { return req('POST', '/api/ai/advice', { id: id }).then(function (r) { if (!api.outbox.length && !busy && r.version >= api.version && window.__tm) { api.version = r.version; put('tm_ver', r.version); keepLocal(r.state, window.__tm.S); window.__tm.setState(r.state); } return r; }); };
   api.aiProject = function (text) { return req('POST', '/api/ai/project', { text: text }); };
   api.aiKb = function (topic, text) { return req('POST', '/api/ai/kb', { topic: topic, text: text }); };
+  /* ---------- 大缓存：完整数据超过 localStorage 容量时存 IndexedDB ---------- */
+  var CDB = null;
+  function cdb() { if (CDB) return CDB; CDB = new Promise(function (ok, bad) { try { var r = indexedDB.open('tm_cache', 1); r.onupgradeneeded = function () { r.result.createObjectStore('kv'); }; r.onsuccess = function () { ok(r.result); }; r.onerror = function () { bad(r.error); }; } catch (e) { bad(e); } }); return CDB; }
+  function ckv(mode, fn) { return cdb().then(function (db) { return new Promise(function (ok, bad) { var t = db.transaction('kv', mode), st = t.objectStore('kv'), r = fn(st); t.oncomplete = function () { ok(r && r.result); }; t.onerror = function () { bad(t.error); }; }); }); }
+  api.cacheBig = function (json) { put('tm_cache_idb', '1'); return ckv('readwrite', function (st) { return st.put({ uid: g(KU), json: json }, 'state'); }).catch(function () {}); };
+  function clearBig() { if (g('tm_cache_idb')) { put('tm_cache_idb', null); ckv('readwrite', function (st) { return st.delete('state'); }).catch(function () {}); } }
+  // 启动：localStorage 里没有完整缓存、但 IndexedDB 里有（同一个人的）→ 先用它显示（离线也能看），再和服务器同步
+  if (api.loggedIn() && !g(K) && g('tm_cache_idb')) {
+    window.addEventListener('load', function () {
+      ckv('readonly', function (st) { return st.get('state'); }).then(function (x) {
+        if (x && x.json && x.uid === g(KU) && window.__tm && window.__tm.S && window.__tm.S.loading && !api.outbox.length) { try { window.__tm.setState(JSON.parse(x.json)); } catch (e) {} }
+      }).catch(function () {});
+    });
+  }
+
   api.flush = flush; api.pull = pull;
   return api;
 })();
