@@ -64,11 +64,16 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
 21. **构建拦截同名函数**：build.js 检查 app.js 同名函数（曾把 `W(id)` 覆盖导致项目页报错）。
 22. **按角色**：执行者的想法页六宫格换成「全部 / 共创中 / 我参与的 / 进行中 / 已完成 / 暂缓」；App 首次打开欢迎页（连接服务器 / 看演示）；App 里禁止缩放、去掉点按高亮和长按菜单。
 
-测试现状：业务 360 + 服务器 72 + AI 代理 30；端到端 24 组。
+23. **上架准备**：iOS 隐私清单 `PrivacyInfo.xcprivacy`（UserDefaults CA92.1、不追踪、数据只用于 App 功能）；App 内注销账号（需密码；老板不能注销；通知老板）；`PRIVACY.md` 隐私政策；真机 Release 构建（`-sdk iphoneos`，不签名）已验证通过。
+24. **iOS 推送**：`server/push.js`（零依赖 http2 + ES256，`APNS_*` 环境变量，失效设备自动清理，遵守「重要事项通知我」偏好，同一手机换人登录设备跟随）；App 端登录后申请权限、登记设备、点通知跳页、前台收到时立即同步、退出时先注销设备；AppDelegate + `App.entitlements` 已就绪。`test_push.js`（16 项）用本地模拟 APNs 验证签名和收件人。需要开发者账号的推送密钥才能真正发出。
+25. **更多 Claude 功能**（都只给老板 / 管理员，失败退回规则版，以系统身份 `agent` 写回、字段清洗）：老板决策建议（按需「让 Claude 分析」，存到 `decision.ai`）；讨论总结（后台把规则版换成 Claude 版，`idea.digestResult`）；AI 新建项目解析（`/api/ai/project`）。
+26. 欢迎页不显示演示横幅；密码框补全样式。
+
+测试现状：业务 363 + 服务器 77 + AI 代理 38 + 推送 16；端到端 24 组。
 
 ## 待办
 1. **需要老板提供**：`ANTHROPIC_API_KEY`（真实 AI）；Apple 开发者账号（真机安装、TestFlight、推送）
-2. 推送通知（APNs，依赖开发者账号）；现在只有 App 内通知 + 打开 App 时实时同步
+2. 推送：代码已就绪，拿到开发者账号后按 DEPLOY.md 配 APNS_* 并在 Xcode 开 Push 能力
 3. 想法整理（deriveAnalysis）、AI 拟题、讨论总结等引擎内同步的「AI」仍是规则：要接真实 AI 需改成异步（服务器在 act 后补写 AI 结果）
 4. Android：装 SDK 后 `npx cap add android`
 5. app.js 按页面拆模块（函数同名覆盖隐患）
