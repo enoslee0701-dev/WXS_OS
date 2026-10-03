@@ -188,6 +188,17 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   ok(r.status === 200 && r.state.users.length === 4 && r.state.ideas.some(d => d.note === '改过的草稿'), '重启后数据和会话都在');
   ok((await (await fetch(B + '/api/files/f_abc123', { headers: { Authorization: 'Bearer ' + boss } })).text()).endsWith('v2'), '重启后附件还在');
   ok(fs.readdirSync(path.join(DIR, 'backups')).length === 1, '每天一份备份');
+  // 9.5 从备份恢复（先停服务器）
+  srv.kill(); await new Promise(z => setTimeout(z, 300));
+  const bk = path.join(DIR, 'backups', fs.readdirSync(path.join(DIR, 'backups')).find(f => f.startsWith('state-')));
+  const { spawnSync } = require('child_process');
+  let rs1 = spawnSync(process.execPath, [path.join(__dirname, 'server', 'restore.js'), bk], { env: { ...process.env, DATA_DIR: DIR }, encoding: 'utf8' });
+  ok(/加 --yes/.test(rs1.stdout), '不加 --yes 只预览不恢复');
+  ok(spawnSync(process.execPath, [path.join(__dirname, 'server', 'restore.js'), path.join(__dirname, 'package.json'), '--yes'], { env: { ...process.env, DATA_DIR: DIR }, encoding: 'utf8' }).status === 1, '无效文件被拒');
+  rs1 = spawnSync(process.execPath, [path.join(__dirname, 'server', 'restore.js'), bk, '--yes'], { env: { ...process.env, DATA_DIR: DIR }, encoding: 'utf8' });
+  ok(rs1.status === 0 && /已恢复/.test(rs1.stdout) && fs.readdirSync(path.join(DIR, 'backups')).some(f => f.startsWith('before-restore-')), '从每日备份恢复，恢复前另存当前数据');
+  srv = await start();
+  ok((await get('/api/state', boss)).status === 200, '恢复后账号仍能登录');
   // 10. 演示团队
   srv.kill(); fs.rmSync(DIR, { recursive: true, force: true }); fs.mkdirSync(DIR);
   srv = await start();
