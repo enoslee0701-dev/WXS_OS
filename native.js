@@ -36,10 +36,12 @@ var TMN = (function () {
   proto.removeItem = function (k) { oRm.call(this, k); if (this === ls) mark(k); };
   api.restored = (Prefs ? Prefs.get({ key: BK }).then(function (r) {
     var keys = []; try { keys = JSON.parse(r && r.value || '[]') || []; } catch (e) {}
-    if (!hadData && keys.indexOf(MAIN) >= 0) {
-      // WebView 数据丢了，但原生备份还在：恢复后重新加载
-      return Promise.all(keys.map(function (k) { return Prefs.get({ key: k }).then(function (x) { if (x && x.value != null) oSet.call(ls, k, x.value); }); }))
-        .then(function () { location.reload(); return true; });
+    // WebView 的 localStorage 是异步写盘的，App 被强制结束时最近的写入可能丢失（整体或部分，例如只丢了登录令牌）：
+    // 备份清单里有、本机却没有的键，从原生备份补回，然后重新加载
+    var missing = keys.filter(function (k) { try { return k !== BK && ls.getItem(k) == null && (k !== MAIN || !hadData); } catch (e) { return false; } });
+    if (missing.length) {
+      return Promise.all(missing.map(function (k) { return Prefs.get({ key: k }).then(function (x) { if (x && x.value != null) { oSet.call(ls, k, x.value); return 1; } return 0; }); }))
+        .then(function (got) { if (got.some(Boolean)) { location.reload(); return true; } ready = true; return false; });
     }
     ready = true;
     try { for (var i = 0; i < ls.length; i++) { var k = ls.key(i); if (k && k.indexOf(PFX) === 0) dirty[k] = 1; } } catch (e) {}

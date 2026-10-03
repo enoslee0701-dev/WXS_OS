@@ -102,5 +102,16 @@ const FAKE = (opts) => {
   ok(await p.locator('.acct').count() === 0, '恢复后直接进入，不用重新选身份');
   ok(p.errs.length === 0, '恢复无报错 ' + p.errs.join('|'));
 
+  await p.context().close();
+  // 7. 只丢了部分数据（例如登录令牌）：缺的键从备份补回
+  const seed2 = await (async () => { const q = await mk(); const s = await q.evaluate(() => JSON.stringify(window.__tm.S)); await q.context().close(); return s; })();
+  { const c2 = await b.newContext({ ...devices['iPhone 13'] });
+    // 页面脚本运行前：本机已有业务数据和身份，只缺登录令牌（模拟部分写盘丢失）
+    await c2.addInitScript((s) => { if (!sessionStorage.getItem('__ls_init')) { localStorage.setItem('tm_demo_v3', s); localStorage.setItem('tm_user_v3', 'u_op'); sessionStorage.setItem('__ls_init', '1'); } }, seed2);
+    await c2.addInitScript(FAKE, { prefs: { tm_demo_v3: seed2, tm_user_v3: 'u_op', tm_token: 'tok-123', tm_backup_keys: JSON.stringify(['tm_demo_v3', 'tm_user_v3', 'tm_token']) } });
+    p = await c2.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); await p.goto(URL); }
+  await p.waitForTimeout(900);
+  ok(await p.evaluate(() => localStorage.getItem('tm_token')) === 'tok-123' && await p.evaluate(() => localStorage.getItem('tm_user_v3')) === 'u_op', '部分丢失：只补回缺的登录令牌');
+  ok(await p.evaluate(() => window.__tm.me) === 'u_op' && p.errs.length === 0, '部分恢复后正常进入');
   console.log(`原生桥接 E2E 通过 ${pass}，失败 ${fail}`); await b.close(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
