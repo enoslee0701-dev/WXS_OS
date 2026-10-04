@@ -12,7 +12,8 @@
     "setup": "npx playwright install chromium",
     "server": "node server/server.js",
     "ios": "node build.js && npx cap copy ios && node scripts/ios.js",
-    "crawl": "node scripts/e2e.js crawl"
+    "crawl": "node scripts/e2e.js crawl",
+    "android": "node build.js && npx cap sync android && cd android && JAVA_HOME=$(/usr/libexec/java_home -v 21) ANDROID_HOME=$HOME/Library/Android/sdk ./gradlew assembleRelease -q && cp app/build/outputs/apk/release/app-release.apk ~/Desktop/团队协同.apk && echo 已生成：桌面/团队协同.apk"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
@@ -24,6 +25,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
+    "@capacitor/android": "^8.5.2",
     "@capacitor/app": "^8.1.2",
     "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.5.2",

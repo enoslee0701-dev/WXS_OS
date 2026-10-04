@@ -5,6 +5,7 @@
 **现在能做什么**
 - iOS App 能在模拟器运行；真机发布版本能编译，只差签名。
 - 团队服务器：在办公室 Mac 上运行 `scripts/server-mac.sh install`，同事在同一个 Wi-Fi 下就能用。
+- **Android APK**（2026-10-05）：`npm run android` 生成并复制到桌面「团队协同.apk」，可直接装到安卓手机（需允许「安装未知来源应用」）。
 - 按角色区分的界面、老板分派账号（扫码加入）、实时同步、离线补发、附件、推送（代码已就绪）、AI（代码已就绪）、早报和截止提醒都已完成并测试。
 
 **需要你做 / 决定的事**
@@ -107,6 +108,16 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
 45. 新建项目「优化描述」「拟写目标」接 Claude（`/api/ai/write` 轻量接口）；AI 助手里的拆待办、会议纪要的待办部分走 Claude。
 46. **从备份恢复**：`server/restore.js <备份文件> --yes`（每日备份或导出文件都可以；先停服务器；恢复前自动另存当前数据；版本号前进，在线手机自动拉取）。
 
+
+## 本轮新增（第八轮 · 2026-10-05 · Android）
+47. **Android 工程**（android/，Capacitor 8）：本机装了 JDK 21（~/Library/Java）和 Android SDK（~/Library/Android/sdk，命令行工具）；`npm run android` = 构建 → 同步 → 编译签名的 release APK → 复制到桌面。
+    - 原生语音：`SpeechPlugin.java`（Android SpeechRecognizer，接口与 iOS 版相同；每句说完自动接着听，结果累加），在 MainActivity 注册。
+    - 权限：RECORD_AUDIO + MODIFY_AUDIO_SETTINGS（页面里 getUserMedia 录音需要后者，否则 WebView 直接拒绝）；声明 RecognitionService 查询。
+    - 允许 http 服务器（usesCleartextTraffic + allowMixedContent），teamops:// 链接（扫码加入）、仅竖屏、返回键。图标 / 启动屏由 img/app-icon.png 生成（@capacitor/assets）。
+    - **推送在 Android 上暂不启用**（需 Firebase google-services.json，服务器也只接了 APNs）；native.js 里 platform==='android' 时不注册。
+    - **发布签名**：android/release.keystore + android/keystore.properties（不进 git）。**务必另外备份这两个文件**，丢了以后发的新版本不能覆盖安装。
+    - 模拟器验证：启动、连 http 服务器、登录、老板首页、语音页录音与识别启动都正常。真机上「录音 + 语音识别同时用麦克风」有的机型可能冲突，待真机确认。
+
 测试现状：业务 418 + 同步一致性 254 次操作 + 随机操作 2×3000 + 服务器 90 + AI 代理 50 + 推送 19；端到端 25 组；界面爬虫另跑。提交前看 `npm run check` 的退出码。
 
 
@@ -114,7 +125,7 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
 1. **需要老板提供**：`ANTHROPIC_API_KEY`（真实 AI）；Apple 开发者账号（真机安装、TestFlight、推送）
 2. 推送：代码已就绪，拿到开发者账号后按 DEPLOY.md 配 APNS_* 并在 Xcode 开 Push 能力
 3. 想法整理（deriveAnalysis）、AI 拟题、讨论总结等引擎内同步的「AI」仍是规则：要接真实 AI 需改成异步（服务器在 act 后补写 AI 结果）
-4. Android：装 SDK 后 `npx cap add android`
+4. Android：已出 APK；待办：真机验证语音、Android 推送（Firebase + 服务器 FCM）、上架 Google Play 需开发者账号（25 美元一次性）
 5. app.js 按页面拆模块（函数同名覆盖隐患）
 6. 增量同步（现在每次下发完整数据，已压缩；数据再大一个量级时再做）
 
@@ -122,6 +133,7 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
 - `npm run server`：启动服务器（PORT / HOST / DATA_DIR 可配）
 - `npm run ios`：构建网页 → 拷进 iOS 工程 → 编译并在模拟器启动
 - 打开 Xcode：`npx cap open ios`
+- `npm run android`：生成 Android APK 到桌面（模拟器：`~/Library/Android/sdk/emulator/emulator -avd tm36`）
 
 ## 规范
 - 用户偏好：中文、简洁、按设计图 1:1 复刻、每次交付前跑完测试、结尾给编号的下一步

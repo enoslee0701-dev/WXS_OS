@@ -31,5 +31,9 @@
         "list"
       ]
     }
+  },
+  "android": {
+    "allowMixedContent": true,
+    "captureInput": true
   }
 }

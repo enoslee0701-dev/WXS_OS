@@ -14,6 +14,7 @@ var TMN = (function () {
   (function () { var m = document.querySelector('meta[name=viewport]'); if (m && !/maximum-scale/.test(m.content)) m.content += ', maximum-scale=1, user-scalable=no'; })();
   function plug(n) { try { return C.registerPlugin(n); } catch (e) { return null; } }
   var Prefs = plug('Preferences'), Clip = plug('Clipboard'), App = plug('App'), Bar = plug('StatusBar'), Kb = plug('Keyboard'), Splash = plug('SplashScreen'), Speech = plug('Speech'), Push = plug('PushNotifications'), Hap = plug('Haptics');
+  if (api.platform === 'android') Push = null; // Android 推送要接 Firebase（google-services.json），暂不启用；服务器端也只接了 APNs
   api.plugins = { PushNotifications: Push, Preferences: Prefs, Clipboard: Clip, App: App, StatusBar: Bar, Keyboard: Kb, SplashScreen: Splash, Speech: Speech };
 
   /* ---------- 1. 数据双存 ---------- */
