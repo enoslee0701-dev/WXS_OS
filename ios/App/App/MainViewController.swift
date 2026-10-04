@@ -21,6 +21,11 @@ class MainViewController: CAPBridgeViewController {
             let src = "if(location.hash!=='#/\(js(hash))')location.hash='#/\(js(hash))'"
             ucc.addUserScript(WKUserScript(source: src, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
+        // 自动化测试：页面加载完后载入一段测试脚本（e2e/crawl_ios.js 用它在 App 里逐个点按钮）
+        if let script = env["TM_SCRIPT"] {
+            let src = "(function(){var s=document.createElement('script');s.crossOrigin='anonymous';s.src='\(js(script))';document.body.appendChild(s)})()"
+            ucc.addUserScript(WKUserScript(source: src, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+        }
         if let auto = env["TM_AUTOLOGIN"], let i = auto.firstIndex(of: ":") {
             let login = js(String(auto[..<i])), pw = js(String(auto[auto.index(after: i)...]))
             let src = "setTimeout(function(){if(window.TMS&&TMS.server&&!TMS.token)TMS.login(TMS.base,'\(login)','\(pw)').catch(function(e){console.log('autologin',JSON.stringify(e))})},800)"

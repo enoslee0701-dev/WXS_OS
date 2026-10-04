@@ -13,7 +13,7 @@ var TMN = (function () {
   // App 里禁止缩放：iOS 遇到字号小于 16px 的输入框会自动放大页面（网页版保留缩放，照顾无障碍）
   (function () { var m = document.querySelector('meta[name=viewport]'); if (m && !/maximum-scale/.test(m.content)) m.content += ', maximum-scale=1, user-scalable=no'; })();
   function plug(n) { try { return C.registerPlugin(n); } catch (e) { return null; } }
-  var Prefs = plug('Preferences'), Clip = plug('Clipboard'), App = plug('App'), Bar = plug('StatusBar'), Kb = plug('Keyboard'), Splash = plug('SplashScreen'), Speech = plug('Speech'), Push = plug('PushNotifications'), Hap = plug('Haptics');
+  var Prefs = plug('Preferences'), Clip = plug('Clipboard'), App = plug('App'), Bar = plug('StatusBar'), Kb = plug('Keyboard'), Splash = plug('SplashScreen'), Speech = plug('Speech'), Push = plug('PushNotifications'), Hap = plug('Haptics'), Diag = native && C.getPlatform() === 'android' ? plug('Diag') : null;
   if (api.platform === 'android') Push = null; // Android 推送要接 Firebase（google-services.json），暂不启用；服务器端也只接了 APNs
   api.plugins = { PushNotifications: Push, Preferences: Prefs, Clipboard: Clip, App: App, StatusBar: Bar, Keyboard: Kb, SplashScreen: Splash, Speech: Speech };
 
@@ -99,6 +99,15 @@ var TMN = (function () {
   NSR.prototype.stop = function () { this._finish(); };
   NSR.prototype.abort = function () { this._finish(); };
   if (Speech) { window.SpeechRecognition = window.webkitSpeechRecognition = NSR; }
+  // Android：不少国产手机没有系统语音识别服务。没有时去掉语音转文字（录音照常），页面会提示改用输入法的语音键
+  api.noSpeech = false;
+  if (Speech && api.platform === 'android') {
+    Speech.available().then(function (r) {
+      if (r && r.available) return;
+      api.noSpeech = true; window.SpeechRecognition = window.webkitSpeechRecognition = undefined;
+      window.dispatchEvent(new Event('tm-nospeech'));
+    }).catch(function () {});
+  }
   api.SpeechRecognition = NSR;
 
   /* ---------- 3. 剪贴板与深链接 ---------- */
@@ -128,7 +137,7 @@ var TMN = (function () {
       var m = u.match(/^teamops:\/\/(.*)$/); if (m) location.hash = '#/' + m[1];
     });
     App.addListener('pause', function () { flush(); });
-    App.addListener('backButton', function (e) { if (location.hash && location.hash !== '#/home' && e && e.canGoBack) history.back(); else App.exitApp(); });
+    App.addListener('backButton', function () { var t = window.__tm; if (t && t.back && t.back()) return; App.exitApp(); });
   }
   /* ---------- 推送：登录后申请通知权限、登记设备；点通知跳到对应页面 ---------- */
   api.pushInit = function () {
@@ -140,11 +149,38 @@ var TMN = (function () {
       .then(function (p) { if (p.receive === 'granted') return Push.register(); }).catch(function () {});
   };
   window.addEventListener('load', function () { setTimeout(api.pushInit, 1500); });
+  /* ---------- 打开链接 / 文件（App 里没有新窗口，也不能网页式下载） ----------
+     openUrl：http(s) 地址交给系统浏览器（导航到外部地址时 Capacitor 会改用系统浏览器打开）；
+     shareFile：把 Blob 写进缓存目录，再弹出系统的「分享 / 用其他应用打开」 */
+  var Fs = native ? plug('Filesystem') : null, Shr = native ? plug('Share') : null;
+  api.openUrl = function (u) {
+    if (!native) { window.open(u, '_blank', 'noopener'); return; }
+    if (/^https?:\/\//i.test(u) && !/^https?:\/\/localhost(\/|$)/i.test(u)) { location.href = u; return; }
+    window.open(u, '_blank');
+  };
+  // 页面里所有指向外部网址的链接（包括 target=_blank）都交给系统浏览器
+  if (native) document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest && e.target.closest('a[href]'); if (!a) return;
+    var h = a.getAttribute('href') || '';
+    if (/^https?:\/\//i.test(h) && !/^https?:\/\/localhost(\/|$)/i.test(h)) { e.preventDefault(); api.openUrl(h); }
+  }, true);
+  api.canShareFile = !!(Fs && Shr);
+  api.shareFile = function (blob, name) {
+    if (!Fs || !Shr) return Promise.reject(new Error('unsupported'));
+    var safe = String(name || 'file').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 80);
+    return new Promise(function (ok, no) { var r = new FileReader(); r.onload = function () { ok(String(r.result).split(',')[1] || ''); }; r.onerror = no; r.readAsDataURL(blob); })
+      .then(function (b64) { return Fs.writeFile({ path: safe, data: b64, directory: 'CACHE' }); })
+      .then(function (w) { return Shr.share({ title: safe, files: [w.uri] }); })
+      .catch(function (e) { if (/cancel/i.test(String(e && e.message))) return; throw e; });
+  };
+  /* ---------- 诊断：上次闪退的原因（Android），由 app.js 启动后提示 ---------- */
+  api.lastCrash = function () { return Diag ? Diag.lastCrash().then(function (r) { return r && r.text || ''; }, function () { return ''; }) : Promise.resolve(''); };
+  api.plugins.Diag = Diag;
   /* ---------- 触感反馈：操作成功轻震，出错提示性震动 ---------- */
   api.haptic = function (kind) { if (!Hap) return; try { (kind === 'error' ? Hap.notification({ type: 'ERROR' }) : kind === 'warning' ? Hap.notification({ type: 'WARNING' }) : Hap.impact({ style: 'LIGHT' })).catch(function () {}); } catch (e) {} };
   /* ---------- 4. 外观 ---------- */
   if (Bar) Bar.setStyle({ style: 'LIGHT' }).catch(function () {});
-  if (Kb) Kb.setAccessoryBarVisible({ isVisible: true }).catch(function () {});
+  if (Kb && api.platform === 'ios') Kb.setAccessoryBarVisible({ isVisible: true }).catch(function () {}); // 只有 iOS 有键盘工具条
   window.addEventListener('load', function () { setTimeout(function () { if (Splash) Splash.hide({ fadeOutDuration: 200 }).catch(function () {}); }, 60); });
   } catch (e) {
     // 桥接层出错不能挡住 App：记录错误，至少把启动屏关掉

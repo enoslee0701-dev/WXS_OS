@@ -118,6 +118,23 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
     - **发布签名**：android/release.keystore + android/keystore.properties（不进 git）。**务必另外备份这两个文件**，丢了以后发的新版本不能覆盖安装。
     - 模拟器验证：启动、连 http 服务器、登录、老板首页、语音页录音与识别启动都正常。真机上「录音 + 语音识别同时用麦克风」有的机型可能冲突，待真机确认。
 
+48. **页面切换动画**（app.js `navTo`）：进入下一级从右滑入、返回反向、切底部标签淡入淡出；有 View Transitions 时新旧两页一起动，否则只给新页进入动画；iOS 侧滑返回不重复播放；系统「减少动态效果」时关闭；自动化测试里默认关（`window.__tmAnim = true` 强制打开，见 e2e_anim）。弹窗关闭也有收起动画（`#layer-out`）。
+49. **返回逻辑重做**（用户反馈「返回直接回首页」）：
+    - `goBack()`：有来源页就 history.back()，没有（重开 App 后）就回到 `navParent()` 给出的上一级；所有返回键（`back`、通用页头 `pBack`）都走它。原来 `pBack` 一律回首页、`project/ai` 返回会压新历史。
+    - `navFinish(h)`：提交表单（想法、新建项目、派任务、加待办、口述成规则、删除想法）后，把表单页从返回路径里去掉（history.go(-k) 再跳结果页）。
+    - Android 返回键 `__tm.back()`：先关弹窗 / AI 面板 → 子页面返回 → 标签页回首页 → 首页才退出。
+    - 测试：e2e_nav（16 项）；`node e2e/crawl_back.js`：5 个角色 × 22 个页面 × 每个会跳页的按钮，点进去再返回（页面返回键 + 手机返回键）必须回原页，264 条路径全过。
+50. **Android 加固**（不带 Google 服务的 Android 14 / WebView 113 模拟器复现国产手机环境）：
+    - 没有系统语音识别服务时去掉转写（`tm-nospeech` 事件），页面提示「这台手机不支持转写」，录音照常。
+    - 闪退记录：`DiagPlugin`（Java 异常）+ 网页渲染进程崩溃时重建页面而不是整个 App 退出；下次打开弹「App 上次意外关闭」，可一键复制发给开发者。
+    - 原生语音插件回调全部兜底；识别器忙时换新的重试。
+    - 打开附件 / 外部链接 / 导出备份：App 里没有新窗口和网页下载 → 外部地址交给系统浏览器，本地文件写缓存后弹系统分享（@capacitor/filesystem + share）。
+    - 「浏览器」字样在 App 里改成手机说法（`APP_WORDS`），权限提示给出手机设置路径。
+    - 只有 iOS 才调用键盘工具条接口（安卓上会报 UNIMPLEMENTED）。
+    - 固定浅色主题，状态栏 / 导航栏白底深色图标（旧 WebView 上 Capacitor 把页面放在系统栏之间）；CSS 安全区改用 `--sat/--sab`（同时读 env() 和 Capacitor 注入的 --safe-area-inset-*）。
+    - 测试：e2e_android（伪造 Capacitor Android 端，20 项）。
+51. **真机环境爬虫**（不进 `npm run check`，需要模拟器）：`e2e/inpage_crawl.js` 在 App 页面里逐个角色 / 页面 / 按钮点击并回报；`npm run test:android`（adb + Playwright，模拟器或 USB 真机）、`npm run test:ios`（编译调试版装进 iOS 模拟器，靠 `TM_SCRIPT` 环境变量注入）。同时监视闪退、被系统界面盖住。调试版 `__tm.as(uid)` 仅演示模式可用。
+
 测试现状：业务 418 + 同步一致性 254 次操作 + 随机操作 2×3000 + 服务器 90 + AI 代理 50 + 推送 19；端到端 25 组；界面爬虫另跑。提交前看 `npm run check` 的退出码。
 
 

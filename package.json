@@ -13,7 +13,9 @@
     "server": "node server/server.js",
     "ios": "node build.js && npx cap copy ios && node scripts/ios.js",
     "crawl": "node scripts/e2e.js crawl",
-    "android": "node build.js && npx cap sync android && cd android && JAVA_HOME=$(/usr/libexec/java_home -v 21) ANDROID_HOME=$HOME/Library/Android/sdk ./gradlew assembleRelease -q && cp app/build/outputs/apk/release/app-release.apk ~/Desktop/团队协同.apk && echo 已生成：桌面/团队协同.apk"
+    "android": "node build.js && npx cap sync android && cd android && JAVA_HOME=$(/usr/libexec/java_home -v 21) ANDROID_HOME=$HOME/Library/Android/sdk ./gradlew assembleRelease -q && cp app/build/outputs/apk/release/app-release.apk ~/Desktop/团队协同.apk && echo 已生成：桌面/团队协同.apk",
+    "test:android": "node e2e/device_android.js",
+    "test:ios": "node e2e/device_ios.js"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
@@ -29,6 +31,7 @@
     "@capacitor/app": "^8.1.2",
     "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.5.2",
+    "@capacitor/filesystem": "^8.1.4",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.5.2",
     "@capacitor/keyboard": "^8.0.6",

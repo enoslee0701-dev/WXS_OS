@@ -45,6 +45,14 @@
   function rid(p) { var a = new Uint8Array(12); try { crypto.getRandomValues(a); } catch (e) { for (var i = 0; i < 12; i++) a[i] = Math.random() * 256; } return p + Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
   /* 附件：本机预览用 blob URL；服务器模式下同时在后台上传（localId 即服务器文件 ID），别的设备从服务器读取 */
   function keepBlob(id, data) { var u = URL.createObjectURL(data); if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.upload(id, data, data && data.name); return u; }
+  // 打开链接 / 文件：App 里交给系统浏览器或「用其他应用打开」（见 native.js），网页里开新窗口
+  function openLink(u) { if (typeof TMN !== 'undefined' && TMN.openUrl) TMN.openUrl(u); else window.open(u, '_blank', 'noopener'); }
+  function openFile(u, name) {
+    if (typeof TMN !== 'undefined' && TMN.native && /^blob:/.test(u) && TMN.canShareFile) {
+      return fetch(u).then(function (r) { return r.blob(); }).then(function (b) { return TMN.shareFile(b, name); }).catch(function () { toast('这个文件打不开', true); });
+    }
+    openLink(u);
+  }
   function blobUrl(id) { return id ? (blobs[id] || (typeof TMS !== 'undefined' && TMS.loggedIn() ? TMS.fileUrl(id) : null)) : null; }
   try { me = localStorage.getItem(KU); } catch (e) {}
   if (me && !TM.user(S, me)) me = null;
@@ -202,7 +210,22 @@
     [/演示版的汇总由规则模拟生成/g, '汇总由规则生成'],
     [/演示版：附件只保存在这台设备，刷新后只保留文件名。/g, '附件会上传到团队服务器。']
   ];
-  function wordsFix(h) { return SRV && typeof h === 'string' ? SRV_WORDS.reduce(function (x, r) { return x.replace(r[0], r[1]); }, h) : h; }
+  // 手机 App 里没有「浏览器」：提示改成手机上的说法
+  var APP_WORDS = [
+    [/（安卓 Chrome 支持）/g, ''],
+    [/请在浏览器设置里允许后再试/g, '请在手机「设置 → 应用 → 团队协同 → 权限」里允许麦克风后再试'],
+    [/这台设备的浏览器里/g, '这台手机上'],
+    [/(当前|这个)浏览器/g, '这台手机'],
+    [/浏览器自带的?识别/g, '手机自带的识别'],
+    [/浏览器实时识别/g, '手机实时识别']
+  ];
+  var IS_APP = typeof TMN !== 'undefined' && TMN.native;
+  function wordsFix(h) {
+    if (typeof h !== 'string') return h;
+    if (SRV) h = SRV_WORDS.reduce(function (x, r) { return x.replace(r[0], r[1]); }, h);
+    if (IS_APP) h = APP_WORDS.reduce(function (x, r) { return x.replace(r[0], r[1]); }, h);
+    return h;
+  }
   function srvPrefill() { try { return localStorage.getItem('tm_prefill_login') || ''; } catch (e) { return ''; } }
   function srvBusy(b) { srvL.busy = b; var x = document.querySelector('.srv-form button[type=submit]'); if (x) { x.disabled = b; if (!x.dataset.t) x.dataset.t = x.textContent; x.textContent = b ? (x.closest('[data-form=srvSetup]') ? '正在创建…' : '正在登录…') : x.dataset.t; } }
   var SRVF = {
@@ -639,6 +662,7 @@
   /* 方式二：AI 自动解析 */
   var ai = { tab: 'rec', recording: false, t0: 0, transcript: '', timer: null, raf: null, sr: null, ctx: null };
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  window.addEventListener('tm-nospeech', function () { SR = null; if (me) render(); });
   var SAMPLES = [
     { k: 's1', t: '会议讨论', d: '03:24', text: '下周要启动门徒圈语音灵修的小程序。陈立负责产品，何静先出可点击原型，刘洋评估开发工作量。月底前要能给团队试用。需要准备录音设备，预算控制在三千元以内。' },
     { k: 's2', t: '项目思路', d: '12:18', text: '我想把官网改版，重新整理品牌介绍。先梳理现有页面内容，再出新的页面结构，然后请何静做视觉稿。最后安排上线前的测试，争取十一月底前完成。' },
@@ -779,12 +803,13 @@
   var PDO = {
     goProject: function () { if (!canCreateProject()) return toast('只有老板、运营者和有发起权的负责人可以新建项目', true); pd = freshPD(); location.hash = '#/project'; },
     goProjectAI: function () { location.hash = '#/project/ai'; },
+    // 通用页头（新建项目、分配任务、创建待办、补充记录等）的返回：新建项目第 2、3 步先退回上一步，其余回到来源页面
     pBack: function () {
       var c = cur();
       if (ai.recording) aiStop();
-      if (c.id === 'ai') { location.hash = '#/project'; return; }
-      if (pd && pd.step > 1) { pd.step--; render(); window.scrollTo(0, 0); return; }
-      pd = null; location.hash = '#/home';
+      if (c.name === 'project' && !c.id && pd && pd.step > 1) { pd.step--; render(); window.scrollTo(0, 0); return; }
+      if (c.name === 'project' && !c.id) pd = null;
+      goBack();
     },
     pType: function (el) { pd.ptype = el.dataset.k; if (PT_MORE.some(function (t) { return t[0] === pd.ptype; })) pd.otherOpen = false; render(); },
     pTypeOther: function () { pd.otherOpen = !pd.otherOpen; render(); },
@@ -839,7 +864,7 @@
     pCreate: function () {
       var r = TM.act(S, me, 'project.create', { title: pd.title, note: pd.note, ptype: pd.ptype, leadId: pd.leadId, operatorId: pd.operatorId, reviewerId: pd.reviewerId, due: pd.due, tasks: pd.tasks, goal: pd.goal, priority: pd.priority, media: pd.files.map(function (f) { return { kind: f.kind, name: f.name, durationSec: f.durationSec, localId: f.localId }; }), source: pd.source });
       if (!r.ok) return toast(r.error, true);
-      save(); pd = null; location.hash = '#/work/' + r.workId; toast('项目已创建，相关的人已收到通知');
+      save(); pd = null; navFinish('#/work/' + r.workId); toast('项目已创建，相关的人已收到通知');
     },
     aiTab: function (el) { if (ai.recording) aiStop(); ai.tab = el.dataset.t; render(); },
     aiStart: aiStart, aiStop: aiStop,
@@ -1064,7 +1089,7 @@
     var r = TM.act(S, me, 'idea.create', { title: d.title, note: d.note, dept: dept, media: d.media, tags: d.tags || [] });
     if (!r.ok) return toast(k === 'vo' && !d.media.length ? '请先录一段，或在「识别的文字」里写点内容' : k === 'cam' && !d.media.length && !d.note ? '请先选择一个视频，或写点说明' : r.error, true);
     save(); capReset(k);
-    location.hash = '#/idea/' + r.id;
+    navFinish('#/idea/' + r.id);
     if (go) setTimeout(function () { submitSheet(r.id); }, 60); else toast('已保存为私人草稿');
   }
   var CAP = {
@@ -1370,7 +1395,7 @@
       var n = 0, err = '';
       items.forEach(function (x, i) { if (!o['on' + i]) return; var r = TM.act(S, me, 'todo.create', { title: o['title' + i], date: o['date' + i], time: o['time' + i], priority: o['pr' + i], people: x.people, tags: x.tags, scope: x.scope, source: 'ai' }); if (r.ok) n++; else err = r.error; });
       if (!n) return toast(err || '请至少选一条', true);
-      save(); closeSheet(); ta.text = ''; td.day = TM.todayStr(S); td.view = 'list'; td.filter = 'all'; location.hash = '#/tasks'; toast('已添加 ' + n + ' 条待办');
+      save(); closeSheet(); ta.text = ''; td.day = TM.todayStr(S); td.view = 'list'; td.filter = 'all'; navFinish('#/tasks'); toast('已添加 ' + n + ' 条待办');
     });
   }
   function taStop() {
@@ -1381,7 +1406,6 @@
     render();
   }
   var TD = {
-    tdBack: function () { location.hash = '#/home'; },
     tdDay: function (el) { td.day = el.dataset.d; td.showDone = false; td.calMonth = td.day.slice(0, 7); render(); },
     tdOpts: function () { openSheet('显示设置', '<div class="fld"><span>视图</span><div class="opts">' + opt('view', 'list', '列表', '按时间顺序', td.view !== 'group') + opt('view', 'group', '分组', '高优先级、我负责、团队相关、其他', td.view === 'group') + '</div></div>', '应用', function (o) { td.view = o.view; closeSheet(); render(); }); },
     tdCal: function () { td.calOpen = !td.calOpen; td.calMonth = td.day.slice(0, 7); render(); },
@@ -1404,7 +1428,7 @@
     tfSave: function () {
       var r = TM.act(S, me, 'todo.create', { title: tf.title, date: tf.date, time: tf.time, priority: tf.priority, scope: tf.scope, tags: tf.tags, people: tf.people, note: tf.note, tpl: tf.tpl ? { key: tf.tpl.key, title: tf.title } : null });
       if (!r.ok) return toast(r.error, true);
-      save(); td.day = tf.date; td.view = 'list'; td.filter = 'all'; tf = null; location.hash = '#/tasks'; toast('已添加待办');
+      save(); td.day = tf.date; td.view = 'list'; td.filter = 'all'; tf = null; navFinish('#/tasks'); toast('已添加待办');
     },
     taTab: function (el) { if (ta.recording) taStop(); ta.tab = el.dataset.t; render(); },
     taAuto: function () { ta.auto = !ta.auto; render(); toast(ta.auto ? '会自动识别时间、相关人和优先级' : '已关闭自动识别，全部按今天处理'); },
@@ -1510,7 +1534,7 @@
     if (!ownerId) return toast('请选择负责人', true);
     var r = TM.act(S, me, 'work.plan', { id: w.id, tasks: [{ title: asg.title, description: asg.desc, ttype: asg.ttype, priority: asg.priority, milestone: asg.milestone, ownerId: ownerId, collabs: collabs, due: due, expected: asg.desc.trim() ? '按任务描述交付成果' : '完成「' + asg.title.trim() + '」并提交成果', criteria: asg.desc.trim() || '由验收人确认达到任务要求', assignedBy: by }] });
     if (!r.ok) return toast(r.error, true);
-    save(); var wid = w.id; asg = null; location.hash = '#/work/' + wid; toast('任务已派出，' + nm(ownerId) + ' 已收到通知');
+    save(); var wid = w.id; asg = null; navFinish('#/work/' + wid); toast('任务已派出，' + nm(ownerId) + ' 已收到通知');
   }
   var TPL_T = [['设计稿交付', '设计', '1. 按需求完成页面设计；\n2. 与整体风格保持一致；\n3. 输出设计稿并与开发对齐。'], ['功能开发', '开发', '1. 完成功能开发并自测；\n2. 处理边界和异常情况；\n3. 提交可演示的版本。'], ['文档整理', '文档', '1. 收集相关资料；\n2. 整理成结构清晰的文档；\n3. 发给相关同事确认。'], ['活动执行', '运营', '1. 确认时间、地点和人数；\n2. 准备物资并分工；\n3. 活动后提交总结和照片。']];
   function pickSheet(title, ids, sel, multi, onPick) {
@@ -2579,12 +2603,12 @@
         '<button type="button" class="ix2-opt" data-do="wLink"><span class="ix2-oi">' + LINKI + '</span><b>链接</b><small>网页、云盘地址</small></button></div><p class="muted" style="font-size:13px;margin:10px 0 0">项目成员都能看到。每个项目最多 50 个文件；' + (SRV ? '文件会上传到团队服务器，同事都能打开。' : '演示版不上传，文件只保存在这台设备。') + '</p>', '关闭', function () { closeSheet(); }); },
     wLink: function () { var id = cur().id; openSheet('添加链接', field('链接地址', '<input type="url" name="url" placeholder="https://" required>') + field('名称（可选）', '<input type="text" name="name" maxlength="40" placeholder="例如：设计稿">'), '添加', function (o) { var u = (o.url || '').trim(); act('work.attach', { id: id, media: [{ kind: 'link', url: u, name: (o.name || '').trim() || u.replace(/^https?:\/\//, '').slice(0, 40) }] }, '已添加链接'); }); },
     wfOpen: function (el) { var w = W(cur().id), m = (w.files || []).find(function (f) { return f.id === el.dataset.fid; }); if (!m) return;
-      if (m.kind === 'link') { if (m.url) window.open(m.url, '_blank', 'noopener'); return; }
+      if (m.kind === 'link') { if (m.url) openLink(m.url); return; }
       var b = m.localId && blobUrl(m.localId); if (!b) return toast('演示版没有上传，这个文件只在添加它的设备上、刷新前能打开', true);
       if (m.kind === 'image') return openSheet(m.name, '<img src="' + b + '" alt="' + esc(m.name) + '" style="width:100%;border-radius:14px">', '关闭', function () { closeSheet(); });
       if (m.kind === 'audio') return openSheet(m.name, '<audio controls src="' + b + '" style="width:100%"></audio>', '关闭', function () { closeSheet(); });
       if (m.kind === 'video') return openSheet(m.name, '<video controls playsinline src="' + b + '" style="width:100%;border-radius:14px"></video>', '关闭', function () { closeSheet(); });
-      window.open(b, '_blank', 'noopener'); },
+      openFile(b, m.name); },
     wfDel: function (el) { var w = W(cur().id), m = (w.files || []).find(function (f) { return f.id === el.dataset.fid; }); if (!m) return; openSheet('删除文件', '<p style="margin:0;font-size:14px">确定删除「' + esc(m.name) + '」？删除后项目成员都看不到了。</p>', '删除', function () { act('work.detach', { id: w.id, fid: m.id }, '已删除'); }, true); },
     wShare: function () { var u = location.href; try { navigator.clipboard.writeText(u).then(function () { toast('链接已复制，同事登录后可查看（需有权限）'); }, function () { toast('请手动复制地址栏链接'); }); } catch (e) { toast('请手动复制地址栏链接'); } },
     wMore: function () {
@@ -2719,7 +2743,18 @@
     sheetHandler = onSubmit;
     requestAnimationFrame(function () { var sc = layer.querySelector('.scrim'), sh = layer.querySelector('.sheet'); if (!sc || !sh) return; sc.classList.add('on'); sh.classList.add('on'); var f = layer.querySelector('.sheet .body input:not([type=hidden]):not([type=radio]):not([type=checkbox]),.sheet .body textarea'); if (f && window.innerWidth > 700) f.focus(); });
   }
-  function closeSheet() { var l = document.getElementById('layer'); l.innerHTML = ''; sheetHandler = null; }
+  function closeSheet() {
+    var l = document.getElementById('layer'), sh = l.querySelector('.sheet.on');
+    // 关闭时先把弹窗移到一个只负责播放收起动画的层里，原来的层立刻清空（后续逻辑和新弹窗不受影响）
+    if (sh && animOK()) {
+      var g = document.getElementById('layer-out');
+      if (!g) { g = document.createElement('div'); g.id = 'layer-out'; g.setAttribute('aria-hidden', 'true'); document.body.appendChild(g); }
+      g.innerHTML = ''; while (l.firstChild) g.appendChild(l.firstChild);
+      requestAnimationFrame(function () { Array.prototype.forEach.call(g.querySelectorAll('.scrim,.sheet'), function (e) { e.classList.remove('on'); }); });
+      clearTimeout(closeSheet.t); closeSheet.t = setTimeout(function () { g.innerHTML = ''; }, 300);
+    }
+    l.innerHTML = ''; sheetHandler = null;
+  }
   function fd(form) { var o = {}; new FormData(form).forEach(function (v, k) { if (o[k] !== undefined) { o[k] = [].concat(o[k], v); } else o[k] = v; }); return o; }
   function opt(name, val, title, desc, checked) { return '<label class="opt"><input type="radio" name="' + name + '" value="' + val + '"' + (checked ? ' checked' : '') + '><span><b>' + title + '</b>' + (desc ? '<small>' + desc + '</small>' : '') + '</span></label>'; }
   function userSelect(name, uids, sel) { return '<select name="' + name + '">' + uids.map(function (id) { return '<option value="' + id + '"' + (id === sel ? ' selected' : '') + '>' + esc(nm(id)) + '（' + esc(TM.user(S, id).title) + '）</option>'; }).join('') + '</select>'; }
@@ -2918,7 +2953,7 @@
     else if (c.name === 'kb' && c.id === 'voice' && !cp.kbEdit) to = '#/kb';
     else if ((c.name === 'ideas' || c.name === 'idea') && !cp.ideas) to = '#/home';
     else if (c.name === 'work' && !cp.work) to = '#/home';
-    if (to) { history.replaceState(null, '', to); return render(); }
+    if (to) { history.replaceState(null, '', to); if (typeof navStack !== 'undefined' && navStack.length) navStack[navStack.length - 1] = to; return render(); }
     var body = '', acts = [], title = TITLES[c.name] || '首页', back = false;
     switch (c.name) {
       case 'ideas': body = viewIdeas(); break;
@@ -3028,6 +3063,7 @@
   DO.srvExport = function () {
     TMS.exportAll().then(function (d) {
       var blob = new Blob([JSON.stringify(d, null, 1)], { type: 'application/json' }), name = '团队协同备份-' + new Date().toISOString().slice(0, 10) + '.json';
+      if (typeof TMN !== 'undefined' && TMN.native && TMN.canShareFile) { TMN.shareFile(blob, name).then(function () {}, function () { toast('导出失败，请重试', true); }); return; }
       if (typeof TMN !== 'undefined' && TMN.native && navigator.share) { var f = new File([blob], name, { type: 'application/json' }); navigator.share({ files: [f], title: name }).catch(function () {}); return; }
       var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000); toast('已导出：' + name);
     }, function (e) { toast(e.error || '导出失败', true); });
@@ -3045,7 +3081,7 @@
     openSheet('添加附件', '<div class="ix2-opts">' + o('environment', 'image/*', ai2('img', 1.7), '拍照', '用相机拍一张') + o('', 'image/*,video/*', ai2('vcam', 1.7), '相册', '图片或视频') + o('', '', ai2('doc2', 1.7), '文件', 'PDF、Excel、Word 等') + o('', 'audio/*', ai2('mic', 1.7), '录音', '选择或录一段') +
       '<button type="button" class="ix2-opt" data-do="ixLink"><span class="ix2-oi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg></span><b>链接</b><small>网页、云盘地址</small></button></div><p class="muted" style="font-size:13.5px;margin:10px 0 0">单个想法最多 30 个附件。' + (SRV ? '文件会上传到团队服务器，同事都能打开。' : '演示版不上传，文件只保存在这台设备。') + '</p>', '关闭', function () { closeSheet(); }); };
   DO.ixLink = function () { var id = cur().id; openSheet('添加链接', field('链接地址', '<input type="url" name="url" placeholder="https://" required>') + field('名称（可选）', '<input type="text" name="name" maxlength="40" placeholder="例如：招聘方案草稿">'), '添加', function (o) { var u = (o.url || '').trim(); act('idea.attach', { id: id, media: [{ kind: 'link', url: u, name: (o.name || '').trim() || u.replace(/^https?:\/\//, '').slice(0, 40) }] }, '已添加链接'); }); };
-  DO.ixOpen = function (el) { var d = I(cur().id), m = d && d.media[+el.dataset.i]; if (!m) return; if (m.kind === 'link') { var u = m.url || (/^https?:/.test(m.name) ? m.name : ''); if (u) window.open(u, '_blank', 'noopener'); else toast('这个链接没有地址', true); return; } var b = m.localId && blobUrl(m.localId); if (!b) return toast('演示版没有上传，这个文件只在添加它的设备上、刷新前能打开', true); if (m.kind === 'image') return openSheet(m.name, '<img src="' + b + '" alt="' + esc(m.name) + '" style="width:100%;border-radius:14px;display:block">', '关闭', function () { closeSheet(); }); if (m.kind === 'audio' || m.kind === 'video') return; window.open(b, '_blank'); };
+  DO.ixOpen = function (el) { var d = I(cur().id), m = d && d.media[+el.dataset.i]; if (!m) return; if (m.kind === 'link') { var u = m.url || (/^https?:/.test(m.name) ? m.name : ''); if (u) openLink(u); else toast('这个链接没有地址', true); return; } var b = m.localId && blobUrl(m.localId); if (!b) return toast('演示版没有上传，这个文件只在添加它的设备上、刷新前能打开', true); if (m.kind === 'image') return openSheet(m.name, '<img src="' + b + '" alt="' + esc(m.name) + '" style="width:100%;border-radius:14px;display:block">', '关闭', function () { closeSheet(); }); if (m.kind === 'audio' || m.kind === 'video') return; openFile(b, m.name); };
   DO.advAI = function (el) { var id = el.dataset.arg; el.disabled = true; el.innerHTML = '<span class="ai-typing"><i></i><i></i><i></i></span> Claude 正在分析…';
     TMS.aiAdvice(id).then(function () { var f = document.querySelector('.sheet'); if (f && DO.decide) { closeSheet(); DO.decide({ dataset: { arg: id } }); } else render(); toast('Claude 的建议已生成'); }, function (e) { el.disabled = false; el.textContent = '让 Claude 分析'; toast((e && e.error) || 'AI 暂时不可用', true); }); };
   DO.advAdopt = function (el) { var f = el.closest('form'); var r = f.querySelector('input[name=status][value=' + el.dataset.v + ']'); if (r) r.checked = true; var n = f.querySelector('textarea[name=note]'); if (n) { n.value = el.dataset.n; n.focus(); } toast('已填入建议，可以修改后再提交'); };
@@ -3067,7 +3103,7 @@
     openSheet('删除想法', '<p style="margin:0 0 8px">确定删除「<b>' + esc(d.title || '未命名') + '</b>」？</p>' + (live.length ? '<div class="callout warn">这个想法已形成进行中的项目「' + esc(live[0].title) + '」，需要先在项目里取消，才能删除。</div>' : '<div class="callout">删除后所有人都看不到这个想法，相关的待决策会自动撤回。操作会留在记录里。</div>' + field('原因（可选）', '<input type="text" name="reason" maxlength="50" placeholder="例如：重复了、已经不需要">')), live.length ? '知道了' : '确认删除', function (o) {
       if (live.length) return closeSheet();
       var r = TM.act(S, me, 'idea.delete', { id: d.id, reason: o.reason }); if (!r.ok) return toast(r.error, true);
-      save(); closeSheet(); location.hash = '#/ideas'; toast('已删除想法');
+      save(); closeSheet(); navFinish('#/ideas', true); toast('已删除想法');
     });
   };
   DO.ixLog = function () { closeSheet(); var d = I(cur().id); if (!d || !ixCanLog(d)) return toast('只有发起人、跟进人和老板能看操作记录', true); location.hash = '#/idea/' + d.id + '/log'; };
@@ -3076,7 +3112,7 @@
   DO.ideasNeed = function () { filt.ideas = 'need'; render(); };
   DO.ideasTile = function (el) { filt.ideas = el.dataset.f; filt.ideasOpen = true; render(); };
   DO.ideasRecent = function () { filt.ideasOpen = false; filt.ideas = 'all'; render(); };
-  DO.back = function () { if (history.length > 1) history.back(); else location.hash = '#/home'; };
+  DO.back = function () { goBack(); };
   DO.goNew = function () { newMedia = []; draft = { title: '', note: '', mode: 'text', big: false }; location.hash = '#/new'; };
 
   /* Word（.docx）→ Markdown：在手机上解析，不经过服务器（docx 是 zip，取出 word/document.xml，按段落 / 标题 / 列表转换） */
@@ -3247,7 +3283,7 @@
     var body = kbv.mdMode ? o.md : kbvMd(o);
     if (kbv.raw && kbv.text.trim()) body += '\n## 口述原文\n> ' + kbv.text.trim().replace(/\n+/g, ' ') + '\n';
     var r = act('kb.add', { title: o.title, body: body, scope: kbv.scope, source: 'voice' }, '已存入知识库，AI 之后会按这些规则给建议');
-    if (r.ok) { kbv = kbvFresh(); location.hash = '#/kb/' + r.id; }
+    if (r.ok) { kbv = kbvFresh(); navFinish('#/kb/' + r.id); }
   };
   function kbForm(k) { k = k || { title: '', body: '', scope: 'team' }; return field('标题', '<input type="text" name="title" maxlength="40" value="' + esc(k.title) + '" placeholder="例如：老板谈团队文化" required>') + field('内容（支持 Markdown）', '<textarea name="body" rows="10" placeholder="# 标题&#10;- 原则一&#10;- 原则二">' + esc(k.body) + '</textarea>') + '<div class="fld"><span>谁能看到</span><div class="opts">' + opt('scope', 'team', '全员可看', '团队成员可以阅读这份资料', k.scope !== 'ai_only') + opt('scope', 'ai_only', '仅 AI 参考', '成员看不到原文，只在 AI 建议里引用片段', k.scope === 'ai_only') + '</div></div>'; }
   var KB_TPL = "# 老板的想法与做事原则（模板）\n\n> 写法提示：一条一句话，说清楚「遇到什么情况 → 我怎么想 / 怎么做」。\n> 每个小标题下写 3–6 条就够了，AI 会按小标题和句子去找依据。\n> 不确定的地方可以先空着，以后再补。\n\n## 我们为什么做这件事\n- 我们做事的初心是：（一句话写清楚）\n- 我希望三年后团队变成：\n- 今年最重要的三件事是：\n\n## 我怎么做决定\n- 新想法我习惯先：（例如：小步试点两周，看反馈再决定）\n- 这些事必须先问我：（例如：人事、单笔超过 5000 元、对外发布）\n- 这些事运营者可以直接做主：\n- 我拒绝一件事，通常是因为：\n\n## 用人\n- 招人之前我会先看：\n- 我看重一个人的：\n- 新人先怎么安排：（例如：兼职试用三个月）\n- 我不能接受的行为：\n\n## 钱和预算\n- 花钱前要先：（例如：比价至少两家）\n- 长期支出和一次性支出，我更谨慎的是：\n- 超预算时我希望看到：（例如：明细、替代方案、能否分期）\n\n## 对外发布与品牌\n- 对外发的内容要谁审核：\n- 我们对外说话的口吻是：\n- 绝对不能发的内容：\n\n## 团队相处\n- 我希望大家沟通的方式是：\n- 出了问题我希望大家：（例如：先说事实，再说原因，最后说改进）\n- 批评和表扬的原则：\n\n## 我常说的话\n- 「凡事凭爱心而做」——意思是：\n- （把你常挂在嘴边、希望团队记住的话写在这里，并解释它的意思）\n";
@@ -3399,15 +3435,112 @@
       var go = e.submitter ? e.submitter.value : 'draft';
       var r = TM.act(S, me, 'idea.create', { title: o.title, note: o.note, dept: o.dept || null, media: newMedia.slice() });
       if (!r.ok) { toast(r.error, true); return; }
-      save(); newMedia = []; draft = { title: '', note: '', mode: 'text', big: false }; location.hash = '#/idea/' + r.id;
+      save(); newMedia = []; draft = { title: '', note: '', mode: 'text', big: false }; navFinish('#/idea/' + r.id);
       if (go === 'submit') setTimeout(function () { submitSheet(r.id); }, 50); else toast('已保存为私人草稿');
     } else if (name === 'suggest') act('idea.suggest', { id: c.id, body: o.body, replyTo: o.replyTo || null }, '建议已发送');
     else if (name === 'addCheck') act('task.addCheck', { id: c.id, title: o.title });
     else if (name === 'comment') act('task.comment', { id: c.id, body: o.body }, '已发送');
   });
+  /* 页面切换动画（像原生 App）：进入下一级从右滑入，返回反向滑出，切换底部标签淡入淡出。
+     有 View Transitions（iOS 18+、Android WebView 111+）时新旧两页一起动；没有时只给新页一个进入动画。
+     自动化测试（navigator.webdriver）里默认关闭，避免改变页面更新的时机；window.__tmAnim = true 可强制打开。 */
+  var ROOTS = { home: 1, ideas: 1, tasks: 1, work: 1, me: 1 }, navStack = [location.hash || '#/home'], lastTap = 0;
+  document.addEventListener('pointerdown', function () { lastTap = Date.now(); }, true);
+  document.addEventListener('keydown', function () { lastTap = Date.now(); }, true);
+  function navDepth(h) { var p = String(h || '').replace(/^#\/?/, '').split('/').filter(Boolean); if (!p.length || (p.length === 1 && ROOTS[p[0]])) return 0; return p.length; }
+  // 返回：有来源页面就回来源页面（浏览历史），没有（例如重新打开 App 后）就回到这个页面的上一级
+  function navParent(h) {
+    var p = String(h || '').replace(/^#\/?/, '').split('/'), n = p[0], id = p[1];
+    if (n === 'idea') return id && p[2] ? '#/idea/' + id : '#/ideas';
+    if (n === 'task') return '#/tasks';
+    if (n === 'work') return id && p[2] ? '#/work/' + id : '#/work';
+    if (n === 'assign') return id ? '#/work/' + id : '#/work';
+    if (n === 'new') return id ? '#/new' : '#/ideas';
+    if (n === 'project') return id ? '#/project' : '#/home';
+    if (n === 'todo') return p[2] ? '#/todo/new' : '#/tasks';
+    if (n === 'kb') return id ? '#/kb' : '#/me';
+    if (n === 'settings' || n === 'team') return '#/me';
+    return '#/home';
+  }
+  var navReplacing = false;
+  function navReplace(h) { navReplacing = true; location.replace(h); }
+  function goBack() {
+    if (navStack.length > 1) { history.back(); return; }
+    navReplace(navParent(location.hash));
+  }
+  // 手机返回键（Android）：先关弹窗 / AI 面板，再返回上一页；在底部标签页先回首页，在首页才退出
+  function hardBack() {
+    if (document.querySelector('#layer .sheet')) { closeSheet(); return true; }
+    if (aiS.open) { aiS.open = false; renderAI(); return true; }
+    if (!me) return false;
+    if (navDepth(location.hash) > 0) { DO.back(); return true; }
+    if (cur().name !== 'home') { location.hash = '#/home'; return true; }
+    return false;
+  }
+  // 完成一个表单（提交想法、新建项目、派任务、加待办……）后跳到结果页：把表单页从返回路径里去掉，
+  // 结果页按返回直接回到开始填表之前的页面。dropCurrent：当前页也去掉（例如删除了正在看的想法）
+  function navForm(h) { var c = String(h).replace(/^#\/?/, '').split('/'); return c[0] === 'new' || c[0] === 'project' || c[0] === 'assign' || (c[0] === 'todo' && c[1] === 'new') || (c[0] === 'kb' && c[1] === 'voice'); }
+  var navAfter = null;
+  function navFinish(h, dropCurrent) {
+    var k = 0; for (var i = navStack.length - 1; i > 0 && navForm(navStack[i]); i--) k++;
+    if (!k && dropCurrent && navStack.length > 1) k = 1;
+    if (!k) { location.hash = h; return; }
+    var base = navStack[navStack.length - 1 - k];
+    navStack = navStack.slice(0, navStack.length - k);
+    if (base !== h) navAfter = h;
+    history.go(-k);
+    // 万一浏览历史和记录对不上（没有触发跳转），直接过去
+    setTimeout(function () { if (navAfter) { var t = navAfter; navAfter = null; location.hash = t; } }, 700);
+  }
+  function navKind(h) {
+    if (navReplacing) { navReplacing = false; navStack[navStack.length - 1] = h; return 'pop'; }
+    if (navStack[navStack.length - 1] === h) return 'pop';
+    var prev = navStack[navStack.length - 1], d0 = navDepth(prev), d1 = navDepth(h), k;
+    if (navStack.length > 1 && navStack[navStack.length - 2] === h) { navStack.pop(); k = 'pop'; }
+    else if (d1 === 0 && d0 === 0) { navStack = [h]; k = 'fade'; }
+    else if (d1 < d0) { var i = navStack.lastIndexOf(h); navStack = i >= 0 ? navStack.slice(0, i + 1) : (d1 === 0 ? [h] : navStack.slice(0, -1).concat(h)); k = 'pop'; }
+    else { navStack.push(h); if (navStack.length > 30) navStack.shift(); k = 'push'; }
+    return k;
+  }
+  function animOK() {
+    if (navigator.webdriver && !window.__tmAnim) return false;
+    try { if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false; } catch (e) {}
+    return true;
+  }
+  function navTo(update) {
+    var kind = navKind(location.hash), root = document.documentElement;
+    // iOS 侧滑返回时系统已经播过滑动动画，不再重复
+    var gesture = kind === 'pop' && Date.now() - lastTap > 800 && typeof TMN !== 'undefined' && TMN.platform === 'ios';
+    if (!animOK() || gesture || !me) return update();
+    if (document.startViewTransition) {
+      root.setAttribute('data-nav', kind);
+      try {
+        var t = document.startViewTransition(update);
+        t.finished.then(done, done);
+      } catch (e) { done(); update(); }
+      return;
+    }
+    update();
+    var app = document.getElementById('app');
+    app.classList.remove('pg-push', 'pg-pop', 'pg-fade'); void app.offsetWidth; app.classList.add('pg-' + kind);
+    clearTimeout(navTo.t); navTo.t = setTimeout(function () { app.classList.remove('pg-' + kind); }, 400);
+    function done() { root.removeAttribute('data-nav'); }
+  }
   window.addEventListener('scroll', function () { var t = document.querySelector('.top'); if (t) t.classList.toggle('stuck', window.scrollY > 8); }, { passive: true });
-  window.addEventListener('hashchange', function () { if (aiS.open) { aiS.open = false; renderAI(); } if (ai.recording && cur().id !== 'ai') aiStop(); if (ta.recording && cur().sub !== 'ai') taStop(); var cc0 = cur(); if (!(cc0.name === 'new' && cc0.id === 'voice') && (vo.state === 'rec' || vo.state === 'pause')) VO.voStop(); closeSheet(); render(); window.scrollTo(0, 0); });
+  window.addEventListener('hashchange', function () { if (navAfter) { var na = navAfter; navAfter = null; navStack[navStack.length - 1] = location.hash; location.hash = na; return; } if (aiS.open) { aiS.open = false; renderAI(); } if (ai.recording && cur().id !== 'ai') aiStop(); if (ta.recording && cur().sub !== 'ai') taStop(); var cc0 = cur(); if (!(cc0.name === 'new' && cc0.id === 'voice') && (vo.state === 'rec' || vo.state === 'pause')) VO.voStop(); closeSheet(); navTo(function () { render(); window.scrollTo(0, 0); }); });
   if (!me) location.hash = '#/login';
   render();
-  window.__tm = { get S() { return S; }, get me() { return me; }, setState: function (ns) { S = TM.migrate(ns); save(); if (me && !TM.user(S, me)) { me = null; } render(); }, toast: toast };
+  // 上次 App 意外关闭（Android 记录的原因）：提示一次，可复制发给开发者
+  if (typeof TMN !== 'undefined' && TMN.lastCrash) TMN.lastCrash().then(function (t) {
+    if (!t) return;
+    // 稍等一下再弹（刚打开时用户可能马上点进别的页面，切页会关掉弹窗）；已有弹窗时等它关掉
+    setTimeout(function show() {
+      if (document.querySelector('#layer .sheet')) return setTimeout(show, 1000);
+      openSheet('App 上次意外关闭', '<p style="margin:0 0 10px">很抱歉，App 上次意外关闭了。数据已自动保存，不会丢失。把下面的信息复制发给负责维护的同事，可以帮助尽快修好。</p><textarea readonly rows="7" style="width:100%;font-size:12px;font-family:ui-monospace,monospace" id="crashText">' + esc(t) + '</textarea>', '复制信息', function () {
+        var tx = document.getElementById('crashText'), v = tx ? tx.value : t;
+        (navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(v) : Promise.reject()).then(function () { toast('已复制'); closeSheet(); }, function () { if (tx) { tx.select(); } toast('请长按文字手动复制', true); });
+      });
+    }, 1200);
+  });
+  window.__tm = { back: hardBack, as: function (uid) { if (SRV || !TM.user(S, uid)) return false; me = uid; try { localStorage.setItem(KU, me); } catch (e) {} closeSheet(); if (aiS.open) { aiS.open = false; renderAI(); } render(); return true; }, get S() { return S; }, get me() { return me; }, setState: function (ns) { S = TM.migrate(ns); save(); if (me && !TM.user(S, me)) { me = null; } render(); }, toast: toast };
 })();

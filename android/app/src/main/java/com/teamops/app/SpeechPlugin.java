@@ -40,6 +40,7 @@ public class SpeechPlugin extends Plugin {
     private String lang = "zh-CN";
     private boolean offline = false;
     private String done = ""; // 已经说完的句子
+    private int busyRetry = 0;
 
     @PluginMethod
     public void available(PluginCall call) {
@@ -57,6 +58,7 @@ public class SpeechPlugin extends Plugin {
         main.post(() -> {
             teardown();
             done = "";
+            busyRetry = 0;
             running = true;
             try {
                 listen();
@@ -120,22 +122,34 @@ public class SpeechPlugin extends Plugin {
         @Override public void onEvent(int eventType, Bundle params) {}
 
         @Override public void onPartialResults(Bundle b) {
-            if (!running) return;
-            String t = best(b);
-            if (!t.isEmpty()) emitPartial(join(t));
+            try {
+                if (!running) return;
+                String t = best(b);
+                if (!t.isEmpty()) emitPartial(join(t));
+            } catch (Exception e) { fail("aborted"); }
         }
 
         @Override public void onResults(Bundle b) {
-            if (!running) return;
-            String t = best(b);
-            if (!t.isEmpty()) { done = join(t); emitPartial(done); }
-            restart();
+            try {
+                if (!running) return;
+                String t = best(b);
+                if (!t.isEmpty()) { done = join(t); emitPartial(done); }
+                restart();
+            } catch (Exception e) { fail("aborted"); }
         }
 
         @Override public void onError(int error) {
             if (!running) return;
             // 没听到声音、没识别出内容：会话还没结束就接着听
             if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) { restart(); return; }
+            // 识别器忙（上一次还没释放）：换一个新的识别器再试
+            if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY && busyRetry++ < 2) {
+                main.postDelayed(() -> {
+                    if (!running) return;
+                    try { if (rec != null) { rec.destroy(); rec = null; } listen(); } catch (Exception e) { fail("aborted"); }
+                }, 300);
+                return;
+            }
             String code;
             switch (error) {
                 case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS: code = "not-allowed"; break;
@@ -145,18 +159,25 @@ public class SpeechPlugin extends Plugin {
                 case SpeechRecognizer.ERROR_SERVER: code = "network"; break;
                 default: code = "aborted";
             }
-            teardown();
+            fail(code);
+        }
+    };
+
+    // 出错：停掉识别器并通知页面（页面会提示，录音本身不受影响）
+    private void fail(String code) {
+        try { teardown(); } catch (Exception ignored) {}
+        try {
             JSObject d = new JSObject();
             d.put("error", code);
             notifyListeners("error", d);
             notifyListeners("end", new JSObject());
-        }
-    };
+        } catch (Exception ignored) {}
+    }
 
     private void restart() {
         main.post(() -> {
             if (!running) return;
-            try { listen(); } catch (Exception e) { teardown(); notifyListeners("end", new JSObject()); }
+            try { listen(); } catch (Exception e) { fail("aborted"); }
         });
     }
 
