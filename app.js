@@ -164,7 +164,7 @@
     var h = '<div class="login srv-login"><div class="mark" aria-hidden="true">协同</div>';
     if (srvL.probed && srvL.setup && !srvL.err) {
       h += '<h1>创建你的团队</h1><p>第一次使用：先建立老板账号。之后由你给每位成员分派登录账号。</p><form class="srv-form" data-form="srvSetup">' + urlF +
-        field('初始化码', '<input type="text" name="code" inputmode="numeric" autocomplete="off" required>', '服务器第一次启动时显示，也保存在数据目录的 setup-code.txt') +
+        field('初始化码', '<input type="text" name="code" inputmode="numeric" autocomplete="off" required>', '开启团队服务器时显示的 6 位数字（只在第一次建团队时需要）') +
         field('你的姓名', '<input type="text" name="name" maxlength="20" required>') + field('职位（可选）', '<input type="text" name="title" maxlength="20" placeholder="例如：创始人">') +
         field('登录账号', '<input type="text" name="login" autocapitalize="off" autocorrect="off" autocomplete="username" required>', '3–32 位字母、数字或 _ . @ -') +
         field('密码', '<input type="password" name="password" minlength="6" autocomplete="new-password" required>', '至少 6 位') +
@@ -965,7 +965,7 @@
     voResume: function () { try { vo.mr.resume(); } catch (e) {} vo.t0 = Date.now(); vo.state = 'rec'; voSR(); render(); },
     voCancel: function () {
       if (vo.state === 'rec' || vo.state === 'pause') { vo.discard = true; VO.voStop(); toast('已取消这段录音'); return; }
-      if (!confirm('清空已录的音频和识别文字？')) return; vo.clips = []; vo.text = ''; render();
+      askSheet('清空录音', '清空已录的音频和识别文字？清空后无法恢复。', '清空', true).then(function (y) { if (y) { vo.clips = []; vo.text = ''; render(); } });
     },
     voTag: function (el) { var t = el.dataset.t; vo.tags = vo.tags || []; var i = vo.tags.indexOf(t); if (i >= 0) vo.tags.splice(i, 1); else if (vo.tags.length < 5) vo.tags.push(t); else toast('最多 5 个标签', true); render(); },
     voTagMore: function () { openSheet('选择标签', '<div class="t-tagpick">' + VTAGS.map(function (t) { var on = (vo.tags || []).indexOf(t) >= 0; return '<button type="button" class="' + (on ? 'on' : '') + '" data-do="voTag" data-t="' + t + '">' + t + '</button>'; }).join('') + '</div><p class="muted" style="font-size:13px">最多 5 个。</p>', '完成', function () { closeSheet(); render(); }); },
@@ -1418,7 +1418,7 @@
     tdToggle: function (el) { var r = TM.act(S, me, 'todo.toggle', { id: el.dataset.id }); if (!r.ok) return toast(r.error, true); save(); var t = S.todos.find(function (x) { return x.id === el.dataset.id; }); toast(t && t.done ? '已完成' : '已恢复为未完成'); render(); },
     tdOpen: function (el) { tdDetail(el.dataset.id); },
     tdComment: function (el) { var v = (document.getElementById('tdc') || {}).value; var r = TM.act(S, me, 'todo.comment', { id: el.dataset.id, body: v }); if (!r.ok) return toast(r.error, true); save(); tdDetail(el.dataset.id); render(); tdDetail(el.dataset.id); },
-    tdDelete: function (el) { if (!confirm('确定删除这条待办？')) return; act('todo.delete', { id: el.dataset.id }, '已删除'); },
+    tdDelete: function (el) { var id = el.dataset.id; askSheet('删除待办', '确定删除这条待办？', '删除', true).then(function (y) { if (y) act('todo.delete', { id: id }, '已删除'); }); },
     tdManual: function (el) { tf = freshTF(el.dataset.t, el.dataset.title || ''); location.hash = '#/todo/new/manual'; },
     tdAllTpl: function () { openSheet('全部模板', '<div class="t-tgrid">' + TPLS.map(function (t) { return '<button type="button" data-do="tdManual" data-t="' + t.key + '"><span class="' + t.c + '">' + ti(t.icon, 1.8) + '</span><b>' + t.name + '</b><small>' + t.sub + '</small></button>'; }).join('') + '</div>', '关闭', function () { closeSheet(); }); },
     tdClearRecent: function () { act('todo.clearRecent', {}, '已清空'); },
@@ -2739,11 +2739,21 @@
   function openSheet(title, body, submitLabel, onSubmit, danger) {
     var layer = document.getElementById('layer');
     layer.innerHTML = '<div class="scrim" data-do="closeSheet"></div><form class="sheet" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><header><h2>' + esc(title) + '</h2><button type="button" class="circle" data-do="closeSheet" aria-label="关闭">×</button></header><div class="body">' + wordsFix(body) + '</div>' +
-      '<footer><button type="button" class="btn" data-do="closeSheet">取消</button><button type="submit" class="btn ' + (danger ? 'danger' : 'pri') + '">' + esc(submitLabel) + '</button></footer></form>';
+      // 只用来查看的面板（主按钮就是「关闭」）：不再多放一个作用相同的「取消」
+      '<footer>' + (submitLabel === '关闭' ? '' : '<button type="button" class="btn" data-do="closeSheet">取消</button>') + '<button type="submit" class="btn ' + (danger ? 'danger' : 'pri') + '">' + esc(submitLabel) + '</button></footer></form>';
     sheetHandler = onSubmit;
     requestAnimationFrame(function () { var sc = layer.querySelector('.scrim'), sh = layer.querySelector('.sheet'); if (!sc || !sh) return; sc.classList.add('on'); sh.classList.add('on'); var f = layer.querySelector('.sheet .body input:not([type=hidden]):not([type=radio]):not([type=checkbox]),.sheet .body textarea'); if (f && window.innerWidth > 700) f.focus(); });
   }
+  // 应用内的确认面板（代替系统对话框：系统对话框按钮跟手机语言走，样式也不统一）。确认 → true；取消 / 关闭 → false
+  var askDone = null;
+  function askSheet(title, html, okLabel, danger) {
+    return new Promise(function (resolve) {
+      openSheet(title, '<p style="margin:0;font-size:15px;line-height:1.6">' + html + '</p>', okLabel || '确定', function () { askDone = null; closeSheet(); resolve(true); }, danger);
+      askDone = function () { resolve(false); };
+    });
+  }
   function closeSheet() {
+    if (askDone) { var ad = askDone; askDone = null; ad(); }
     var l = document.getElementById('layer'), sh = l.querySelector('.sheet.on');
     // 关闭时先把弹窗移到一个只负责播放收起动画的层里，原来的层立刻清空（后续逻辑和新弹窗不受影响）
     if (sh && animOK()) {
@@ -2779,7 +2789,7 @@
     goMe: function () { location.hash = '#/me'; },
     readAll: function () { act('notif.read', {}); },
     readOne: function (el) { TM.act(S, me, 'notif.read', { id: el.dataset.id }); save(); return true; },
-    reset: function () { if (!myCaps().resetData) return toast('只有老板或管理员可以重置数据', true); if (confirm('重置后，所有演示操作都会清空，回到初始示例数据。确定吗？')) { S = TM.seed(); save(); toast('已重置演示数据'); render(); } },
+    reset: function () { if (!myCaps().resetData) return toast('只有老板或管理员可以重置数据', true); askSheet('重置演示数据', '重置后，所有演示操作都会清空，回到初始示例数据。确定吗？', '重置', true).then(function (y) { if (y) { S = TM.seed(); save(); toast('已重置演示数据'); render(); } }); },
     recStart: startRec, recStop: stopRec,
     rmMedia: function (el) { newMedia.splice(+el.dataset.i, 1); render(); },
     reply: function (el) { var f = document.querySelector('form[data-form=suggest]'); if (!f) return; f.replyTo.value = el.dataset.id; document.getElementById('replyHint').textContent = '回复 ' + el.dataset.id + '（点发送前可清空输入框改为新建议）'; f.body.focus(); },
@@ -3014,7 +3024,7 @@
   };
   DO.onboardGo = function (el) { closeSheet(); location.hash = el.dataset.h; };
   DO.demoChoose = function () { try { localStorage.setItem('tm_demo_chosen', '1'); } catch (e) {} render(); };
-  DO.srvConnect = function () { openSheet('连接团队服务器', field('服务器地址', '<input type="url" name="server" placeholder="例如：http://192.168.1.20:8787" autocapitalize="off" autocorrect="off" required>', '由老板在电脑或服务器上运行 npm run server 后得到的地址。'), '连接', function (o) { TMS.useServer(o.server); }); };
+  DO.srvConnect = function () { openSheet('连接团队服务器', field('服务器地址', '<input type="url" name="server" placeholder="例如：http://192.168.1.20:8787" autocapitalize="off" autocorrect="off" required>', '老板在办公室电脑上开启团队服务器后会显示这个地址；同事扫老板给的二维码会自动填好。'), '连接', function (o) { TMS.useServer(o.server); }); };
   DO.srvLocal = function () { TMS.useLocal(); };
   DO.srvLogout = function () { var n = TMS.outbox.length; openSheet('退出登录', '<p style="margin:0">' + (n ? '还有 <b>' + n + '</b> 项改动没同步到服务器，退出后会丢失。建议联网同步完再退出。' : '退出后需要重新输入账号密码。') + '</p>', '退出登录', function () { TMS.logout(); }, true); };
   DO.srvPassword = function (el) { var must = TMS.mustChange;
@@ -3386,11 +3396,20 @@
     if (el.dataset && el.dataset.as && asg && el.type !== 'checkbox' && el.type !== 'date') { asg[el.dataset.as] = el.value; var ac = document.getElementById('asc-' + el.dataset.as); if (ac) ac.textContent = el.value.length + '/' + (el.dataset.as === 'title' ? 50 : 500); return; }
     if (el.dataset && el.dataset.tf && tf) { tf[el.dataset.tf] = el.value; if (el.dataset.tf === 'title') { var tc = document.getElementById('tfc'); if (tc) tc.textContent = el.value.length + '/50'; } return; }
     if (el.dataset && el.dataset.ta) { ta[el.dataset.ta] = el.value; var gb = document.querySelector('[data-do=taGen]'); if (gb) gb.disabled = !ta.text.trim(); return; }
-    if (el.dataset && el.dataset.cap) { var kk = el.dataset.cap.split('.'), obj = kk[0] === 'vo' ? vo : kk[0] === 'cam' ? cam : kk[0] === 'fi' ? fi : tx; obj[kk[1]] = el.value; if (obj === tx) { txPersist(); if (kk[1] === 'note' && tx.hist && tx.hist.length) { tx.hist = []; var ub = document.querySelector('.cx-undo'); if (ub) ub.remove(); } } var cc = document.getElementById('cc-' + kk[0] + '-' + kk[1]); if (cc) cc.textContent = el.value.length + '/' + (el.maxLength > 0 ? el.maxLength : 1000); var ab = document.getElementById('cx-ait-' + kk[0]); if (ab) ab.innerHTML = aitInner(kk[0]); return; }
+    if (el.dataset && el.dataset.cap) { var kk = el.dataset.cap.split('.'), obj = kk[0] === 'vo' ? vo : kk[0] === 'cam' ? cam : kk[0] === 'fi' ? fi : tx; obj[kk[1]] = el.value; if (obj === vo && vo.state === 'idle') { var vcb = document.querySelector('.vr-c[data-do=voCancel]'); if (vcb) vcb.disabled = !vo.clips.length && !vo.text; } if (obj === tx) { txPersist(); if (kk[1] === 'note' && tx.hist && tx.hist.length) { tx.hist = []; var ub = document.querySelector('.cx-undo'); if (ub) ub.remove(); } } var cc = document.getElementById('cc-' + kk[0] + '-' + kk[1]); if (cc) cc.textContent = el.value.length + '/' + (el.maxLength > 0 ? el.maxLength : 1000); var ab = document.getElementById('cx-ait-' + kk[0]); if (ab) ab.innerHTML = aitInner(kk[0]); return; }
     draft[el.name] = el.value; var c = document.getElementById('cnt-' + el.name); if (c) c.textContent = el.value.length + '/' + el.dataset.count;
   });
+  // 手机相机 / 相册给的文件名没有意义（JPEG_20261005_065601_…、IMG_1234、1000000019.mp4）：换成「照片 10月5日 06:56」这样的名字
+  function niceFileName(f) {
+    var n = String(f && f.name || ''), ext = (n.match(/\.[A-Za-z0-9]{1,5}$/) || [''])[0], base = n.slice(0, n.length - ext.length);
+    if (!/^(IMG|VID|PXL|JPEG|MVIMG|image|video|photo|DSC|MOV)[_-]?[0-9_-]*$/i.test(base) && !/^\d{6,}$/.test(base) && !/^(IMG|VID|PXL)_\d{8}_\d{6}/i.test(base)) return n;
+    var kind = /^video\//.test(f.type) || /^(VID|MOV)/i.test(base) ? '视频' : /^audio\//.test(f.type) ? '录音' : '照片';
+    var d = new Date(f.lastModified || Date.now()), p2 = function (x) { return (x < 10 ? '0' : '') + x; };
+    return kind + ' ' + (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ext.toLowerCase();
+  }
   document.addEventListener('change', function (e) {
     var el = e.target;
+    if (el.type === 'file' && el.files) Array.prototype.forEach.call(el.files, function (f) { var nn = niceFileName(f); if (nn !== f.name) try { Object.defineProperty(f, 'name', { value: nn }); } catch (x) {} });
     if (el.dataset && (el.dataset.pd || el.dataset.pt != null) && pd) { if (el.dataset.pd) pd[el.dataset.pd] = el.value; else pd.tasks[+el.dataset.pt][el.dataset.f] = el.value; if (el.dataset.pd === 'leadId' || el.dataset.pd === 'due') render(); return; }
     if (el.dataset && el.dataset.camfile && el.files.length) { addVideos(el.files); return; }
     if (el.dataset && el.dataset.aifile && el.files[0]) { var af = el.files[0]; if (!/\.(txt|md)$/i.test(af.name) && !/^text\//.test(af.type)) { toast('演示版只能读取 TXT、Markdown 文本文件', true); return; } var rd = new FileReader(); rd.onload = function () { var tx2 = String(rd.result).slice(0, 4000); if (!aiS.mode) aiS.mode = 'minutes'; aiHandle(tx2); renderAI(); }; rd.readAsText(af); return; }
@@ -3542,5 +3561,5 @@
       });
     }, 1200);
   });
-  window.__tm = { back: hardBack, as: function (uid) { if (SRV || !TM.user(S, uid)) return false; me = uid; try { localStorage.setItem(KU, me); } catch (e) {} closeSheet(); if (aiS.open) { aiS.open = false; renderAI(); } render(); return true; }, get S() { return S; }, get me() { return me; }, setState: function (ns) { S = TM.migrate(ns); save(); if (me && !TM.user(S, me)) { me = null; } render(); }, toast: toast };
+  window.__tm = { ask: askSheet, back: hardBack, as: function (uid) { if (SRV || !TM.user(S, uid)) return false; me = uid; try { localStorage.setItem(KU, me); } catch (e) {} closeSheet(); if (aiS.open) { aiS.open = false; renderAI(); } render(); return true; }, get S() { return S; }, get me() { return me; }, setState: function (ns) { S = TM.migrate(ns); save(); if (me && !TM.user(S, me)) { me = null; } render(); }, toast: toast };
 })();

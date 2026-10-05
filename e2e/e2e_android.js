@@ -64,6 +64,18 @@ const FAKE = (opts) => {
   ok(a['Filesystem.writeFile'] && a['Filesystem.writeFile'].path === '团队_备份_1.json' && a['Filesystem.writeFile'].directory === 'CACHE' && atob(a['Filesystem.writeFile'].data) === '{"a":1}', '文件写进缓存目录（文件名去掉非法字符）');
   ok(a['Share.share'] && a['Share.share'].files[0] === 'file:///cache/团队_备份_1.json', '弹出系统分享 / 用其他应用打开');
   ok(p.errs.length === 0, '无报错 ' + p.errs.join('|'));
+  // 4b. 相机 / 相册给的文件名换成看得懂的名字
+  await p.evaluate(() => { location.hash = '#/new/video'; }); await p.waitForTimeout(300);
+  await p.setInputFiles('input[data-camfile] >> nth=0', { name: '1000000019.mp4', mimeType: 'video/mp4', buffer: Buffer.from('fake') });
+  await p.waitForTimeout(400);
+  const vn = await p.evaluate(() => document.getElementById('app').textContent);
+  ok(/视频 \d+月\d+日 \d\d:\d\d\.mp4/.test(vn) && !vn.includes('1000000019'), '相机文件名换成「视频 X月X日 时:分」');
+  // 4c. 只用来查看的面板只有一个「关闭」按钮（不再同时有「取消」和「关闭」）
+  await p.evaluate(() => { location.hash = '#/work/W1'; }); await p.waitForTimeout(300);
+  await p.evaluate(() => [...document.querySelectorAll('[data-do=wTab]')].find(x => /文件/.test(x.textContent)).click()); await p.waitForTimeout(300);
+  await p.evaluate(() => document.querySelector('[data-do=wUpload]').click()); await p.waitForTimeout(300);
+  ok(await p.locator('#layer .sheet footer button').count() === 1 && (await p.textContent('#layer .sheet footer')).trim() === '关闭', '上传面板底部只有「关闭」');
+  await p.evaluate(() => window.__tm.back()); await p.waitForTimeout(200);
   // 5. 外部链接交给系统浏览器（页面导航到外部地址，由 Capacitor 转给系统浏览器）
   await p.context().route('https://example.org/**', r => r.fulfill({ status: 200, contentType: 'text/html', body: 'ext' }));
   await p.evaluate(() => { const x = document.createElement('a'); x.href = 'https://example.org/doc'; x.target = '_blank'; x.textContent = 'ext'; x.id = 'extl'; x.style.cssText = 'position:fixed;top:120px;left:20px;z-index:9999;padding:10px;background:#fff'; document.body.appendChild(x); });

@@ -48,10 +48,16 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Android 11 起要声明才能找到系统的语音识别服务 -->
+    <!-- Android 11 起要声明才能找到：系统语音识别服务；相机（「拍照」「拍摄视频」，没声明时会退回到相册选择） -->
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.VIDEO_CAPTURE" />
         </intent>
     </queries>
 </manifest>

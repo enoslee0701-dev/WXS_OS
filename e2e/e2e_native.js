@@ -81,14 +81,15 @@ const c0route = (p) => p.context().route('http://join.test:8787/**', r => r.fulf
   let dlg = 0; const onD = d => { dlg++; d.dismiss(); }; p.on('dialog', onD);
   for (const bad of ['http://evil.test/api?x=1', 'http://user:pw@evil.test', 'javascript:alert(1)', 'http://evil.test/%0Ahttp://good.test']) await p.evaluate((u) => __fake.emit('App', 'appUrlOpen', { url: 'teamops://join?server=' + encodeURIComponent(u) + '&login=x' }), bad);
   await p.waitForTimeout(200); p.off('dialog', onD);
-  ok(dlg === 0 && await p.evaluate(() => localStorage.getItem('tm_server')) === null, '带路径 / 账号密码 / 非 http 的加入链接被忽略');
-  // 先点「取消」：不切换（防钓鱼）
-  p.once('dialog', d => { ok(d.message().includes('http://join.test:8787'), '加入前弹出确认，显示服务器地址'); d.dismiss(); });
+  ok(dlg === 0 && await p.locator('#layer .sheet').count() === 0 && await p.evaluate(() => localStorage.getItem('tm_server')) === null, '带路径 / 账号密码 / 非 http 的加入链接被忽略');
+  // 先点「取消」：不切换（防钓鱼）。确认用 App 自己的面板
   await p.evaluate(() => __fake.emit('App', 'appUrlOpen', { url: 'teamops://join?server=' + encodeURIComponent('http://join.test:8787') + '&login=xiaoli' }));
   await p.waitForTimeout(300);
+  ok((await p.textContent('#layer .sheet')).includes('http://join.test:8787') && (await p.textContent('#layer .sheet')).includes('xiaoli'), '加入前弹出确认，显示服务器地址和账号');
+  await p.click('#layer .sheet footer button[type=button]'); await p.waitForTimeout(200);
   ok(await p.evaluate(() => localStorage.getItem('tm_server')) === null, '点取消就不切换服务器');
-  p.once('dialog', d => d.accept());
   await p.evaluate(() => __fake.emit('App', 'appUrlOpen', { url: 'teamops://join?server=' + encodeURIComponent('http://join.test:8787') + '&login=xiaoli' }));
+  await p.waitForTimeout(300); await p.click('#layer .sheet footer button[type=submit]');
   await p.waitForTimeout(1200);
   ok(await p.evaluate(() => localStorage.getItem('tm_server')) === 'http://join.test:8787', '扫码加入：记下服务器地址');
   ok(await p.locator('input[name=login]').inputValue().catch(() => '') === 'xiaoli' && await p.locator('input[name=server]').inputValue().catch(() => '') === 'http://join.test:8787', '扫码加入：登录页自动填好服务器和账号');

@@ -130,9 +130,15 @@ var TMN = (function () {
         q.server = su.origin; q.login = /^[A-Za-z0-9_.@-]{3,32}$/.test(q.login || '') ? q.login : '';
         if (window.TMS && TMS.loggedIn()) { if (window.__tm && window.__tm.toast) window.__tm.toast('你已经登录了。要换账号，请先在「我的」里退出登录', true); return; }
         // 防钓鱼：别人也能做这种链接，切换服务器前必须让用户确认地址
-        if (!window.confirm('要连接到这个团队服务器吗？\n\n' + q.server + (q.login ? '\n账号：' + q.login : '') + '\n\n只在扫描老板给你的二维码时才确认。如果不认识这个地址，请点取消。')) return;
-        try { localStorage.setItem('tm_server', q.server); if (q.login) localStorage.setItem('tm_prefill_login', q.login); localStorage.setItem('tm_demo_chosen', '1'); } catch (x) {}
-        location.hash = '#/login'; flush().then(function () { location.reload(); }, function () { location.reload(); }); return;
+        var go = function () {
+          try { localStorage.setItem('tm_server', q.server); if (q.login) localStorage.setItem('tm_prefill_login', q.login); localStorage.setItem('tm_demo_chosen', '1'); } catch (x) {}
+          location.hash = '#/login'; flush().then(function () { location.reload(); }, function () { location.reload(); });
+        };
+        var esc = function (t) { return String(t).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); };
+        // 用 App 自己的确认面板（样式统一）；页面还没准备好时退回系统对话框
+        if (window.__tm && window.__tm.ask) window.__tm.ask('连接团队服务器', '要连接到这个团队服务器吗？<br><br><b>' + esc(q.server) + '</b>' + (q.login ? '<br>账号：' + esc(q.login) : '') + '<br><br><span class="muted">只在扫描老板给你的二维码时才确认。如果不认识这个地址，请点取消。</span>', '连接').then(function (y) { if (y) go(); });
+        else if (window.confirm('要连接到这个团队服务器吗？\n\n' + q.server + (q.login ? '\n账号：' + q.login : '') + '\n\n只在扫描老板给你的二维码时才确认。如果不认识这个地址，请点取消。')) go();
+        return;
       }
       var m = u.match(/^teamops:\/\/(.*)$/); if (m) location.hash = '#/' + m[1];
     });
