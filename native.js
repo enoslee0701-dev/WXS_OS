@@ -72,9 +72,12 @@ var TMN = (function () {
     delta = delta.replace(/^[\s，。,.]+/, '');
     if (delta) this._emit(delta, true); else this._cur = null;
   };
+  var srFails = []; // 熔断：5 秒内失败 5 次就不再碰原生识别器（防止调用方无限重启拖垮 App）
   NSR.prototype.start = function () {
     var self = this; if (self._on) return; self._on = true; self._res = []; self._cur = null; self._full = ''; self._base = '';
     if (!Speech) return self._fail('service-not-allowed');
+    var now = Date.now(); srFails = srFails.filter(function (t) { return now - t < 5000; });
+    if (srFails.length >= 5) { setTimeout(function () { self._fail('service-not-allowed'); }, 0); return; }
     Speech.requestPermissions().then(function (p) {
       if (!self._on) return;
       if (!p || p.speech !== 'granted' || p.microphone !== 'granted') return self._fail('not-allowed');
@@ -89,7 +92,7 @@ var TMN = (function () {
       });
     }).catch(function (e) { self._fail(/permission|denied|authori/i.test(String(e && e.message)) ? 'not-allowed' : 'audio-capture'); });
   };
-  NSR.prototype._fail = function (code) { var self = this; if (self.onerror) try { self.onerror({ error: code }); } catch (e) {} self._finish(); };
+  NSR.prototype._fail = function (code) { var self = this; srFails.push(Date.now()); if (self.onerror) try { self.onerror({ error: code }); } catch (e) {} self._finish(); };
   NSR.prototype._finish = function () {
     if (!this._on) return; this._on = false; clearTimeout(this._pt); this._commit();
     this._subs.forEach(function (s) { try { s.remove(); } catch (e) {} }); this._subs = [];

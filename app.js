@@ -935,8 +935,22 @@
       loop();
     } catch (e) {}
   }
+  /* 持续识别：识别说完一段会自动结束，需要接着听。但有些手机的语音服务一启动就出错——如果每次结束都立刻重启，
+     会变成每秒上百次「启动 → 出错 → 结束 → 重启」，耗尽系统资源导致 App 闪退。这里：致命错误不再重启；
+     连续 3 次启动不到 1.5 秒就结束则放弃；重启前稍等一下，越快结束等得越久。onGiveUp(是否致命错误) 由调用方提示用户。 */
+  function srKeep(r, alive, onGiveUp) {
+    var quick = 0, t0 = Date.now(), fatal = false, prevErr = r.onerror;
+    r.onerror = function (e) { if (/not-allowed|service-not-allowed|audio-capture|language-not-supported/.test(e && e.error || '')) fatal = true; if (prevErr) prevErr.call(r, e); };
+    r.onend = function () {
+      if (!alive()) return;
+      quick = Date.now() - t0 < 1500 ? quick + 1 : 0;
+      if (fatal || quick >= 3) { if (onGiveUp) onGiveUp(fatal); return; }
+      setTimeout(function () { if (!alive()) return; t0 = Date.now(); try { r.start(); } catch (e) { if (onGiveUp) onGiveUp(true); } }, quick ? 400 * quick : 150);
+    };
+  }
+  function srGaveUp(fatal) { toast(fatal ? '语音转文字暂时不可用，录音照常进行，可以手动输入要点' : '这台手机的语音转文字不稳定，已暂停转写，录音照常进行', true); }
   function voSR() {
-    if (!SR) return; try { var r = new SR(); r.lang = 'zh-CN'; r.continuous = true; r.onresult = function (e) { for (var i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) { vo.text = (vo.text + e.results[i][0].transcript + '。').slice(0, 1000); var ta = document.querySelector('[data-cap="vo.text"]'); if (ta) ta.value = vo.text; } }; r.onend = function () { if (vo.state === 'rec' && vo.sr === r) try { r.start(); } catch (e) {} }; r.start(); vo.sr = r; } catch (e) {}
+    if (!SR) return; try { var r = new SR(); r.lang = 'zh-CN'; r.continuous = true; r.onresult = function (e) { for (var i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) { vo.text = (vo.text + e.results[i][0].transcript + '。').slice(0, 1000); var ta = document.querySelector('[data-cap="vo.text"]'); if (ta) ta.value = vo.text; } }; srKeep(r, function () { return vo.state === 'rec' && vo.sr === r; }, srGaveUp); r.start(); vo.sr = r; } catch (e) {}
   }
   function voCleanup() {
     clearInterval(vo.timer); cancelAnimationFrame(vo.raf);
@@ -1441,7 +1455,7 @@
         mr.onstop = function () { stream.getTracks().forEach(function (t) { t.stop(); }); if (!ta.text.trim()) toast(SR ? '没有识别到清晰的语音，可以在下方直接输入' : '当前浏览器不支持转文字，请在下方输入或上传文件', true); render(); };
         mr.start();
         try { var AC = window.AudioContext || window.webkitAudioContext, ctx = new AC(), an = ctx.createAnalyser(); an.fftSize = 64; ctx.createMediaStreamSource(stream).connect(an); ta.ctx = ctx; var buf = new Uint8Array(an.frequencyBinCount); var loop = function () { an.getByteFrequencyData(buf); document.querySelectorAll('.t-rec .a-wave i').forEach(function (b, i) { var v = buf[(i % 12) + 2] / 255; b.style.height = Math.max(4, Math.round(+b.dataset.h * (0.25 + v * 1.4))) + 'px'; }); ta.raf = requestAnimationFrame(loop); }; loop(); } catch (e) {}
-        if (SR) { try { var r = new SR(); r.lang = ta.lang; r.continuous = true; r.onresult = function (e) { for (var i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) { ta.text = (ta.text + e.results[i][0].transcript + '。').slice(0, 3000); var x = document.querySelector('[data-ta="text"]'); if (x) x.value = ta.text; var g = document.querySelector('[data-do=taGen]'); if (g) g.disabled = false; } }; r.onend = function () { if (ta.recording && ta.sr === r) try { r.start(); } catch (e) {} }; r.start(); ta.sr = r; } catch (e) {} }
+        if (SR) { try { var r = new SR(); r.lang = ta.lang; r.continuous = true; r.onresult = function (e) { for (var i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) { ta.text = (ta.text + e.results[i][0].transcript + '。').slice(0, 3000); var x = document.querySelector('[data-ta="text"]'); if (x) x.value = ta.text; var g = document.querySelector('[data-do=taGen]'); if (g) g.disabled = false; } }; srKeep(r, function () { return ta.recording && ta.sr === r; }, srGaveUp); r.start(); ta.sr = r; } catch (e) {} }
         ta.timer = setInterval(function () { var s2 = Math.round((Date.now() - ta.t0) / 1000); var t = document.getElementById('tatimer'); if (t) t.textContent = fmtSec(s2); if (s2 >= 600) { taStop(); toast('已到 10 分钟上限，自动停止'); } }, 500);
         render();
       }).catch(function () { toast('没有拿到麦克风权限，请在浏览器设置里允许后再试', true); });
@@ -3257,8 +3271,8 @@
     var r = new SR(); r.lang = 'zh-CN'; r.continuous = true; r.interimResults = true;
     r.onresult = function (e) { var it = ''; for (var i = e.resultIndex; i < e.results.length; i++) { var x = e.results[i][0].transcript.trim(); if (!x) continue; if (e.results[i].isFinal) kbv.text += (kbv.text && !/[。！？，\n]$/.test(kbv.text) ? '。' : '') + x; else it += x; }
       kbv.interim = it; var ta = document.getElementById('kbv-text'); if (ta) { ta.value = kbv.text + (it ? (kbv.text ? '。' : '') + it : ''); ta.scrollTop = ta.scrollHeight; } var nn = document.getElementById('kbv-n'); if (nn) nn.textContent = (kbv.text + it).length + ' 字'; };
-    r.onend = function () { if (kbv.rec && kbv.sr === r) { try { r.start(); } catch (e) { kbvStop(); } } };
     r.onerror = function (ev) { if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') { toast('没有麦克风权限，可以改用输入法的语音键', true); kbvStop(); } };
+    srKeep(r, function () { return kbv.rec && kbv.sr === r; }, function (fatal) { if (kbv.rec) { kbvStop(); if (!fatal) toast('这台手机的语音转文字不稳定，可以用输入法的语音键说到下方文本框里', true); } });
     kbv.sr = r; kbv.rec = true; kbv.t0 = Date.now(); try { r.start(); } catch (e) {}
     kbv.timer = setInterval(function () { var el = document.getElementById('kbv-t'); if (el) { var s2 = Math.round((Date.now() - kbv.t0) / 1000); el.textContent = '正在听 ' + Math.floor(s2 / 60) + ':' + ('0' + s2 % 60).slice(-2); } }, 500);
     render();

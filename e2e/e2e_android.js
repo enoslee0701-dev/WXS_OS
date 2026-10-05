@@ -17,6 +17,8 @@ const FAKE = (opts) => {
       F.calls.push(pl + '.' + m); F.args[pl + '.' + m] = a;
       if (pl === 'Preferences') { if (m === 'get') return Promise.resolve({ value: null }); if (m === 'keys') return Promise.resolve({ keys: [] }); return Promise.resolve({}); }
       if (pl === 'Speech' && m === 'available') return Promise.resolve({ available: !o.noSpeech });
+      // 模拟「一启动就出错」的语音服务（某些手机）
+      if (pl === 'Speech' && m === 'start' && o.srBroken) { F.starts = (F.starts || 0) + 1; setTimeout(() => F.emit('Speech', 'error', { error: o.srBroken }), 20); return Promise.resolve({}); }
       if (pl === 'Speech' && m === 'requestPermissions') return Promise.resolve({ speech: 'granted', microphone: 'granted' });
       if (pl === 'App' && m === 'getInfo') return Promise.resolve({ version: '1.3', build: '4' });
       if (pl === 'Diag' && m === 'lastCrash') return Promise.resolve({ text: o.crash || '' });
@@ -109,6 +111,17 @@ const FAKE = (opts) => {
   ok(p.errs.length === 0, '无报错 ' + p.errs.join('|'));
   await p.context().close();
 
+  // 6b. 语音服务一启动就出错：不能无限重启（以前会每秒上百次启动，拖垮 App），放弃后提示用户
+  for (const code of ['aborted', 'network']) {
+    p = await mk({ srBroken: code }, '#/kb/voice'); await p.waitForTimeout(300);
+    await p.evaluate(() => { location.hash = '#/kb/voice'; }); await p.waitForTimeout(300);
+    await p.click('[data-do=kbvRec]'); await p.waitForTimeout(5000);
+    const n = await p.evaluate(() => window.__fake.starts || 0);
+    ok(n >= 1 && n <= 5, `识别出错（${code}）：5 秒内只启动了 ${n} 次`);
+    ok((await p.textContent('#toast')).includes('语音转文字'), `识别出错（${code}）：提示用户改用输入法语音键 ` + await p.textContent('#toast'));
+    ok(p.errs.length === 0, '无报错 ' + p.errs.join('|'));
+    await p.context().close();
+  }
   // 7. 上次闪退：打开时提示，可复制
   p = await mk({ crash: '2026-10-05 10:00:00\nApp 异常\n手机：Xiaomi 13\njava.lang.IllegalStateException: boom' });
   await p.waitForTimeout(500);
