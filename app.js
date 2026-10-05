@@ -3524,6 +3524,8 @@
     if (!me) return false;
     if (navDepth(location.hash) > 0) { DO.back(); return true; }
     if (cur().name !== 'home') { location.hash = '#/home'; return true; }
+    // 首页：防止误触，2 秒内再按一次才退出
+    if (Date.now() - (hardBack.t || 0) > 2000) { hardBack.t = Date.now(); toast('再按一次退出'); return true; }
     return false;
   }
   // 完成一个表单（提交想法、新建项目、派任务、加待办……）后跳到结果页：把表单页从返回路径里去掉，

@@ -57,7 +57,8 @@ const FAKE = (opts) => {
   await p.evaluate(() => { location.hash = '#/settings'; }); await p.waitForTimeout(200);
   await backKey(); ok(p.url().endsWith('#/me'), '返回键回到上一页：' + p.url());
   await backKey(); ok(p.url().endsWith('#/home'), '标签页按返回键回首页');
-  await backKey(); ok((await calls(p)).includes('App.exitApp'), '首页按返回键退出 App');
+  await backKey(); ok(!(await calls(p)).includes('App.exitApp') && (await p.textContent('#toast')).includes('再按一次退出'), '首页按返回键：先提示，不退出');
+  await backKey(); ok((await calls(p)).includes('App.exitApp'), '2 秒内再按：退出 App');
   // 4. 导出 / 打开本地文件：写入缓存再分享
   await p.evaluate(() => TMN.shareFile(new Blob(['{"a":1}'], { type: 'application/json' }), '团队/备份:1.json'));
   const a = await p.evaluate(() => window.__fake.args);

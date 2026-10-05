@@ -45,7 +45,8 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
   await p.click('.tabs a:has-text("我的")'); await w(); await p.click('[data-do=meEdit][data-k=email]'); await w(300);
   ok(await back() === true && await p.locator('#layer .sheet').count() === 0 && await h() === '#/me', '返回键先关弹窗，不离开页面');
   ok(await back() === true && (await w(), await h()) === '#/home', '在标签页按返回键先回首页');
-  ok(await back() === false, '在首页按返回键：退出 App');
+  ok(await back() === true && (await p.textContent('#toast')).includes('再按一次退出'), '在首页按返回键：先提示「再按一次退出」');
+  ok(await back() === false, '2 秒内再按：退出 App');
   await go('#/idea/I2'); await w(); ok(await back() === true && (await w(), await h()) === '#/home', '详情页按返回键回到上一页');
   ok(errs.length === 0, '无报错 ' + errs.join('|'));
   console.log(`返回逻辑 E2E 通过 ${pass}，失败 ${fail}`);

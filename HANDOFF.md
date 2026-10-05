@@ -153,6 +153,10 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
     - Android 11 上全角色爬虫 890 次点击 0 报错 0 闪退。
     - 设备测试共用 `e2e/_android.js`（按新进程号找 WebView，避免拿到旧进程的）。
 
+54. 安卓首页按返回键：先提示「再按一次退出」，2 秒内再按才退出。iOS 真机环境流程测试 `npm run test:ios:flow`（调试版预设服务器 + 自动登录 → 记想法 → 服务器收到 → 实时同步 → 重开仍登录，5 项）；安卓同类 `npm run test:android:flow`。iOS 模拟器全角色爬虫复测 892 次 0 报错。旧安卓（模拟器软件渲染）页面切换约 10–110 ms。
+
+**设备测试清单**（改了原生层或大改界面后跑；需要模拟器）：`npm run test:android`、`npm run test:android:flow`、`npm run test:ios`、`npm run test:ios:flow`；返回路径 `node e2e/crawl_back.js`。
+
 测试现状：业务 418 + 同步一致性 254 次操作 + 随机操作 2×3000 + 服务器 90 + AI 代理 50 + 推送 19；端到端 25 组；界面爬虫另跑。提交前看 `npm run check` 的退出码。
 
 
