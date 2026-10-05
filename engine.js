@@ -850,8 +850,10 @@ var TM = (function () {
     else need(t.ownerId === uid, '只有主负责人可以' + tr.label);
     if (p.action === 'block' || p.action === 'cancel') need(note, '请写原因');
     if (p.action === 'submit') {
-      need(note || txt(p.url), '提交时至少附一个交付物或说明');
-      s.deliverables.push({ id: nid(s, 'F'), taskId: t.id, note: note, url: txt(p.url), by: uid, at: now(s) });
+      // 交付物可以带照片 / 文件（最多 9 个；文件本身由 App 传到服务器，这里只记名字和文件 ID）
+      var dm = (Array.isArray(p.media) ? p.media : []).filter(function (x) { return x && txt(x.name) && x.localId; }).slice(0, 9).map(function (x) { return { kind: ['image', 'video', 'audio', 'file'].indexOf(x.kind) >= 0 ? x.kind : 'file', name: txt(x.name).slice(0, 80), localId: String(x.localId).slice(0, 64), size: txt(x.size).slice(0, 20) }; });
+      need(note || txt(p.url) || dm.length, '提交时至少附一个交付物或说明');
+      s.deliverables.push({ id: nid(s, 'F'), taskId: t.id, note: note, url: txt(p.url), media: dm, by: uid, at: now(s) });
     }
     var from = t.status; t.status = tr.to; if (p.action === 'block') t.blockedReason = note; if (p.action === 'unblock') t.blockedReason = '';
     ev(s, { taskId: t.id, workId: w.id, actor: uid, action: 'task.' + p.action, from: from, to: tr.to, reason: (p.action === 'block' || p.action === 'cancel') ? note : null, text: tr.label + (note ? '：' + note : '') });

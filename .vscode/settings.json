@@ -2,5 +2,10 @@
   "files.encoding": "utf8",
   "files.eol": "\n",
   "editor.tabSize": 2,
-  "search.exclude": { "dist": true, "e2e/shots": true, "node_modules": true }
+  "search.exclude": {
+    "dist": true,
+    "e2e/shots": true,
+    "node_modules": true
+  },
+  "java.configuration.updateBuildConfiguration": "automatic"
 }

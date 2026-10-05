@@ -223,6 +223,19 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   srv = await start();
   r = await post('/api/setup', { name: 'Enos', login: 'enos', password: 'enos123', demo: true, code: 'code-1234' });
   ok(r.state.users.length === 7 && r.state.ideas.length > 0 && r.state.users[0].name === 'Enos', '可以带演示数据创建');
+  // 任务交付物的照片：能看到任务的人能打开，看不到任务的人打不开
+  { const enos = r.token, st0 = r.state;
+    const t = st0.tasks.find(x => ['accepted', 'in_progress'].includes(x.status) && x.ownerId !== 'u_owner');
+    const ex = st0.users.find(u => u.id === t.ownerId), out = st0.users.find(u => u.id !== t.ownerId && u.id !== t.reviewerId && u.id !== 'u_owner' && !['u_op', 'u_lead'].includes(u.id) && !u.roles.some(x => x.role === 'admin'));
+    const pwOf = async (uid, login) => { const a = await post('/api/accounts', { uid, login, password: 'pass123456' }, enos); const lt = (await post('/api/login', { login, password: 'pass123456' })).token; await post('/api/password', { old: 'pass123456', password: 'pass654321' }, lt); return (await post('/api/login', { login, password: 'pass654321' })).token; };
+    const exTok = await pwOf(ex.id, 'exec1'), outTok = await pwOf(out.id, 'other1');
+    if (t.status === 'accepted') await post('/api/act', { name: 'task.transition', payload: { id: t.id, action: 'start' } }, exTok);
+    ok((await fetch(B + '/api/files/b_dvphoto1', { method: 'PUT', headers: { 'Content-Type': 'image/jpeg', Authorization: 'Bearer ' + exTok }, body: Buffer.from('jpg') })).status === 200, '执行人上传交付照片');
+    const sub = await post('/api/act', { name: 'task.transition', payload: { id: t.id, action: 'submit', media: [{ kind: 'image', name: '现场照片.jpg', localId: 'b_dvphoto1' }] } }, exTok);
+    ok(sub.ok, '只带照片提交成果 ' + (sub.error || ''));
+    const canSee = async (tok) => (await fetch(B + '/api/files/b_dvphoto1', { headers: { Authorization: 'Bearer ' + tok } })).status;
+    ok(await canSee(enos) === 200, '老板能打开交付照片');
+    ok(await canSee(outTok) === 404, '看不到这个任务的人打不开交付照片'); }
   r = await post('/api/act', { name: 'data.clearDemo', payload: {} }, r.token);
   ok(r.ok && r.state.ideas.length === 0 && r.state.users.length === 7, '一键清理演示数据');
   srv.kill(); fs.rmSync(DIR, { recursive: true, force: true });

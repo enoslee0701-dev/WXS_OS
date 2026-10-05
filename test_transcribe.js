@@ -64,6 +64,15 @@ const until = async (fn, ms) => { for (let t = 0; t < (ms || 8000); t += 100) { 
   const r5 = await act(tok, 'idea.create', { note: '图片', media: [{ kind: 'image', name: '照片.jpg', localId: 'b_img_005' }] });
   await new Promise(r => setTimeout(r, 600));
   ok(!(await idea(tok, r5.r.id)).media[0].transcriptStatus, '图片不转写');
+  // 5b. 直接转文字接口（AI 建项目 / 拆待办 / 手机识别不了时）：要登录；返回文字
+  ok((await fetch(B + '/api/transcribe', { method: 'POST', body: 'x' })).status === 401, '直接转文字：没登录不行');
+  { const r = await fetch(B + '/api/transcribe', { method: 'POST', headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'audio/webm' }, body: Buffer.from('audio') }); const j = await r.json();
+    ok(r.status === 200 && /同工会/.test(j.text) && j.text.includes('，'), '直接转文字：返回中文文字 ' + j.text); }
+  // 5c. App 已经让服务器转过、写进正文的录音（intext）：上传后不再重复转
+  await call('PUT', '/api/files/b_aud_006', null, tok, Buffer.from('audio'));
+  const r6 = await act(tok, 'idea.create', { note: '已经转过：下周开会', media: [{ kind: 'audio', name: '录音 0:09', localId: 'b_aud_006', transcriptStatus: 'intext' }] });
+  await new Promise(r => setTimeout(r, 800));
+  ok((await idea(tok, r6.r.id)).media[0].transcriptStatus === 'intext', '已写进正文的录音不重复转写');
   // 6. 重启：转过的、失败的都不重做
   const v0 = (await call('GET', '/api/state', null, tok)).version;
   srv.kill(); await new Promise(r => srv.on('exit', r));

@@ -53,6 +53,19 @@
     }
     openLink(u);
   }
+  // 手机自己转不了文字时，交给团队服务器转（服务器装了 whisper；见 server/transcribe.js）
+  function canSrvTr() { return SRV && TR_ON && typeof TMS !== 'undefined' && TMS.loggedIn() && !!TMS.transcribe; }
+  function srvTr(blob, what) {
+    openSheet('正在转文字', '<div class="tr-wait"><span class="ai-typing"><i></i><i></i><i></i></span><p>正在把' + (what || '录音') + '里的话转成文字…</p><small class="muted">在团队服务器上转写，一般几秒到一分钟</small></div>', '请稍候', function () {});
+    return TMS.transcribe(blob).then(function (t) { closeSheet(); return String(t || '').trim(); }, function (e) { closeSheet(); toast((e && e.error) || '转文字失败', true); throw e; });
+  }
+  // 任务交付物：提交时选的照片 / 文件
+  var dvPick = [];
+  function dvRender() { var box = document.getElementById('dv-files'); if (!box) return; box.innerHTML = dvPick.map(function (m, i) { return '<div class="dv-f">' + (m.kind === 'image' && blobUrl(m.localId) ? '<img src="' + blobUrl(m.localId) + '" alt="">' : '<span class="dv-ic">' + ai2('doc2', 1.6) + '</span>') + '<span>' + esc(m.name) + '<small>' + esc(m.size) + '</small></span><button type="button" data-do="dvRm" data-i="' + i + '" aria-label="移除 ' + esc(m.name) + '">×</button></div>'; }).join(''); }
+  function dvMediaHTML(x) {
+    var ms = x.media || []; if (!ms.length) return '';
+    return '<div class="dv-ms">' + ms.map(function (m, i) { var b = blobUrl(m.localId); return m.kind === 'image' && b ? '<button class="dv-th" data-do="dvOpen" data-f="' + x.id + '" data-i="' + i + '" aria-label="查看 ' + esc(m.name) + '"><img src="' + b + '" alt=""></button>' : '<button class="dv-chip" data-do="dvOpen" data-f="' + x.id + '" data-i="' + i + '">' + ai2(m.kind === 'video' ? 'vcam' : m.kind === 'audio' ? 'mic' : 'doc2', 1.5) + '<span>' + esc(m.name) + '</span></button>'; }).join('') + '</div>';
+  }
   // 录音 / 视频的转写（团队服务器上的 whisper 转好后写回）
   function trBlock(m) {
     if (!(m.kind === 'audio' || m.kind === 'video')) return '';
@@ -619,7 +632,7 @@
         '<section class="cx-card np-card"><div class="vr-ch">' + pi('clip') + '<div><b>添加附件 <span class="p-opt-l">（可选）</span></b><small>上传相关文档、图片或链接，支持多种格式</small></div></div>' +
         '<label class="cx-drop np-drop">' + CLOUD + '<b>点击或拖拽文件到这里</b><em>支持图片、文档、PDF 等，单个文件不超过 50MB</em><input type="file" multiple data-pfile="1"></label>' +
         pd.files.map(function (f, i) { return '<div class="media">' + (f.kind === 'audio' ? micIcon() : fileIcon()) + '<div style="flex:1;min-width:0">' + (f.localId && blobUrl(f.localId) ? '<audio controls src="' + blobUrl(f.localId) + '"></audio>' : esc(f.name)) + '<div><span class="tag">未上传，仅本机</span></div></div><button type="button" class="btn ghost" data-do="pRmFile" data-i="' + i + '">移除</button></div>'; }).join('') + '</section>' +
-        '<section class="cx-card np-card np-voice"><div class="vr-ch">' + ni('mic', 1.6) + '<div><b>语音输入 <span class="p-opt-l">（可选）</span></b><small>用语音快速记录你的想法' + (SR ? '' : '（当前浏览器不支持转文字）') + '</small></div>' +
+        '<section class="cx-card np-card np-voice"><div class="vr-ch">' + ni('mic', 1.6) + '<div><b>语音输入 <span class="p-opt-l">（可选）</span></b><small>用语音快速记录你的想法' + (SR || canSrvTr() ? '' : '（当前浏览器不支持转文字）') + '</small></div>' +
         (rec ? '<button type="button" class="np-rec on" data-do="pRecStop"><span class="dot"></span><span id="rectime">录音中 0:00</span></button>' : '<button type="button" class="np-rec" data-do="pRecStart"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 10v4M9 7v10M13 9v6M17 6v12M21 10v4"/></svg>开始录音</button>') + '</div></section>' +
         '<button class="np-ailink" data-do="goProjectAI">' + hi('spark', 1.5) + '没想好怎么写？录音或上传视频，让 AI 帮你生成' + hi('chev', 2) + '</button>' +
         '<button class="vr-next" data-do="pNext">下一步' + ni('arrow', 2) + '</button>';
@@ -692,7 +705,7 @@
         '<div class="a-time" id="aitimer">' + (ai.recording ? fmtSec(Math.round((Date.now() - ai.t0) / 1000)) : '00:00') + '</div>' +
         '<button class="a-start' + (ai.recording ? ' stop' : '') + '" data-do="' + (ai.recording ? 'aiStop' : 'aiStart') + '">' + (ai.recording ? '<span class="dot"></span>停止并解析' : ni('mic') + '开始录音') + '</button>' +
         (ai.recording && ai.transcript ? '<p class="a-live">' + esc(ai.transcript.slice(-60)) + '</p>' : '') +
-        '<div class="a-feats">' + [['doc', '自动转文字', SR ? '浏览器实时识别' : '当前浏览器不支持'], ['pin', '智能提取要点', '生成标题与任务'], ['spark', '一键创建项目', '可继续编辑']].map(function (f) { return '<div>' + '<span>' + pi(f[0]) + '</span><b>' + f[1] + '</b><small>' + f[2] + '</small></div>'; }).join('') + '</div>' +
+        '<div class="a-feats">' + [['doc', '自动转文字', SR ? '浏览器实时识别' : canSrvTr() ? '服务器转写' : '当前浏览器不支持'], ['pin', '智能提取要点', '生成标题与任务'], ['spark', '一键创建项目', '可继续编辑']].map(function (f) { return '<div>' + '<span>' + pi(f[0]) + '</span><b>' + f[1] + '</b><small>' + f[2] + '</small></div>'; }).join('') + '</div>' +
         '<div class="a-or"><span>或</span></div>';
     }
     h += '<label class="p-drop a-drop">' + pi('cloud') + '<b>上传视频文件</b><small>支持 MP4、MOV、AVI 等格式，单个文件不超过 500MB</small><input type="file" accept="video/*" data-aivideo="1"></label>' +
@@ -770,10 +783,12 @@
       mr.onstop = function () {
         stream.getTracks().forEach(function (t) { t.stop(); });
         var lid = rid('b'), sec = Math.round((Date.now() - ai.t0) / 1000);
-        blobs[lid] = keepBlob(lid, new Blob(chunks, { type: mr.mimeType || 'audio/webm' }));
+        var ablob = new Blob(chunks, { type: mr.mimeType || 'audio/webm' });
+        blobs[lid] = keepBlob(lid, ablob);
         ai.pending = { kind: 'audio', name: '录音 ' + fmtSec(sec), durationSec: sec, localId: lid };
         var text = ai.transcript.trim();
         if (text) runParse(text, '录音 ' + fmtSec(sec) + '，已识别 ' + text.length + ' 字');
+        else if (canSrvTr()) srvTr(ablob, '录音').then(function (t) { if (t) runParse(t, '录音 ' + fmtSec(sec) + '，服务器转写 ' + t.length + ' 字'); else toast('录音里没有识别到说话，可以再录一次', true); }, function () {});
         else openSheet('没有识别出文字', '<p>录音已保存在本机（演示版不上传）。' + (SR ? '这次没有识别到清晰的语音。' : '当前浏览器不支持语音转文字。') + '</p><p class="muted" style="font-size:14px">可以去手动创建，把录音作为附件，自己补充项目信息。</p>', '去手动填写', function () { pd = freshPD(); pd.files = [ai.pending]; ai.pending = null; closeSheet(); location.hash = '#/project'; render(); });
       };
       try {
@@ -798,7 +813,8 @@
   /* 手动录音（追加到描述） */
   var pSR = null;
   function pRecStart() {
-    startRec();
+    var n0 = pd ? pd.note.length : 0;
+    startRec(function (blob) { if (pd && pd.note.length === n0 && canSrvTr()) srvTr(blob, '录音').then(function (t) { if (t && pd) { pd.note = (pd.note + (pd.note ? '\n' : '') + t).slice(0, 1000); render(); } }, function () {}); });
     if (SR) { try { pSR = new SR(); pSR.lang = 'zh-CN'; pSR.continuous = true; pSR.onresult = function (e) { for (var i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) { pd.note = (pd.note + (pd.note ? '\n' : '') + e.results[i][0].transcript).slice(0, 1000); } }; pSR.start(); } catch (e) { pSR = null; } }
   }
   function pRecStop() { if (pSR) { try { pSR.stop(); } catch (e) {} pSR = null; } stopRec(); }
@@ -932,7 +948,7 @@
       '<section class="c-voice vr-main"><div class="a-rec' + (st3 === 'rec' ? ' live' : '') + '">' + waveBars('l') + '<button class="vr-mic" data-do="' + (st3 === 'rec' ? 'voPause' : st3 === 'pause' ? 'voResume' : 'voStart') + '" aria-label="' + (st3 === 'rec' ? '暂停录音' : '开始录音') + '">' + ring + '<span>' + ni('mic', 1.6) + '</span></button>' + waveBars('r') + '</div>' +
       '<div class="vr-time" id="votimer">' + fmtSec(sec) + '</div><p class="vr-st">' + status + '</p><div class="vr-ctrls">' + ctrls + '</div>' +
       (vo.clips.length ? '<div class="vr-clips">' + vo.clips.map(function (m, i) { return clipHTML(m, i, 'vo'); }).join('') + '</div>' : '') + '</section>' +
-      '<section class="p-card vr-card"><div class="vr-ch">' + ai2('doc2', 1.6) + '<div><b>实时识别文字</b><small>' + (SR ? '边说边转写，可随时编辑' : '当前浏览器不支持转写，可直接输入要点') + '</small></div>' + (st3 === 'rec' && SR ? '<span class="vr-badge"><i></i>识别中…</span>' : '') + '</div>' +
+      '<section class="p-card vr-card"><div class="vr-ch">' + ai2('doc2', 1.6) + '<div><b>实时识别文字</b><small>' + (SR ? '边说边转写，可随时编辑' : canSrvTr() ? '停止录音后由团队服务器转成文字，可随时编辑' : '当前浏览器不支持转写，可直接输入要点') + '</small></div>' + (st3 === 'rec' && SR ? '<span class="vr-badge"><i></i>识别中…</span>' : '') + '</div>' +
       '<div class="vr-box"><textarea data-cap="vo.text" rows="4" maxlength="1000" placeholder="' + (SR ? '开始录音后，识别的文字会出现在这里' : '在这里写下这段录音的要点') + '">' + esc(vo.text) + '</textarea><div class="vr-boxf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M5 10v4M9 7v10M13 9v6M17 6v12M21 10v4"/></svg>' + ai2('edit', 1.6) + '</div></div></section>' +
       '<section class="p-card vr-card"><div class="vr-ch">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12V5a1.5 1.5 0 0 1 1.5-1.5h7l8.5 8.5-8.5 8.5z"/><circle cx="8" cy="8" r="1.3"/></svg>' + '<div><b>添加标签（可不填）</b><small>帮助 AI 更好地理解你的想法</small></div><div class="vr-tags">' + VTAGS.slice(0, 3).concat((vo.tags || []).filter(function (t) { return VTAGS.slice(0, 3).indexOf(t) < 0; })).map(function (t) { var on = (vo.tags || []).indexOf(t) >= 0; return '<button class="' + (on ? 'on' : '') + '" data-do="voTag" data-t="' + t + '">' + (on ? '✓ ' : '+ ') + t + '</button>'; }).join('') + '<button class="vr-more" data-do="voTagMore" aria-label="更多标签">' + ti('more', 1.6) + '</button></div></div></section>' +
       aitBar('vo') + '<button class="vr-next" data-do="capNext" data-k="vo">' + hi('spark', 1.6) + '下一步 · 让 AI 整理这条想法' + ni('arrow', 2) + '</button><p class="c-hint">你可以在下一步中补充更多信息、选择项目或分享给团队。</p>';
@@ -978,14 +994,17 @@
     voStart: function () {
       if (!(navigator.mediaDevices && window.MediaRecorder)) return toast('当前浏览器不支持录音', true);
       navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
-        var chunks = [], mr = new MediaRecorder(stream);
+        var chunks = [], mr = new MediaRecorder(stream), vn0 = vo.text.length;
         vo.stream = stream; vo.mr = mr; vo.acc = 0; vo.t0 = Date.now(); vo.state = 'rec';
         mr.ondataavailable = function (e) { chunks.push(e.data); };
         mr.onstop = function () {
           stream.getTracks().forEach(function (t) { t.stop(); });
           if (vo.discard) { vo.discard = false; vo.state = 'idle'; render(); return; } var sec = Math.round(vo.acc / 1000), lid = rid('b');
-          blobs[lid] = keepBlob(lid, new Blob(chunks, { type: mr.mimeType || 'audio/webm' }));
-          vo.clips.push({ kind: 'audio', name: '录音 ' + fmtSec(sec), durationSec: sec, localId: lid }); vo.state = 'idle'; render();
+          var vblob = new Blob(chunks, { type: mr.mimeType || 'audio/webm' }), clip = { kind: 'audio', name: '录音 ' + fmtSec(sec), durationSec: sec, localId: lid };
+          blobs[lid] = keepBlob(lid, vblob);
+          vo.clips.push(clip); vo.state = 'idle'; render();
+          // 这一段手机没转出文字：交给服务器转，写进识别文字；这段录音标成「已写进正文」，服务器不再重复转
+          if (vo.text.length === vn0 && canSrvTr()) srvTr(vblob, '录音').then(function (t) { if (!t) return toast('这段录音里没有识别到说话', true); vo.text = (vo.text + (vo.text ? '\n' : '') + t).slice(0, 5000); clip.transcriptStatus = 'intext'; render(); }, function () {});
         };
         mr.start(); voLevels(stream); voSR();
         vo.timer = setInterval(function () { var t = document.getElementById('votimer'); if (t) t.textContent = fmtSec(voSec()); var rg = document.getElementById('vring'); if (rg) { var C2 = 2 * Math.PI * 92; rg.setAttribute('stroke-dashoffset', (C2 * (1 - (voSec() % 60) / 60)).toFixed(1)); } }, 400);
@@ -1362,7 +1381,7 @@
         '<button class="a-start' + (ta.recording ? ' stop' : '') + '" data-do="' + (ta.recording ? 'taStop' : 'taStart') + '">' + (ta.recording ? '<span class="dot"></span>停止录音' : ni('mic') + '开始录音') + '</button>' +
         '<div class="t-opts"><label class="t-sel"><select data-ta="lang">' + LANGS.map(function (l) { return '<option value="' + l[0] + '"' + (ta.lang === l[0] ? ' selected' : '') + '>' + l[1] + '</option>'; }).join('') + '</select>' + ti('down', 2) + '</label>' +
         '<button class="t-opt' + (ta.auto ? ' on' : '') + '" data-do="taAuto" title="自动识别时间、相关人和优先级">自动识别</button><span class="t-opt">' + ti('clock', 1.7) + '最长 10 分钟</span></div>' +
-        (SR ? '' : '<p class="t-warn">当前浏览器不支持语音转文字（安卓 Chrome 支持）。可以改用「上传文件」或在下方直接输入。</p>') +
+        (SR || canSrvTr() ? '' : '<p class="t-warn">当前浏览器不支持语音转文字（安卓 Chrome 支持）。可以改用「上传文件」或在下方直接输入。</p>') +
         '<div class="a-or"><span>或</span></div><label class="p-drop t-drop">' + pi('cloud') + '<b>点击上传视频</b><small>支持 MP4、MOV、AVI 等格式<br>单个文件不超过 500MB</small><input type="file" accept="video/*" data-tavideo="1"></label>';
     } else if (ta.tab === 'video') {
       h += '<label class="p-drop t-drop t-big">' + pi('cloud') + '<b>点击上传视频</b><small>支持 MP4、MOV、AVI 等格式<br>单个文件不超过 500MB</small><input type="file" accept="video/*" data-tavideo="1"></label>';
@@ -1468,8 +1487,14 @@
     taStart: function () {
       if (!(navigator.mediaDevices && window.MediaRecorder)) return toast('当前浏览器不支持录音', true);
       navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
-        var mr = new MediaRecorder(stream); ta.mr = mr; ta.recording = true; ta.t0 = Date.now();
-        mr.onstop = function () { stream.getTracks().forEach(function (t) { t.stop(); }); if (!ta.text.trim()) toast(SR ? '没有识别到清晰的语音，可以在下方直接输入' : '当前浏览器不支持转文字，请在下方输入或上传文件', true); render(); };
+        var mr = new MediaRecorder(stream), tchunks = []; ta.mr = mr; ta.recording = true; ta.t0 = Date.now(); var tn0 = ta.text.length;
+        mr.ondataavailable = function (e) { tchunks.push(e.data); };
+        mr.onstop = function () {
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          // 手机没转出文字：交给服务器转，结果追加到文字框
+          if (ta.text.length === tn0 && canSrvTr()) { srvTr(new Blob(tchunks, { type: mr.mimeType || 'audio/webm' }), '录音').then(function (t) { if (t) { ta.text = (ta.text + (ta.text ? '\n' : '') + t).slice(0, 3000); render(); toast('已转成文字，可以点「AI 生成待办」'); } else toast('录音里没有识别到说话，可以在下方直接输入', true); }, function () {}); return; }
+          if (!ta.text.trim()) toast(SR ? '没有识别到清晰的语音，可以在下方直接输入' : '当前浏览器不支持转文字，请在下方输入或上传文件', true); render();
+        };
         mr.start();
         try { var AC = window.AudioContext || window.webkitAudioContext, ctx = new AC(), an = ctx.createAnalyser(); an.fftSize = 64; ctx.createMediaStreamSource(stream).connect(an); ta.ctx = ctx; var buf = new Uint8Array(an.frequencyBinCount); var loop = function () { an.getByteFrequencyData(buf); document.querySelectorAll('.t-rec .a-wave i').forEach(function (b, i) { var v = buf[(i % 12) + 2] / 255; b.style.height = Math.max(4, Math.round(+b.dataset.h * (0.25 + v * 1.4))) + 'px'; }); ta.raf = requestAnimationFrame(loop); }; loop(); } catch (e) {}
         if (SR) { try { var r = new SR(); r.lang = ta.lang; r.continuous = true; r.onresult = function (e) { for (var i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) { ta.text = (ta.text + e.results[i][0].transcript + '。').slice(0, 3000); var x = document.querySelector('[data-ta="text"]'); if (x) x.value = ta.text; var g = document.querySelector('[data-do=taGen]'); if (g) g.disabled = false; } }; srKeep(r, function () { return ta.recording && ta.sr === r; }, srGaveUp); r.start(); ta.sr = r; } catch (e) {} }
@@ -2595,7 +2620,7 @@
       var canDel = m.by === me || mg, b = m.localId && blobUrl(m.localId);
       return '<div class="row wf"><button class="wf-o" data-do="wfOpen" data-fid="' + m.id + '">' + wfIcon(m) + '<span class="wf-t"><b>' + esc(m.name) + '</b><small>' + esc(meta) + (m.kind !== 'link' && !b ? ' · 本机未缓存' : '') + '</small></span></button>' + (canDel ? '<button class="wf-x" data-do="wfDel" data-fid="' + m.id + '" aria-label="删除 ' + esc(m.name) + '">×</button>' : '') + '</div>';
     }), '<button class="wf-empty" data-do="' + (canUp ? 'wUpload' : 'noop') + '">' + ai2('doc2', 1.7) + '<span><b>' + (canUp ? '上传项目资料' : '还没有项目文件') + '</b><small>方案、图片、表格、录音或链接，成员都能看到</small></span></button>');
-    h += sec('交付物', dl.length, dl.map(function (f) { var t = T_(f.taskId); return '<a class="row wf" href="#/task/' + t.id + '">' + '<span class="ix-fi wf-ic ix-x">' + ai2('check', 1.8) + '</span><span class="wf-t"><b>' + esc(f.note || f.url) + '</b><small>交付物 · ' + esc(t.title) + ' · ' + esc(nm(f.by)) + ' · ' + ago(f.at) + '</small></span>' + hi('chev', 2) + '</a>'; }), '<p class="wx-empty">任务提交的交付物会出现在这里。</p>');
+    h += sec('交付物', dl.length, dl.map(function (f) { var t = T_(f.taskId); return '<a class="row wf" href="#/task/' + t.id + '">' + '<span class="ix-fi wf-ic ix-x">' + ai2('check', 1.8) + '</span><span class="wf-t"><b>' + esc(f.note || f.url || (f.media && f.media.length ? f.media.map(function (m) { return m.name; }).join('、') : '交付物')) + '</b><small>交付物' + (f.media && f.media.length ? '（' + f.media.length + ' 个文件）' : '') + ' · ' + esc(t.title) + ' · ' + esc(nm(f.by)) + ' · ' + ago(f.at) + '</small></span>' + hi('chev', 2) + '</a>'; }), '<p class="wx-empty">任务提交的交付物会出现在这里。</p>');
     if (src.length) h += sec('来源想法', src.length, src.map(function (m) { return '<a class="row wf" href="#/idea/' + d.id + '">' + wfIcon(m) + '<span class="wf-t"><b>' + esc(m.name) + '</b><small>来源想法 · ' + esc(d.title) + '</small></span>' + hi('chev', 2) + '</a>'; }));
     return h;
   }
@@ -2690,7 +2715,7 @@
         (!canCheck && cl.length && mine && t.status === 'assigned' ? '<p class="ix2-empty" style="margin-top:6px">接收任务后可以勾选。</p>' : '') + '</section>';
     }
     var dv = S.deliverables.filter(function (x) { return x.taskId === t.id; });
-    if (dv.length) h += '<section class="ix2-card"><div class="ix2-sh"><b>' + pi('clip') + '交付物（' + dv.length + '）</b></div>' + dv.map(function (x) { return '<div class="dz-m tx-dv">' + av(x.by, true) + '<div><div class="dz-h"><b>' + esc(nm(x.by)) + '</b><span>' + ago(x.at) + '</span></div><p>' + esc(x.note) + '</p>' + (x.url ? '<a class="tx-url" href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.url) + '</a>' : '') + '</div></div>'; }).join('') + '</section>';
+    if (dv.length) h += '<section class="ix2-card"><div class="ix2-sh"><b>' + pi('clip') + '交付物（' + dv.length + '）</b></div>' + dv.map(function (x) { return '<div class="dz-m tx-dv">' + av(x.by, true) + '<div><div class="dz-h"><b>' + esc(nm(x.by)) + '</b><span>' + ago(x.at) + '</span></div>' + (x.note ? '<p>' + esc(x.note) + '</p>' : '') + dvMediaHTML(x) + (x.url ? '<a class="tx-url" href="' + esc(x.url) + '" target="_blank" rel="noopener">' + esc(x.url) + '</a>' : '') + '</div></div>'; }).join('') + '</section>';
     var rv = S.reviews.filter(function (r) { return r.taskId === t.id; });
     if (rv.length) h += '<section class="ix2-card"><div class="ix2-sh"><b>' + IC('<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/>') + '验收记录</b><span class="ix2-date">只追加，不可改</span></div><div class="tx-rv">' + rv.map(reviewLine).join('') + '</div></section>';
     var cm = S.comments.filter(function (c) { return c.taskId === t.id; });
@@ -2888,8 +2913,11 @@
     block: function () { openSheet('报阻碍', field('卡在哪里', '<textarea name="note" rows="3" placeholder="写清楚原因和需要谁帮忙"></textarea>', '跟进人和负责人会收到通知。'), '报阻碍', function (o) { act('task.transition', { id: cur().id, action: 'block', note: o.note }, '已报阻碍，跟进人已收到通知'); }, true); },
     submit: function () {
       var t = T(cur().id);
-      openSheet('提交成果', '<div class="callout">验收标准：' + esc(t.criteria) + '</div>' + field('成果说明', '<textarea name="note" rows="3" placeholder="做了什么、结果如何"></textarea>') + field('链接（可选）', '<input type="url" name="url" placeholder="https://">', '演示版不支持上传文件，可贴链接或写说明。'), '提交给 ' + nm(t.reviewerId),
-        function (o) { act('task.transition', { id: t.id, action: 'submit', note: o.note, url: o.url }, '已提交，等待验收'); });
+      dvPick = [];
+      openSheet('提交成果', '<div class="callout">验收标准：' + esc(t.criteria) + '</div>' + field('成果说明', '<textarea name="note" rows="3" placeholder="做了什么、结果如何"></textarea>') +
+        '<div class="fld"><span>照片 / 文件（可选）</span><div class="dv-pick"><label class="btn">' + ai2('img', 1.6) + '拍照<input type="file" accept="image/*" capture="environment" data-dvfile="1" hidden></label><label class="btn">' + ai2('doc2', 1.6) + '选照片或文件<input type="file" multiple data-dvfile="1" hidden></label></div><div id="dv-files"></div><small>' + (SRV ? '会上传到团队服务器，验收人能直接打开。' : '演示版：文件只保存在这台设备。') + '</small></div>' +
+        field('链接（可选）', '<input type="url" name="url" placeholder="https://">'), '提交给 ' + nm(t.reviewerId),
+        function (o) { var media = dvPick.slice(); dvPick = []; act('task.transition', { id: t.id, action: 'submit', note: o.note, url: o.url, media: media }, '已提交，等待验收'); });
     },
     review: function (el) {
       var v = el.dataset.arg, t = T(cur().id);
@@ -2952,7 +2980,7 @@
   }
 
   /* ---------- 录音 ---------- */
-  function startRec() {
+  function startRec(onBlob) {
     navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
       var chunks = [], mr = new MediaRecorder(stream), t0 = Date.now();
       rec = { mr: mr, t0: t0, timer: setInterval(function () { var e = document.getElementById('rectime'); if (e) { var s = Math.round((Date.now() - t0) / 1000); e.textContent = '录音中 ' + Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); } }, 500) };
@@ -2960,10 +2988,12 @@
       mr.onstop = function () {
         stream.getTracks().forEach(function (t) { t.stop(); });
         var sec = Math.round((Date.now() - t0) / 1000), lid = rid('b');
-        blobs[lid] = keepBlob(lid, new Blob(chunks, { type: mr.mimeType || 'audio/webm' }));
+        var rblob = new Blob(chunks, { type: mr.mimeType || 'audio/webm' });
+        blobs[lid] = keepBlob(lid, rblob);
         var am = { kind: 'audio', name: '录音 ' + Math.floor(sec / 60) + ':' + ('0' + sec % 60).slice(-2), durationSec: sec, localId: lid };
         if (cur().name === 'project' && pd) pd.files.push(am); else newMedia.push(am);
         clearInterval(rec.timer); rec = null; render();
+        if (onBlob) onBlob(rblob);
       };
       mr.start(); render();
     }).catch(function () { toast('没有拿到麦克风权限，请在浏览器设置里允许后再试', true); });
@@ -3187,6 +3217,15 @@
   DO.ideasTile = function (el) { filt.ideas = el.dataset.f; filt.ideasOpen = true; render(); };
   DO.ideasRecent = function () { filt.ideasOpen = false; filt.ideas = 'all'; render(); };
   DO.back = function () { goBack(); };
+  DO.dvRm = function (el) { dvPick.splice(+el.dataset.i, 1); dvRender(); };
+  DO.dvOpen = function (el) {
+    var x = S.deliverables.find(function (f) { return f.id === el.dataset.f; }), m = x && (x.media || [])[+el.dataset.i]; if (!m) return;
+    var b = blobUrl(m.localId); if (!b) return toast('这个文件还没传到服务器，稍后再试', true);
+    if (m.kind === 'image') return openSheet(m.name, '<img src="' + b + '" alt="' + esc(m.name) + '" style="width:100%;border-radius:14px;display:block">', '关闭', function () { closeSheet(); });
+    if (m.kind === 'video') return openSheet(m.name, '<video controls playsinline src="' + b + '" style="width:100%;border-radius:14px"></video>', '关闭', function () { closeSheet(); });
+    if (m.kind === 'audio') return openSheet(m.name, '<audio controls src="' + b + '" style="width:100%"></audio>', '关闭', function () { closeSheet(); });
+    openFile(b, m.name);
+  };
   DO.goNew = function () { newMedia = []; draft = { title: '', note: '', mode: 'text', big: false }; location.hash = '#/new'; };
 
   /* Word（.docx）→ Markdown：在手机上解析，不经过服务器（docx 是 zip，取出 word/document.xml，按段落 / 标题 / 列表转换） */
@@ -3282,20 +3321,35 @@
   function kbvMd(o) { return '# ' + o.title + '\n\n> 来源：老板口述录音，' + (o.real ? 'Claude 整理成条' : 'AI 整理成条（演示：规则模拟）') + '，已由老板核对。\n' + o.secs.filter(function (x) { return x.items.length; }).map(function (x) { return '\n## ' + x.name + '\n' + x.items.map(function (t) { return '- ' + t; }).join('\n'); }).join('\n') + '\n'; }
   function kbvSyncText() { var ta = document.getElementById('kbv-text'); if (ta && !kbv.rec) kbv.text = ta.value; }
   function kbvKeep() { var o = kbv.out; if (!o) return; var tl = document.getElementById('kbv-title'), md = document.getElementById('kbv-md'), rw = document.getElementById('kbv-raw'); if (tl) o.title = tl.value; if (md) o.md = md.value; if (rw) kbv.raw = rw.checked; }
+  // 手机不能实时转文字、但服务器能转：先录音，停止后交给服务器转，追加到口述内容
+  function kbvRecStart() {
+    if (!(navigator.mediaDevices && window.MediaRecorder)) return toast('当前浏览器不支持录音', true);
+    kbvSyncText();
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      var chunks = [], mr = new MediaRecorder(stream);
+      mr.ondataavailable = function (e) { chunks.push(e.data); };
+      mr.onstop = function () { stream.getTracks().forEach(function (t) { t.stop(); }); srvTr(new Blob(chunks, { type: mr.mimeType || 'audio/webm' }), '口述录音').then(function (t) { if (!t) return toast('录音里没有识别到说话', true); kbv.text = (kbv.text + (kbv.text ? '\n' : '') + t).slice(0, 20000); render(); }, function () {}); };
+      kbv.mr = mr; kbv.rec = true; kbv.t0 = Date.now(); mr.start();
+      kbv.timer = setInterval(function () { var el = document.getElementById('kbv-t'); if (el) { var s2 = Math.round((Date.now() - kbv.t0) / 1000); el.textContent = '正在录音 ' + Math.floor(s2 / 60) + ':' + ('0' + s2 % 60).slice(-2) + '（停止后转文字）'; } }, 500);
+      render();
+    }).catch(function () { toast('没有拿到麦克风权限，请在浏览器设置里允许后再试', true); });
+  }
   function kbvStart() {
+    if ((!SR || kbv.srvMode) && canSrvTr()) return kbvRecStart();
     if (!SR) { toast('这个浏览器不支持语音转文字。可以点输入法上的话筒，直接说到下方文本框里', true); var t = document.getElementById('kbv-text'); if (t) t.focus(); return; }
     kbvSyncText();
     var r = new SR(); r.lang = 'zh-CN'; r.continuous = true; r.interimResults = true;
     r.onresult = function (e) { var it = ''; for (var i = e.resultIndex; i < e.results.length; i++) { var x = e.results[i][0].transcript.trim(); if (!x) continue; if (e.results[i].isFinal) kbv.text += (kbv.text && !/[。！？，\n]$/.test(kbv.text) ? '。' : '') + x; else it += x; }
       kbv.interim = it; var ta = document.getElementById('kbv-text'); if (ta) { ta.value = kbv.text + (it ? (kbv.text ? '。' : '') + it : ''); ta.scrollTop = ta.scrollHeight; } var nn = document.getElementById('kbv-n'); if (nn) nn.textContent = (kbv.text + it).length + ' 字'; };
     r.onerror = function (ev) { if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') { toast('没有麦克风权限，可以改用输入法的语音键', true); kbvStop(); } };
-    srKeep(r, function () { return kbv.rec && kbv.sr === r; }, function (fatal) { if (kbv.rec) { kbvStop(); if (!fatal) toast('这台手机的语音转文字连不上' + srCodeText() + '，可以用输入法的语音键说到下方文本框里', true); } });
+    srKeep(r, function () { return kbv.rec && kbv.sr === r; }, function (fatal) { if (kbv.rec) { kbvStop(); if (canSrvTr()) { kbv.srvMode = true; toast('这台手机的实时转写用不了，已改为「录完由服务器转文字」，请再点一次开始', true); } else if (!fatal) toast('这台手机的语音转文字连不上' + srCodeText() + '，可以用输入法的语音键说到下方文本框里', true); } });
     kbv.sr = r; kbv.rec = true; kbv.t0 = Date.now(); try { r.start(); } catch (e) {}
     kbv.timer = setInterval(function () { var el = document.getElementById('kbv-t'); if (el) { var s2 = Math.round((Date.now() - kbv.t0) / 1000); el.textContent = '正在听 ' + Math.floor(s2 / 60) + ':' + ('0' + s2 % 60).slice(-2); } }, 500);
     render();
   }
   function kbvStop(silent) {
     kbv.rec = false; clearInterval(kbv.timer); var r = kbv.sr; kbv.sr = null; if (r) { try { r.stop(); } catch (e) {} }
+    if (kbv.mr) { var mr = kbv.mr; kbv.mr = null; try { if (silent) mr.onstop = function () { try { mr.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} }; mr.stop(); } catch (e) {} }
     if (kbv.interim) { kbv.text += (kbv.text ? '。' : '') + kbv.interim; kbv.interim = ''; }
     if (!silent) render();
   }
@@ -3503,6 +3557,10 @@
     var el = e.target;
     if (el.type === 'radio' || el.type === 'checkbox') markChecked();
     if (el.type === 'file' && el.files) Array.prototype.forEach.call(el.files, function (f) { var nn = niceFileName(f); if (nn !== f.name) try { Object.defineProperty(f, 'name', { value: nn }); } catch (x) {} });
+    if (el.dataset && el.dataset.dvfile && el.files.length) {
+      Array.prototype.forEach.call(el.files, function (f) { if (dvPick.length >= 9) return; var lid = rid('b'); blobs[lid] = keepBlob(lid, f); dvPick.push({ kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, localId: lid, size: fmtSize(f.size) }); });
+      el.value = ''; dvRender(); if (dvPick.length >= 9) toast('每次提交最多 9 个文件'); return;
+    }
     if (el.dataset && (el.dataset.pd || el.dataset.pt != null) && pd) { if (el.dataset.pd) pd[el.dataset.pd] = el.value; else pd.tasks[+el.dataset.pt][el.dataset.f] = el.value; if (el.dataset.pd === 'leadId' || el.dataset.pd === 'due') render(); return; }
     if (el.dataset && el.dataset.camfile && el.files.length) { addVideos(el.files); return; }
     if (el.dataset && el.dataset.aifile && el.files[0]) { var af = el.files[0]; if (!/\.(txt|md)$/i.test(af.name) && !/^text\//.test(af.type)) { toast('演示版只能读取 TXT、Markdown 文本文件', true); return; } var rd = new FileReader(); rd.onload = function () { var tx2 = String(rd.result).slice(0, 4000); if (!aiS.mode) aiS.mode = 'minutes'; aiHandle(tx2); renderAI(); }; rd.readAsText(af); return; }
@@ -3518,11 +3576,14 @@
     if (el.dataset && el.dataset.tf === 'date' && tf) { tf.date = el.value; render(); return; }
     if (el.dataset && el.dataset.ta === 'lang') { ta.lang = el.value; return; }
     if (el.dataset && el.dataset.tafile && el.files[0]) { var tfl = el.files[0]; if (!/\.(txt|md)$/i.test(tfl.name) && !/^text\//.test(tfl.type)) { toast('演示版只能读取 TXT、Markdown 文本文件', true); return; } var fr = new FileReader(); fr.onload = function () { ta.text = String(fr.result).slice(0, 3000); render(); toast('已读取「' + tfl.name + '」，点「生成待办」'); }; fr.readAsText(tfl); return; }
+    if (el.dataset && el.dataset.tavideo && el.files[0] && canSrvTr()) { var tvf = el.files[0]; el.value = ''; srvTr(tvf, '视频').then(function (t) { if (t) { ta.text = (ta.text + (ta.text ? '\n' : '') + t).slice(0, 3000); render(); toast('已转成文字，可以点「AI 生成待办」'); } else toast('视频里没有识别到说话', true); }, function () {}); return; }
     if (el.dataset && el.dataset.tavideo && el.files[0]) { openSheet('视频已选择', '<p>' + esc(el.files[0].name) + '</p><p class="muted" style="font-size:14px">演示版无法读取视频里的语音。正式版会提取音轨并自动转写。现在可以改用录音、上传文本文件，或在下方直接输入文字。</p>', '知道了', function () { closeSheet(); }); return; }
     if (el.dataset && el.dataset.fifile && el.files.length) { addFiles(el.files); return; }
     if (el.dataset && el.dataset.txai) { tx.ai = el.checked; txPersist(); render(); return; }
     if (el.dataset && el.dataset.txfile) { Array.prototype.forEach.call(el.files, function (f) { tx.files.push({ kind: /^image/.test(f.type) ? 'image' : 'file', name: f.name + '（' + Math.max(1, Math.round(f.size / 1024)) + ' KB）' }); }); render(); return; }
     if (el.dataset && el.dataset.pfile && pd) { Array.prototype.forEach.call(el.files, function (f) { pd.files.push({ kind: /^image/.test(f.type) ? 'image' : 'file', name: f.name + '（' + Math.max(1, Math.round(f.size / 1024)) + ' KB）' }); }); render(); return; }
+    if (el.dataset && el.dataset.aivideo && el.files[0] && canSrvTr()) { var vf2 = el.files[0], vl = rid('b'); blobs[vl] = keepBlob(vl, vf2); ai.pending = { kind: 'video', name: vf2.name, size: fmtSize(vf2.size), localId: vl }; el.value = '';
+      srvTr(vf2, '视频').then(function (t) { if (t) runParse(t, '视频「' + vf2.name + '」，服务器转写 ' + t.length + ' 字'); else toast('视频里没有识别到说话，可以去手动填写', true); }, function () {}); return; }
     if (el.dataset && el.dataset.aivideo && el.files[0]) { var vf = el.files[0]; ai.pending = { kind: 'video', name: vf.name + '（' + Math.round(vf.size / 1048576 * 10) / 10 + ' MB）' }; openSheet('视频已选择', '<p>' + esc(vf.name) + '</p><p class="muted" style="font-size:14px">演示版不会上传视频，也无法读取视频里的语音。正式版会提取音轨并自动转写。现在可以把视频作为附件，去手动填写项目信息。</p>', '去手动填写', function () { pd = freshPD(); pd.files = [ai.pending]; ai.pending = null; closeSheet(); location.hash = '#/project'; render(); }); return; }
     if (el.dataset.set) {
       var k = el.dataset.set, v = el.type === 'checkbox' ? el.checked : el.type === 'number' ? (el.value === '' ? null : +el.value) : el.value;

@@ -158,6 +158,14 @@ var TMS = (function () {
     location.hash = '#/home';
     if (big) api.cacheBig(j).then(reloadSafe, reloadSafe); else reloadSafe();
   }
+  // 录音 / 视频交给服务器转文字（服务器装了 whisper 时）；返回文字
+  api.transcribe = function (blob) {
+    if (!api.loggedIn()) return Promise.reject({ error: '没有连接团队服务器' });
+    var ctl = typeof AbortController !== 'undefined' ? new AbortController() : null; if (ctl) setTimeout(function () { ctl.abort(); }, 15 * 60e3);
+    return fetch(api.base + '/api/transcribe', { method: 'POST', signal: ctl && ctl.signal, headers: { Authorization: 'Bearer ' + api.token, 'Content-Type': blob.type || 'application/octet-stream' }, body: blob })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) throw { error: j.error || '转文字失败' }; return j.text || ''; }); },
+        function () { throw { error: '连不上服务器，稍后再试' }; });
+  };
   // 诊断信息（语音识别出错等，不含内容）：发给服务器记到 diag.log，失败就算了
   api.diag = function (o) { if (!api.loggedIn()) return; req('POST', '/api/diag', o).catch(function () {}); };
   api.serverUrl = function () { return api.sameOrigin ? location.origin : api.base; };

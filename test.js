@@ -41,7 +41,10 @@ rej(TM.act(s, AX, 'task.review', { id: T.id, verdict: 'pass', note: '自己验�
 rej(TM.act(s, OP, 'task.review', { id: T.id, verdict: 'return', note: '' }), '退回无意见');
 must(TM.act(s, OP, 'task.review', { id: T.id, verdict: 'return', note: '没有投屏测试照片' }), '退回');
 ok(T.status === 'in_progress', '退回回到执行中');
-must(TM.act(s, AX, 'task.transition', { id: T.id, action: 'submit', note: '补充投屏照片' }), '再次提交');
+rej(TM.act(s, AX, 'task.transition', { id: T.id, action: 'submit', media: [{ kind: 'image', name: '没有文件ID.jpg' }] }), '只带没有文件 ID 的附件不算交付物');
+must(TM.act(s, AX, 'task.transition', { id: T.id, action: 'submit', media: Array.from({ length: 12 }, (_, i) => ({ kind: i ? 'image' : 'evil', name: '投屏照片' + i + '.jpg', localId: 'b_dv' + i, size: '1 MB' })) }), '再次提交：只带照片');
+{ const dv = s.deliverables.filter(x => x.taskId === T.id).pop();
+  ok(dv.media.length === 9 && dv.media[0].kind === 'file' && dv.media[1].kind === 'image' && dv.media[1].localId === 'b_dv1' && dv.note === '', '交付物照片最多 9 个，未知类型按文件处理'); }
 must(TM.act(s, OP, 'task.review', { id: T.id, verdict: 'pass', note: '通过' }), '验收通过');
 ok(T.status === 'done' && W.status === 'acceptance', '任务完成，事项待验收');
 must(TM.act(s, OP, 'work.close', { id: W.id }), '事项确认完成');

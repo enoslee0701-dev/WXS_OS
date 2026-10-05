@@ -6,7 +6,7 @@
    环境变量：PORT（8787）、HOST（0.0.0.0）、DATA_DIR（server/data）、MAX_FILE_MB（500）、USER_QUOTA_MB（5000）、
             SETUP_CODE（首次创建团队的初始化码；不设则随机生成并打印）、TRUST_PROXY=1（在反向代理后，按 X-Forwarded-For 识别 IP） */
 'use strict';
-const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto');
+const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto'), os = require('os');
 const { DatabaseSync } = require('node:sqlite');
 const TM = require('../engine.js');
 const AI = require('./ai.js');
@@ -340,6 +340,8 @@ function canReadFile(uid, f) {
   if (S.users.some(u => u.avatar === f.id && u.id === f.uid)) return true;
   for (const d of S.ideas) for (const m of d.media || []) if (m.localId === f.id && TM.canSeeMediaItem(S, uid, d, m)) return true;
   for (const w of S.workItems) for (const m of w.files || []) if (m.localId === f.id && TM.canViewWork(S, uid, w)) return true;
+  // 任务交付物的照片 / 文件：能看到这个任务的人都能打开
+  for (const x of S.deliverables) for (const m of x.media || []) if (m.localId === f.id) { const t = S.tasks.find(t => t.id === x.taskId); if (t && TM.canViewTask(S, uid, t)) return true; }
   return false;
 }
 function putFile(req, res, id, me) {
@@ -455,7 +457,7 @@ ${m ? `<p>安卓版 ${esc(m.versionName)} · ${(m.size / 1048576).toFixed(1)} MB
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' });
   res.end(html);
 }
-const diagRate = new Map();
+const diagRate = new Map(), trBusy = new Set();
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-File-Name, Range');
@@ -469,6 +471,23 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
       res.write('event: v\ndata: ' + JSON.stringify({ version }) + '\n\n');
       const c = { res, uid: me.uid, token: me.token }; clients.add(c); req.on('close', () => clients.delete(c)); return;
+    }
+    // 录音 / 视频直接转文字（AI 建项目、AI 拆待办、手机识别不了时的语音输入）：请求体是音视频本身，返回 {text}
+    if (url.pathname === '/api/transcribe' && req.method === 'POST') {
+      const me = auth(req, url); if (!me) return send(res, 401, { error: '请重新登录' });
+      if (!TR.enabled()) return send(res, 503, { error: '服务器还没有安装语音转写' });
+      if (trBusy.has(me.uid)) return send(res, 429, { error: '上一段还在转，请稍等' });
+      const max = 300 * 1048576, len = +req.headers['content-length'] || 0;
+      if (len > max) return send(res, 413, { error: '文件太大（上限 300MB）' });
+      const tmp = path.join(os.tmpdir(), 'tm-up-' + crypto.randomBytes(6).toString('hex')), out = fs.createWriteStream(tmp);
+      let n = 0, bad = false; trBusy.add(me.uid);
+      const done = (code, obj) => { trBusy.delete(me.uid); fs.rm(tmp, { force: true }, () => {}); send(res, code, obj); };
+      req.on('data', d => { n += d.length; if (n > max && !bad) { bad = true; req.unpipe(out); out.destroy(); done(413, { error: '文件太大（上限 300MB）' }); req.resume(); } });
+      req.on('aborted', () => { if (!bad) { bad = true; out.destroy(); trBusy.delete(me.uid); fs.rm(tmp, { force: true }, () => {}); } });
+      req.pipe(out);
+      out.on('finish', () => { if (bad) return; TR.transcribe(tmp, trPrompt()).then(text => done(200, { text: text || '' }), e => done(500, { error: '转文字失败：' + e.message })); });
+      out.on('error', () => { if (!bad) { bad = true; done(500, { error: '保存失败' }); } });
+      return;
     }
     const fm = /^\/api\/files\/([^/]+)$/.exec(url.pathname);
     if (fm && (req.method === 'PUT' || req.method === 'GET')) {
@@ -518,7 +537,7 @@ function trScan() {
   S.ideas.forEach(d => {
     if (d.deleted) return;
     (d.media || []).forEach(m => {
-      if (!(m.kind === 'audio' || m.kind === 'video') || !m.localId || m.transcriptStatus === 'done' || m.transcriptStatus === 'failed' || trQueued.has(m.localId)) return;
+      if (!(m.kind === 'audio' || m.kind === 'video') || !m.localId || ['done', 'failed', 'intext'].includes(m.transcriptStatus) || trQueued.has(m.localId)) return; // intext：App 已经让服务器转过、写进了正文
       if (!FILE_ID.test(m.localId) || !fs.existsSync(path.join(FILES, m.localId))) return; // 文件还没传上来
       const row = q('SELECT status FROM transcripts WHERE file_id=?').get(m.localId); if (row && row.status !== 'queued') return;
       trQueued.add(m.localId); q('INSERT OR REPLACE INTO transcripts VALUES(?,?,?)').run(m.localId, 'queued', Date.now());
