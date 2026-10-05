@@ -27,6 +27,7 @@ let srv;
   // 1. 语音记录页：录 2 秒 → 停止 → 服务器转写填进识别文字
   await p.evaluate(() => { location.hash = '#/new/voice'; }); await p.waitForTimeout(400);
   ok((await p.textContent('.vr-card')).includes('停止录音后由团队服务器转成文字'), '语音页提示：停止后由服务器转文字');
+  ok(await p.locator('.demo-tip').count() === 0, '连了服务器：不显示演示模式提示');
   await p.click('.vr-c[data-do=voStart]'); await p.waitForTimeout(2000); await p.click('.vr-c[data-do=voStop]');
   await p.waitForSelector('#layer .sheet h2:has-text("正在转文字")', { timeout: 5000 }).catch(() => {}); await waitClosed();
   await p.waitForTimeout(300);

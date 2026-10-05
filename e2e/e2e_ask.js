@@ -22,6 +22,7 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
   ok(!(await S()).todos.some(t => t.id === mine.id), '点删除：待办已删除');
   // 2. 清空录音
   await p.evaluate(() => { location.hash = '#/new/voice'; }); await p.waitForTimeout(250);
+  ok(await p.locator('.demo-tip [data-do=srvConnect]').count() === 1, '演示模式的录音页：提示这是演示，可一键连接团队服务器');
   await p.fill('[data-cap="vo.text"]', '要点：周二开会'); await p.waitForTimeout(100);
   await p.click('.vr-c[data-do=voCancel]'); await p.waitForTimeout(250);
   ok((await p.textContent('#layer .sheet h2')) === '清空录音', '清空录音：弹出应用内确认');

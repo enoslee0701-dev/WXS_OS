@@ -201,7 +201,7 @@
         field('密码', '<input type="password" name="password" autocomplete="current-password" required>') +
         (srvL.probed && srvL.err && TMS.sameOrigin ? '<p class="srv-err">' + esc(srvL.err) + '</p>' : '') +
         '<button class="btn pri block" type="submit"' + (srvL.busy ? ' disabled' : '') + '>' + (srvL.busy ? '正在登录…' : '登录') + '</button></form>' +
-        '<p class="muted srv-tip">没有账号？请找老板或管理员为你开通。</p>';
+        '<p class="muted srv-tip">没有账号？请找老板或管理员为你开通。<br>忘记密码？请老板在「团队 → 成员 → 登录账号与密码」里重置。</p>';
     }
     if (!TMS.sameOrigin) h += '<button class="srv-local" data-do="srvLocal">不连服务器，用演示模式看看</button>';
     return h + '</div>';
@@ -3088,6 +3088,9 @@
       case 'settings': body = viewSettings(); back = true; title = '更多设置'; break;
       default: body = viewHome(); c.name = 'home';
     }
+    // 演示模式下的录音 / 视频 / AI 页面：说清楚这里是模拟的，一键连接团队服务器（用户曾在演示模式里试视频，以为功能坏了）
+    if (!SRV && /^#\/(new\/(voice|video|file)|project\/ai|todo\/new\/ai|kb\/voice)/.test(location.hash)) { var dtip = '<div class="demo-tip"><b>你正在用演示模式</b><span>这里的录音不会上传，视频里的话不会转成文字，AI 也是规则模拟。连接团队服务器后，录音和视频会自动转成文字，AI 会真正读懂内容。</span><button type="button" class="btn pri" data-do="srvConnect">连接团队服务器</button></div>';
+      var hEnd = body.indexOf('</section>'); body = hEnd >= 0 && hEnd < 4000 ? body.slice(0, hEnd + 10) + dtip + body.slice(hEnd + 10) : dtip + body; } // 放在页面大图下面，不挤掉大图
     var u = TM.user(S, me);
     var tabKey = { idea: 'ideas', new: 'ideas', project: 'work', stat: 'home', settings: 'me', kb: 'me', todo: 'tasks', ideas: 'ideas', task: 'tasks', inbox: 'home', team: 'me', assign: 'work' }[c.name] || c.name;
     var nT = vTasks().filter(function (t) { var nx = TM.nextForTask(S, t); return nx && nx.who === me; }).length;
