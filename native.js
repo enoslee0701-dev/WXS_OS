@@ -179,6 +179,8 @@ var TMN = (function () {
       .then(function (w) { return Shr.share({ title: safe, files: [w.uri] }); })
       .catch(function (e) { if (/cancel/i.test(String(e && e.message))) return; throw e; });
   };
+  // 安装的 App 版本（versionName / versionCode），用于检查更新
+  api.appInfo = function () { return App && App.getInfo ? App.getInfo().catch(function () { return null; }) : Promise.resolve(null); };
   /* ---------- 诊断：上次闪退的原因（Android），由 app.js 启动后提示 ---------- */
   api.lastCrash = function () { return Diag ? Diag.lastCrash().then(function (r) { return r && r.text || ''; }, function () { return ''; }) : Promise.resolve(''); };
   api.plugins.Diag = Diag;

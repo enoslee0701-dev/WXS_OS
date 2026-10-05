@@ -246,7 +246,7 @@
     return '<div class="login"><div class="mark" aria-hidden="true">协同</div><h1>以谁的身份进入？</h1><p>每个账号按角色和权限看到不同内容。切换账号，可以把一件事从想法一路走到验收。</p>' +
       '<div class="list">' + S.users.map(function (u) {
         return '<div class="acct" role="button" tabindex="0" data-do="login" data-id="' + u.id + '">' + av(u.id) + '<div><b>' + esc(u.name) + '　<span class="muted" style="font-weight:400;font-size:14px">' + esc(u.title) + '</span></b><small>' + esc(ROLE_DESC[u.id] || '') + '</small></div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></div>';
-      }).join('') + '</div><p class="muted" style="font-size:13.5px;margin-top:18px">演示环境：没有真实登录，数据只存在这台设备的浏览器里。正式版会接入账号、云端数据库和权限控制。</p><button class="srv-local" data-do="srvConnect">连接团队服务器 →</button></div>';
+      }).join('') + '</div><p class="muted" style="font-size:13.5px;margin-top:18px">演示模式：账号是预设的，数据只存在这台设备上。连接团队服务器后，用老板分派的真实账号登录，数据在团队里实时同步。</p><button class="srv-local" data-do="srvConnect">连接团队服务器 →</button></div>';
   }
 
   /* ---------- 页面：首页 ---------- */
@@ -1124,7 +1124,7 @@
     txUndo: function () { var h = tx.hist && tx.hist.pop(); if (!h) return toast('没有可以撤销的操作'); tx.note = h.note; tx.tags = h.tags; txPersist(); render(); toast('已撤销上一次 AI 优化'); },
     txClass: function () { var t2 = tx.title + tx.note, rec = []; [['事工', /事工|教会|福音|宣教|祷告|灵修/], ['团队', /团队|同工|分工/], ['教育', /教育|学习|课程|培训|英语/], ['运营', /运营|推广|数据|流程|预算|场地|活动|采购/], ['关怀', /关怀|探访|家庭|照顾/], ['创意', /创意|点子|设计|想法/], ['产品', /App|产品|功能|系统|网站/], ['重要', /紧急|重要|务必/]].forEach(function (x) { if (x[1].test(t2) && rec.length < 3) rec.push(x[0]); }); if (!rec.length) return toast('没找到明显的分类，可以手动选', true); var add = rec.filter(function (r2) { return tx.tags.indexOf(r2) < 0; }); if (!add.length) return toast('推荐分类已经选上了：' + rec.join('、')); txSnap(); add.forEach(function (r2) { if (tx.tags.length < 5) tx.tags.push(r2); }); txPersist(); render(); toast('推荐分类：' + rec.join('、') + '（已选中，可撤销）'); },
     fiLinkSheet: function () { openSheet('链接导入', field('网页链接', '<input type="text" inputmode="url" name="u" placeholder="https://">', '演示版会把链接记进说明，不会抓取网页内容。'), '添加', function (o) { fi.link = o.u || ''; DO.fiLink(); closeSheet(); render(); }); },
-    fiCloud: function () { toast('演示版还没接入云盘，正式版会支持 Google Drive、OneDrive 等', true); },
+    fiCloud: function () { toast('暂不支持直接从云盘导入：先把文件下载到手机，再点「选择文件」', true); },
     fiClear: function () { fi = { title: '', note: '', files: [], link: '' }; render(); },
     fiRecent: function (el) { var f = recentFiles()[+el.dataset.i]; if (fi.files.some(function (x) { return x.name === f.name; })) return toast('已在选择列表里'); fi.files.push({ kind: f.kind, name: f.name, size: f.size, demo: f.demo, localId: f.localId }); render(); toast('已添加「' + f.name + '」'); },
     fiRecentAll: function () { var rf = recentFiles(); openSheet('最近文件', rf.map(function (f, i) { return fileRow(f, hi('chev', 2), 'data-do="fiRecent" data-i="' + i + '"'); }).join(''), '关闭', function () { closeSheet(); }); },
@@ -1779,12 +1779,12 @@
       '<a class="me-team me-kb" href="#/kb"><span class="me-ic kbic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/><path d="M9 8h7M9 11.5h5"/></svg></span><span class="me-tt"><b>AI 知识库</b><small>' + TM.kbVisible(S, me).filter(function (k) { return k.on; }).length + ' 份资料 · 让 AI 了解公司和老板的想法</small></span>' + hi('chev', 2) + '</a>' +
       (SRV ? '' : '<button class="me-team me-demo" data-do="demoStart"><span class="me-ic dk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg></span><span class="me-tt"><b>演示向导</b><small>一键走完 想法 → 整理 → 事项 → 执行 → 验收</small></span>' + hi('chev', 2) + '</button>') +
       '<section class="me-sec"><div class="me-sh">' + ic(ai2('ops', 1.8)).replace('me-ic', 'me-ic blue') + '<b>工作概览</b></div>' + homeStats().map(function (x) { return '<a class="me-info me-ov" href="#/stat/' + x.k + '">' + hi(x.icon, 1.7).replace('<svg ', '<svg class="' + x.cls + '" ') + '<span>' + esc(x.label) + '</span><b><strong>' + x.n + '</strong></b>' + hi('chev', 2) + '</a>'; }).join('') + '</section>' +
-      (can ? '<section class="me-sec"><a class="me-sh" href="#/settings">' + ic('<svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z" fill="#fff"/><path d="M19.4 13.5l1.6 1.2-1.8 3.2-1.9-.7a7 7 0 0 1-1.8 1l-.3 2h-3.6l-.3-2a7 7 0 0 1-1.8-1l-1.9.7-1.8-3.2 1.6-1.2a7 7 0 0 1 0-2.1L4.6 10.3 6.4 7l1.9.8a7 7 0 0 1 1.8-1l.3-2h3.6l.3 2a7 7 0 0 1 1.8 1l1.9-.8 1.8 3.3-1.6 1.1a7 7 0 0 1 0 2.1z" fill="currentColor"/><circle cx="12" cy="12" r="2.6" fill="#E8F0FF"/></svg>').replace('me-ic', 'me-ic blue') + '<b>流程开关（第 3 节待拍板）</b><small>根据团队需要灵活设置</small>' + hi('chev', 2) + '</a>' +
+      (can ? '<section class="me-sec"><a class="me-sh" href="#/settings">' + ic('<svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z" fill="#fff"/><path d="M19.4 13.5l1.6 1.2-1.8 3.2-1.9-.7a7 7 0 0 1-1.8 1l-.3 2h-3.6l-.3-2a7 7 0 0 1-1.8-1l-1.9.7-1.8-3.2 1.6-1.2a7 7 0 0 1 0-2.1L4.6 10.3 6.4 7l1.9.8a7 7 0 0 1 1.8-1l.3-2h3.6l.3 2a7 7 0 0 1 1.8 1l1.9-.8 1.8 3.3-1.6 1.1a7 7 0 0 1 0 2.1z" fill="currentColor"/><circle cx="12" cy="12" r="2.6" fill="#E8F0FF"/></svg>').replace('me-ic', 'me-ic blue') + '<b>流程开关</b><small>根据团队需要灵活设置</small>' + hi('chev', 2) + '</a>' +
       
-      row('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>', '老板确认范围（C2）', '只送例外：战略、超预算、人事、重要发布才找老板。每条都送：所有想法派发前都要老板确认。',
+      row('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>', '老板确认范围', '只送例外：战略、超预算、人事、重要发布才找老板。每条都送：所有想法派发前都要老板确认。',
         '<label class="me-sel"><select data-set="ownerApprovalMode"' + dis + '><option value="exceptions_only"' + (cs.ownerApprovalMode === 'exceptions_only' ? ' selected' : '') + '>只送例外</option><option value="all"' + (cs.ownerApprovalMode === 'all' ? ' selected' : '') + '>每条都送</option></select>' + ai2('downc', 2) + '</label>') +
-      row(hi('spark', 1.6).replace('<svg ', '<svg class="gold" '), 'AI 助理可直接送人（C3）', '打开后，在「每条都送」模式下 AI 整理完可直接发送到老板待决策；派发、立项由人点。', tog('data-set="agentDirectRoute"', cs.agentDirectRoute, dis)) +
-      row('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.3l2.4 2.4 4.6-5"/></svg>', '行政任务老板终验（C1）', '负责人验收后，再进入老板终验。', tog('data-set="ownerFinalAdmin"', cs.ownerFinalAdmin, dis)) +
+      row(hi('spark', 1.6).replace('<svg ', '<svg class="gold" '), 'AI 助理可直接送人', '打开后，在「每条都送」模式下 AI 整理完可直接发送到老板待决策；派发、立项由人点。', tog('data-set="agentDirectRoute"', cs.agentDirectRoute, dis)) +
+      row('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.3l2.4 2.4 4.6-5"/></svg>', '行政任务老板终验', '负责人验收后，再进入老板终验。', tog('data-set="ownerFinalAdmin"', cs.ownerFinalAdmin, dis)) +
       row(hi('bell', 1.7), '重要事项通知我', '当有需要我处理的事项时，立即推送通知。演示版只有 App 内通知。', tog('data-pref="notifyImportant"', pref.notifyImportant !== false)) + '</section>' : '<section class="me-sec"><div class="me-sh">' + ic(hi('bell', 1.7)).replace('me-ic', 'me-ic blue') + '<b>通知</b></div>' + row(hi('bell', 1.7), '重要事项通知我', '当有需要我处理的事项时，立即推送通知。演示版只有 App 内通知。', tog('data-pref="notifyImportant"', pref.notifyImportant !== false)) + '</section>') +
       '<section class="me-sec"><div class="me-sh">' + ic(ti('person', 1.8)).replace('me-ic', 'me-ic blue') + '<b>个人信息</b></div>' +
       info('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2"/><path d="M5.8 16c.6-1.6 1.8-2.4 3.2-2.4s2.6.8 3.2 2.4M14.5 10h4M14.5 13.5h3"/></svg>', '姓名', u.name, 'name', adm) +
@@ -1796,6 +1796,8 @@
       (SRV && TMS.loggedIn() ? '<section class="me-sec me-acct"><div class="me-sh">' + ic(ti('person', 1.8)).replace('me-ic', 'me-ic blue') + '<b>账号与安全</b></div>' +
         '<button class="me-info" data-do="srvPassword">' + hi('flag', 1.7) + '<span>修改密码</span><b>' + (TMS.mustChange ? '请修改初始密码' : '') + '</b>' + hi('chev', 2) + '</button>' +
         '<div class="me-info">' + hi('pie', 1.7) + '<span>服务器</span><b>' + esc(TMS.serverUrl()) + '</b><i></i></div>' +
+        (isAndroidApp() ? '<button class="me-info" data-do="appUpdate">' + hi('spark', 1.7) + '<span>App 版本</span><b>' + esc(appUpd.info ? appUpd.info.version : '') + (appUpd.newer ? ' · 有新版本' : ' · 检查更新') + '</b>' + hi('chev', 2) + '</button>' : '') +
+        (isOwner() || TM.hasRole(S, me, 'admin') ? '<button class="me-info" data-do="appShare">' + hi('flag', 1.7) + '<span>给同事安装 App</span><b>扫码下载安卓版</b>' + hi('chev', 2) + '</button>' : '') +
         '<button class="me-info me-out" data-do="srvLogout">' + hi('chev', 1.7) + '<span>退出登录</span><b></b>' + hi('chev', 2) + '</button>' + (isOwner() ? '' : '<button class="me-info me-del" data-do="srvDeactivate">' + hi('chev', 1.7) + '<span>注销账号</span><b>停用后无法登录</b>' + hi('chev', 2) + '</button>') + '</section>' : '') +
       '<section class="me-sec"><div class="me-sh">' + ic(ti('more', 1.6)).replace('me-ic', 'me-ic blue') + '<b>通用</b></div>' +
       (SRV && isOwner() && S.real && !onboardSteps().every(function (x) { return x[3]; }) ? '<button class="me-info" data-do="onboard">' + hi('flag', 1.7) + '<span>开始使用</span><b>还有 ' + onboardSteps().filter(function (x) { return !x[3]; }).length + ' 步</b>' + hi('chev', 2) + '</button>' : '') +
@@ -2718,12 +2720,12 @@
     var u = TM.user(S, me), cs = S.settings, can = isOwner() || TM.hasRole(S, me, 'admin'), dis = can ? '' : ' disabled';
     var sw = function (k, title, desc, code) { return '<label class="sw"><span><b>' + title + '</b><small>' + desc + (code ? '<br><span class="code">' + code + '</span>' : '') + '</small></span><input type="checkbox" data-set="' + k + '"' + (cs[k] ? ' checked' : '') + dis + '></label>'; };
     var h = ixHead('更多设置', '流程开关、提醒与演示工具') + '<div class="st2"><div class="card" style="display:flex;align-items:center;gap:14px">' + av(me) + '<div style="flex:1"><b style="font-size:17px">' + esc(u.name) + '</b><div class="muted" style="font-size:14px">' + esc(u.title) + '，' + u.roles.map(function (a) { return L.role[a.role]; }).join('、') + '</div></div><button class="btn" data-do="switch">切换账号</button></div>';
-    h += sec('流程开关（第 3 节待拍板）') + '<div class="card">' + (can ? '' : '<div class="callout">只有老板或管理员可以修改，你可以查看当前设置。</div>') +
-      '<label class="sw"><span><b>老板确认范围（C2）</b><small>只送例外：战略、超预算、人事、重要发布才找老板。每条都送：所有想法派发前都要老板确认。</small></span><select data-set="ownerApprovalMode"' + dis + '><option value="exceptions_only"' + (cs.ownerApprovalMode === 'exceptions_only' ? ' selected' : '') + '>只送例外</option><option value="all"' + (cs.ownerApprovalMode === 'all' ? ' selected' : '') + '>每条都送</option></select></label>' +
-      sw('agentDirectRoute', 'AI 助理可直接送人（C3）', '打开后，在「每条都送」模式下 AI 整理完直接送到老板待决策；派发、立项始终由人点。') +
-      sw('ownerFinalAdmin', '行政任务老板终验（C1）', '运营者验收后，再进入老板终验。') +
-      sw('ownerFinalProduct', '产品任务老板终验（C1）', '负责人验收后，再进入老板终验。') +
-      sw('showTiers', '显示一级、二级标签（C4）', '只是界面分组标签，不影响权限。当前映射：运营者、负责人为一级，执行者为二级，待确认。') + '</div>';
+    h += sec('流程开关') + '<div class="card">' + (can ? '' : '<div class="callout">只有老板或管理员可以修改，你可以查看当前设置。</div>') +
+      '<label class="sw"><span><b>老板确认范围</b><small>只送例外：战略、超预算、人事、重要发布才找老板。每条都送：所有想法派发前都要老板确认。</small></span><select data-set="ownerApprovalMode"' + dis + '><option value="exceptions_only"' + (cs.ownerApprovalMode === 'exceptions_only' ? ' selected' : '') + '>只送例外</option><option value="all"' + (cs.ownerApprovalMode === 'all' ? ' selected' : '') + '>每条都送</option></select></label>' +
+      sw('agentDirectRoute', 'AI 助理可直接送人', '打开后，在「每条都送」模式下 AI 整理完直接送到老板待决策；派发、立项始终由人点。') +
+      sw('ownerFinalAdmin', '行政任务老板终验', '运营者验收后，再进入老板终验。') +
+      sw('ownerFinalProduct', '产品任务老板终验', '负责人验收后，再进入老板终验。') +
+      sw('showTiers', '显示一级、二级标签', '只是界面分组标签，不影响权限：运营者、负责人为一级，执行者为二级。') + '</div>';
     h += sec('公司与提醒') + '<div class="card"><label class="fld"><span>公司方向与长期目标</span><textarea data-set="direction" rows="3"' + (isOwner() ? '' : ' disabled') + '>' + esc(cs.direction) + '</textarea><small>AI 整理时用来判断新想法是否与现有业务形成闭环。由老板填写。</small></label>' +
       '<div class="row2"><label class="fld"><span>无动态提醒（天）</span><input type="number" min="1" max="30" data-set="staleDays" value="' + cs.staleDays + '"' + dis + '></label><label class="fld"><span>超预算阈值（元）</span><input type="number" min="0" step="1000" data-set="budgetThreshold" value="' + (cs.budgetThreshold || '') + '"' + dis + '></label></div></div>';
     h += SRV ? sec('数据') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">服务器：' + esc(TMS.serverUrl()) + '</p><button class="btn block" data-do="srvUsage">使用情况（AI 费用、设备、空间）</button>' + (isOwner() ? '<button class="btn block mt" data-do="srvExport">导出全部数据（备份）</button>' : '') + '<div class="mt"></div>' + (isOwner() && !S.real ? '<button class="btn danger block" data-do="clearDemo">清理演示数据</button>' : '<p class="muted" style="margin:0;font-size:13.5px">数据每天自动备份在服务器的 backups 目录。</p>') + '</div>' :
@@ -3034,9 +3036,39 @@
       if (o.password !== o.again) return toast('两次输入的新密码不一样', true);
       TMS.changePassword(o.old || '', o.password).then(function () { closeSheet(); toast('密码已修改'); }, function (e) { toast(e.error || '修改失败', true); });
     }); };
+  /* 安卓 App 更新：团队服务器上放着最新的安装包（npm run android 发布），App 启动时比较版本号，有新版就提示下载 */
+  var appUpd = { meta: null, info: null, newer: false };
+  function isAndroidApp() { return typeof TMN !== 'undefined' && TMN.native && TMN.platform === 'android'; }
+  function appCheck(manual) {
+    if (!(SRV && TMS.loggedIn())) return Promise.resolve();
+    return fetch(TMS.serverUrl() + '/api/app').then(function (r) { return r.json(); }).then(function (j) {
+      appUpd.meta = j && j.android || null;
+      return isAndroidApp() && TMN.appInfo ? TMN.appInfo() : null;
+    }).then(function (info) {
+      appUpd.info = info; var m = appUpd.meta;
+      appUpd.newer = !!(m && info && m.versionCode > (+info.build || 0));
+      var skip = ''; try { skip = localStorage.getItem('tm_upd_skip') || ''; } catch (e) {}
+      if (appUpd.newer && (manual || skip !== String(m.versionCode))) appPrompt();
+      else if (manual) toast(m ? '已经是最新版本' : '服务器上还没有安卓安装包');
+      if (cur().name === 'me') render();
+    }).catch(function () { if (manual) toast('检查更新失败，请稍后再试', true); });
+  }
+  function appPrompt() {
+    var m = appUpd.meta;
+    askSheet('发现新版本', '新版本 <b>' + esc(m.versionName) + '</b>（你现在用的是 ' + esc(appUpd.info.version) + '）。' + (m.notes ? '<span class="callout" style="display:block;margin:10px 0">' + esc(m.notes) + '</span>' : '<br>') + '<span class="muted" style="font-size:13.5px">点「下载安装」后会在浏览器里下载，下载完点通知栏里的文件安装。数据都在服务器上，更新不会丢失。</span>', '下载安装').then(function (y) {
+      if (y) TMN.openUrl(TMS.serverUrl() + m.url); else try { localStorage.setItem('tm_upd_skip', String(m.versionCode)); } catch (e) {}
+    });
+  }
+  function qrSvg(text, cell) { try { var q = qrcode(0, 'M'); q.addData(text); q.make(); return q.createSvgTag(cell || 4, 2); } catch (e) { return ''; } }
+  DO.appUpdate = function () { appCheck(true); };
+  DO.appShare = function () {
+    var url = TMS.serverUrl() + '/app';
+    openSheet('给同事安装 App', '<div class="cred-qr">' + qrSvg(url) + '<small>安卓手机用相机或浏览器扫码，打开安装页下载 App' + (appUpd.meta ? '（' + esc(appUpd.meta.versionName) + '）' : '') + '。iPhone 请用 TestFlight 安装。</small></div><div class="cred"><div><span>安装页</span><b>' + esc(url) + '</b></div></div>' + (appUpd.meta ? '' : '<div class="callout warn" style="margin-top:10px">服务器上还没有安卓安装包：在服务器电脑上运行一次 npm run android。</div>'), '关闭', function () { closeSheet(); });
+  };
   function showCred(u, login, pw) {
     var join = 'teamops://join?server=' + encodeURIComponent(TMS.serverUrl()) + '&login=' + encodeURIComponent(login), qr = '';
-    try { var qq = qrcode(0, 'M'); qq.addData(join); qq.make(); qr = '<div class="cred-qr">' + qq.createSvgTag(4, 2) + '<small>让 TA 用 iPhone 相机扫一下，自动打开 App 并填好服务器和账号（密码请单独告诉 TA）</small></div>'; } catch (e) {}
+    try { var qq = qrcode(0, 'M'); qq.addData(join); qq.make(); qr = '<div class="cred-qr">' + qq.createSvgTag(4, 2) + '<small>让 TA 用手机相机扫一下，自动打开 App 并填好服务器和账号（密码请单独告诉 TA）</small></div>'; } catch (e) {}
+    if (appUpd.meta) qr += '<p class="muted" style="font-size:13.5px;margin:0 0 12px">TA 还没装 App？安卓手机扫「我的 → 给同事安装 App」里的码下载。</p>';
     openSheet('账号已就绪', qr + '<p style="margin:0 0 10px">把下面的信息发给 <b>' + esc(u.name) + '</b>：</p><div class="cred"><div><span>服务器</span><b>' + esc(TMS.serverUrl()) + '</b></div><div><span>账号</span><b id="cred-l">' + esc(login) + '</b></div><div><span>初始密码</span><b id="cred-p">' + esc(pw) + '</b></div></div><p class="muted" style="font-size:13.5px;margin:10px 0 0">密码只显示这一次。对方首次登录后需要改成自己的密码。</p>', '复制并关闭', function () {
       var t = '团队协同 登录信息\n服务器：' + TMS.serverUrl() + '\n账号：' + login + '\n初始密码：' + pw + '\n在手机上点这个链接直接打开 App：' + join;
       try { navigator.clipboard.writeText(t).then(function () { toast('已复制，可以发给对方'); }, function () { toast('请手动记下账号和密码'); }); } catch (e) { toast('请手动记下账号和密码'); }
@@ -3581,6 +3613,8 @@
   window.addEventListener('hashchange', function () { if (navAfter) { var na = navAfter; navAfter = null; navStack[navStack.length - 1] = location.hash; location.hash = na; return; } if (aiS.open) { aiS.open = false; renderAI(); } if (ai.recording && cur().id !== 'ai') aiStop(); if (ta.recording && cur().sub !== 'ai') taStop(); var cc0 = cur(); if (!(cc0.name === 'new' && cc0.id === 'voice') && (vo.state === 'rec' || vo.state === 'pause')) VO.voStop(); closeSheet(); navTo(function () { render(); window.scrollTo(0, 0); }); });
   if (!me) location.hash = '#/login';
   render();
+  // 启动后查一次有没有新版本（安卓）；老板 / 管理员也顺便拿到安装包信息
+  setTimeout(function () { appCheck(false); }, 3000);
   // 上次 App 意外关闭（Android 记录的原因）：提示一次，可复制发给开发者
   if (typeof TMN !== 'undefined' && TMN.lastCrash) TMN.lastCrash().then(function (t) {
     if (!t) return;

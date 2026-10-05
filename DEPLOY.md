@@ -64,6 +64,17 @@ team.example.com {
 | `SETUP_CODE` | 随机 | 首次创建团队的初始化码 |
 | `TRUST_PROXY` | 关 | 设为 1：在反向代理后按 X-Forwarded-For 识别 IP（登录限流用） |
 
+## 安卓 App 的安装与更新（不经过应用商店）
+
+- **发布新版**：在服务器这台 Mac 上，先把 `android/app/build.gradle` 里的 `versionCode` 加 1、`versionName` 改成新版本号，然后运行：
+  ```
+  npm run android -- "这次更新的说明"
+  ```
+  会生成桌面上的「团队协同.apk」，并放到服务器数据目录的 `app/` 里。
+- **同事更新**：同事打开 App 时会提示「发现新版本」，点「下载安装」即可。数据都在服务器上，更新不会丢失。
+- **同事首次安装**：老板在 App「我的 → 给同事安装 App」出示二维码，或直接把 `http://服务器地址:8787/app` 发给同事，用手机浏览器打开后下载。
+- **签名证书**：`android/release.keystore` 和 `android/keystore.properties` 只在这台 Mac 上，**一定要另外备份**。丢了的话，新版本无法覆盖安装旧版本。
+
 ## iOS 推送通知（有苹果开发者账号后）
 
 1. 在 [Apple Developer → Keys](https://developer.apple.com/account/resources/authkeys/list) 新建一把密钥，勾选 **Apple Push Notifications service (APNs)**，下载 `AuthKey_XXXXXXXXXX.p8`（只能下载一次，妥善保存）。

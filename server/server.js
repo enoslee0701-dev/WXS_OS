@@ -139,6 +139,8 @@ const pickR = (r) => { const o = {}; Object.keys(r || {}).forEach(k => { const v
 
 const routes = {
   'GET /api/health': async () => [200, { ok: true, version, setup: !!S }],
+  // 安卓安装包（npm run android 会把新版放到 DATA/app/）：App 启动时查有没有新版本
+  'GET /api/app': async () => [200, { android: androidMeta() }],
   'GET /api/setup': async () => [200, { needsSetup: !S }],
   /* 首次启动：老板创建团队（可选带演示数据），需要服务器日志里的初始化码 */
   'POST /api/setup': async (req, url, b) => {
@@ -414,8 +416,32 @@ async function aiRun(me, kind, fn, system) {
 }
 
 const BIG_BODY = new Set(['POST /api/ai/doc']); // 上传 PDF 给 AI 读，单独放宽请求体上限
-const PUBLIC = new Set(['GET /api/health', 'GET /api/setup', 'POST /api/setup', 'POST /api/login']);
+const PUBLIC = new Set(['GET /api/health', 'GET /api/app', 'GET /api/setup', 'POST /api/setup', 'POST /api/login']);
 
+/* 安卓安装包分发：不上应用商店，由团队服务器提供下载和新版本提示 */
+const APP_DIR = path.join(DATA, 'app'), APK = path.join(APP_DIR, 'teamops.apk'), APK_META = path.join(APP_DIR, 'android.json');
+function androidMeta() {
+  try { if (!fs.existsSync(APK)) return null; const m = JSON.parse(fs.readFileSync(APK_META, 'utf8')); return { versionName: String(m.versionName || ''), versionCode: +m.versionCode || 0, size: fs.statSync(APK).size, at: +m.at || 0, notes: String(m.notes || '').slice(0, 500), url: '/app/android.apk' }; } catch (e) { return null; }
+}
+function sendApk(req, res) {
+  if (!fs.existsSync(APK)) return send(res, 404, { error: '服务器上还没有安卓安装包' });
+  const st = fs.statSync(APK);
+  res.writeHead(200, { 'Content-Type': 'application/vnd.android.package-archive', 'Content-Length': st.size, 'Content-Disposition': "attachment; filename=\"team-ops.apk\"; filename*=UTF-8''" + encodeURIComponent('团队协同.apk'), 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
+  fs.createReadStream(APK).pipe(res);
+}
+// 扫码后在手机浏览器里打开的安装页
+function appPage(res) {
+  const m = androidMeta(), esc = (t) => String(t).replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';');
+  const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>安装团队协同</title>
+<style>body{margin:0;font:16px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#F3F6FB;color:#141B2D}.w{max-width:440px;margin:0 auto;padding:40px 22px}.m{width:84px;height:84px;border-radius:22px;background:linear-gradient(160deg,#2A55D4,#1B347F 55%,#121C3A);color:#fff;font:900 30px/84px "PingFang SC",sans-serif;text-align:center}h1{font-size:26px;margin:22px 0 6px}p{color:#5A6375;margin:0 0 14px}a.b{display:block;text-align:center;background:#141B2D;color:#fff;text-decoration:none;font-weight:700;padding:15px;border-radius:999px;margin:22px 0 10px}.c{background:#fff;border-radius:18px;padding:16px 18px;margin-top:18px;font-size:14.5px}.c b{display:block;margin-bottom:4px}small{color:#8A93A5}</style></head>
+<body><div class="w"><div class="m">协同</div><h1>安装团队协同</h1>
+${m ? `<p>安卓版 ${esc(m.versionName)} · ${(m.size / 1048576).toFixed(1)} MB</p><a class="b" href="/app/android.apk">下载安卓 App</a>
+<div class="c"><b>下载后怎么装？</b>点通知栏里下载好的文件安装。手机提示「禁止安装未知来源应用」时，按提示允许浏览器安装一次即可。装好后打开 App，用老板给你的账号登录。</div>` : '<p>服务器上还没有安卓安装包，请联系老板。</p>'}
+<div class="c"><b>iPhone</b>请向老板索取 TestFlight 邀请，用 TestFlight 安装。</div>
+<p style="margin-top:18px"><small>团队服务器：只在团队内部使用</small></p></div></body></html>`;
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' });
+  res.end(html);
+}
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-File-Name, Range');
@@ -447,6 +473,8 @@ const server = http.createServer(async (req, res) => {
       const [code, out] = await fn(req, url, b, me);
       return send(res, code, out);
     }
+    if (req.method === 'GET' && (url.pathname === '/app' || url.pathname === '/app/')) return appPage(res);
+    if (req.method === 'GET' && url.pathname === '/app/android.apk') return sendApk(req, res);
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
       if (!fs.existsSync(WEB)) return send(res, 404, { error: '请先运行 npm run build' });
       // 同源网页版：告诉前端走服务器模式

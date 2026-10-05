@@ -11,13 +11,14 @@ const FAKE = (opts) => {
   const M = (n, ms) => ({ name: n, methods: ms.map(x => ({ name: x, rtype: 'promise' })).concat([{ name: 'addListener', rtype: 'callback' }, { name: 'removeListener', rtype: 'promise' }, { name: 'removeAllListeners', rtype: 'promise' }]) });
   window.androidBridge = { postMessage() {} };
   window.Capacitor = {
-    PluginHeaders: [M('Preferences', ['get', 'set', 'remove', 'keys']), M('Clipboard', ['write', 'read']), M('App', ['exitApp']), M('StatusBar', ['setStyle']), M('Keyboard', ['setAccessoryBarVisible']), M('SplashScreen', ['hide', 'show']), M('Speech', ['available', 'checkPermissions', 'requestPermissions', 'start', 'stop']), M('PushNotifications', ['checkPermissions', 'requestPermissions', 'register']), M('Haptics', ['impact', 'notification']), M('Diag', ['lastCrash', 'simulate']), M('Filesystem', ['writeFile']), M('Share', ['share'])],
+    PluginHeaders: [M('Preferences', ['get', 'set', 'remove', 'keys']), M('Clipboard', ['write', 'read']), M('App', ['exitApp', 'getInfo']), M('StatusBar', ['setStyle']), M('Keyboard', ['setAccessoryBarVisible']), M('SplashScreen', ['hide', 'show']), M('Speech', ['available', 'checkPermissions', 'requestPermissions', 'start', 'stop']), M('PushNotifications', ['checkPermissions', 'requestPermissions', 'register']), M('Haptics', ['impact', 'notification']), M('Diag', ['lastCrash', 'simulate']), M('Filesystem', ['writeFile']), M('Share', ['share'])],
     nativeCallback(pl, m, a, cb) { const k = pl + ':' + a.eventName; (subs[k] = subs[k] || []).push(cb); return String(++cid); },
     nativePromise(pl, m, a) {
       F.calls.push(pl + '.' + m); F.args[pl + '.' + m] = a;
       if (pl === 'Preferences') { if (m === 'get') return Promise.resolve({ value: null }); if (m === 'keys') return Promise.resolve({ keys: [] }); return Promise.resolve({}); }
       if (pl === 'Speech' && m === 'available') return Promise.resolve({ available: !o.noSpeech });
       if (pl === 'Speech' && m === 'requestPermissions') return Promise.resolve({ speech: 'granted', microphone: 'granted' });
+      if (pl === 'App' && m === 'getInfo') return Promise.resolve({ version: '1.3', build: '4' });
       if (pl === 'Diag' && m === 'lastCrash') return Promise.resolve({ text: o.crash || '' });
       if (pl === 'Filesystem' && m === 'writeFile') return Promise.resolve({ uri: 'file:///cache/' + a.path });
       if (pl === 'PushNotifications' && m === 'checkPermissions') return Promise.resolve({ receive: 'granted' });
@@ -117,6 +118,33 @@ const FAKE = (opts) => {
   ok((await p.evaluate(() => window.__fake.args['Clipboard.write'] && window.__fake.args['Clipboard.write'].string || '')).includes('Xiaomi 13'), '一键复制闪退信息');
   ok(p.errs.length === 0, '无报错 ' + p.errs.join('|'));
   await p.context().close();
+
+  // 8. 安卓 App 更新：团队服务器上有更新的安装包时提示下载；「以后再说」后同一版本不再自动提示
+  { const { spawn } = require('child_process'), fs = require('fs'), os = require('os'), path = require('path');
+    const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-upd-')), PORT = 26000 + Math.floor(Math.random() * 900), SRV = 'http://127.0.0.1:' + PORT;
+    fs.mkdirSync(path.join(DIR, 'app')); fs.writeFileSync(path.join(DIR, 'app', 'teamops.apk'), 'apk'); fs.writeFileSync(path.join(DIR, 'app', 'android.json'), JSON.stringify({ versionName: '1.4', versionCode: 5, notes: '修复录音问题' }));
+    const sv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'c' }, stdio: ['ignore', 'pipe', 'ignore'] });
+    await new Promise(r => sv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }));
+    await fetch(SRV + '/api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '王老板', login: 'boss', password: 'boss123456', code: 'c' }) });
+    p = await mk(); await p.context().route(SRV + '/app/android.apk', r => r.fulfill({ status: 200, contentType: 'text/plain', body: 'apk' }));
+    await p.evaluate((u) => { localStorage.removeItem('tm_user_v3'); localStorage.setItem('tm_server', u); }, SRV); await p.reload(); await p.waitForTimeout(600);
+    await p.fill('form[data-form=srvLogin] input[name=login]', 'boss'); await p.fill('form[data-form=srvLogin] input[name=password]', 'boss123456'); await p.click('form[data-form=srvLogin] button[type=submit]');
+    await p.waitForSelector('.hm-card', { timeout: 10000 });
+    if (await p.locator('#layer .sheet').count()) { await p.click('#layer .sheet footer button[type=button]'); } // 「三步开始」引导
+    await p.waitForSelector('#layer .sheet h2:has-text("发现新版本")', { timeout: 8000 }).catch(() => {});
+    const t = await p.textContent('#layer .sheet').catch(() => '');
+    ok(t.includes('1.4') && t.includes('1.3') && t.includes('修复录音问题'), '提示发现新版本（新旧版本号、更新说明）');
+    await p.click('#layer .sheet footer button[type=button]'); await p.waitForTimeout(200);
+    ok(await p.evaluate(() => localStorage.getItem('tm_upd_skip')) === '5', '点「以后再说」：记住这个版本，不再自动提示');
+    await p.evaluate(() => { location.hash = '#/me'; }); await p.waitForTimeout(300);
+    ok((await p.textContent('[data-do=appUpdate]')).includes('1.3') && (await p.textContent('[data-do=appUpdate]')).includes('有新版本'), '「我的」显示当前版本和「有新版本」');
+    await p.click('[data-do=appShare]'); await p.waitForTimeout(300);
+    ok(await p.locator('#layer .sheet svg').count() === 1 && (await p.textContent('#layer .sheet')).includes(SRV + '/app'), '老板可以出示安装页二维码给同事');
+    await p.click('#layer .sheet footer button[type=submit]'); await p.waitForTimeout(200);
+    await p.click('[data-do=appUpdate]'); await p.waitForSelector('#layer .sheet h2:has-text("发现新版本")', { timeout: 5000 });
+    await Promise.all([p.waitForURL(SRV + '/app/android.apk', { timeout: 5000 }).catch(() => {}), p.click('#layer .sheet footer button[type=submit]')]);
+    ok(p.url() === SRV + '/app/android.apk', '点「下载安装」交给系统浏览器下载安装包：' + p.url());
+    sv.kill(); fs.rmSync(DIR, { recursive: true, force: true }); await p.context().close(); }
 
   console.log(`Android 原生层 E2E 通过 ${pass}，失败 ${fail}`);
   await b.close(); process.exit(fail ? 1 : 0);

@@ -182,6 +182,18 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   ok(raw.enc === 'gzip' && JSON.parse(require('zlib').gunzipSync(raw.body)).state.users.length >= 3, '数据接口 gzip 压缩');
   const raw2 = await new Promise((ok) => require('http').get(B + '/api/state', { headers: { Authorization: 'Bearer ' + boss } }, (r) => { const ch = []; r.on('data', d => ch.push(d)); r.on('end', () => ok({ enc: r.headers['content-encoding'], body: Buffer.concat(ch) })); }));
   ok(!raw2.enc && JSON.parse(raw2.body).state.users.length >= 3, '不支持压缩的客户端拿到原文');
+  // 8.97 安卓安装包分发：没有安装包时不提示；放上安装包后 App 能查到新版本并下载；安装页公开
+  ok((await get('/api/app')).android === null, '还没有安卓安装包：android 为空（不用登录也能查）');
+  ok((await fetch(B + '/app/android.apk')).status === 404, '没有安装包时下载返回 404');
+  fs.mkdirSync(path.join(DIR, 'app'), { recursive: true });
+  fs.writeFileSync(path.join(DIR, 'app', 'teamops.apk'), Buffer.alloc(2048, 7));
+  fs.writeFileSync(path.join(DIR, 'app', 'android.json'), JSON.stringify({ versionName: '1.4', versionCode: 5, at: 1, notes: '修复录音<闪退>' }));
+  { const a = (await get('/api/app')).android;
+    ok(a && a.versionName === '1.4' && a.versionCode === 5 && a.size === 2048 && a.url === '/app/android.apk' && a.notes === '修复录音<闪退>', '查到新版本信息 ' + JSON.stringify(a));
+    const d = await fetch(B + '/app/android.apk'), buf = Buffer.from(await d.arrayBuffer());
+    ok(d.status === 200 && d.headers.get('content-type') === 'application/vnd.android.package-archive' && /attachment/.test(d.headers.get('content-disposition')) && buf.length === 2048, '下载安装包（不用登录）');
+    const pg = await fetch(B + '/app'), html = await pg.text();
+    ok(pg.status === 200 && html.includes('下载安卓 App') && html.includes('1.4') && html.includes('/app/android.apk') && pg.headers.get('x-frame-options') === 'DENY', '安装页显示版本和下载按钮'); }
   // 9. 重启后数据还在
   srv.kill(); await new Promise(z => setTimeout(z, 200)); srv = await start();
   r = await get('/api/state', boss);
