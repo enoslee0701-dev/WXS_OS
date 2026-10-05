@@ -600,5 +600,31 @@ const rm = must(TM.act(s, 'agent', 'system.dueReminders', {}), '发截止提醒'
 ok(s.notifications.some(n => n.userId === tA.ownerId && n.title === '任务明天截止' && n.link === '#/task/' + tA.id) && s.notifications.some(n => n.userId === tB.ownerId && n.title === '任务已逾期'), '提醒执行人：明天截止、已逾期');
 ok(TM.act(s, 'agent', 'system.dueReminders', {}).sent === 0, '同一天不重复提醒');
 
+// ===== 录音 / 视频转写（服务器 whisper 写回） =====
+s = TM.migrate(fresh());
+const vi = must(TM.act(s, O, 'idea.create', { note: '', media: [{ kind: 'video', name: '视频 10月5日.mp4', localId: 'b_vid1' }] }), '只带视频的想法');
+must(TM.act(s, O, 'idea.submit', { id: vi.id, path: 'direct' }), '提交视频想法');
+rej(TM.act(s, O, 'idea.transcript', { id: vi.id, localId: 'b_vid1', status: 'done', text: 'x' }), '老板不能直接写转写结果');
+rej(TM.act(s, 'agent', 'idea.transcript', { id: vi.id, localId: 'b_nope', status: 'done', text: 'x' }), '附件不存在');
+must(TM.act(s, 'agent', 'idea.transcript', { id: vi.id, localId: 'b_vid1', status: 'pending' }), '标记转写中');
+const tvd = s.ideas.find(d => d.id === vi.id);
+ok(tvd.media[0].transcriptStatus === 'pending' && !tvd.media[0].transcript, '转写中：只有状态');
+const tsm0 = TM.latestSummary(s, vi.id, 'analysis');
+const ttr = must(TM.act(s, 'agent', 'idea.transcript', { id: vi.id, localId: 'b_vid1', status: 'done', text: '下周二开同工会，讨论感恩晚会的预算和场地，请林晓整理方案。' }), '写入转写');
+const tsm1 = TM.latestSummary(s, vi.id, 'analysis');
+ok(tvd.media[0].transcript.includes('感恩晚会') && tvd.media[0].transcriptStatus === 'done' && TM.noteOf(tvd).includes('同工会'), '转写写进附件，想法全文包含转写');
+ok(ttr.reanalyzed && tsm1.id !== tsm0.id && JSON.stringify(tsm1.payload).includes('同工会'), '转写后按全文重新生成整理稿');
+ok(s.events.some(e => e.ideaId === vi.id && e.action === 'idea.transcript' && /视频「视频 10月5日.mp4」转写完成/.test(e.text)), '动态里记一条转写完成');
+// 运营者已经手写整理稿：不覆盖
+const vi2 = must(TM.act(s, O, 'idea.create', { note: '录音想法', media: [{ kind: 'audio', name: '录音 0:30', localId: 'b_aud2' }] }), '带录音的想法');
+must(TM.act(s, O, 'idea.submit', { id: vi2.id, path: 'direct' }), '提交');
+must(TM.act(s, OP, 'idea.claim', { id: vi2.id }), '运营者认领');
+const n2 = s.summaries.length; TM.latestSummary(s, vi2.id, 'analysis').authorType = 'human';
+const tr2 = must(TM.act(s, 'agent', 'idea.transcript', { id: vi2.id, localId: 'b_aud2', status: 'done', text: '买两箱打印纸' }), '写入转写');
+ok(!tr2.reanalyzed && s.summaries.length === n2, '人工改过的整理稿不被转写覆盖');
+// 看不到原始录音的人也看不到转写
+const hid = s.ideas.find(d => d.id === vi2.id).media[0]; const vv = TM.viewFor(s, DV).ideas.find(d => d.id === vi2.id);
+ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV, s.ideas.find(d => d.id === vi2.id), hid), '看不到附件的人拿不到转写');
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

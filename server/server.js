@@ -10,6 +10,7 @@ const http = require('http'), fs = require('fs'), path = require('path'), crypto
 const { DatabaseSync } = require('node:sqlite');
 const TM = require('../engine.js');
 const AI = require('./ai.js');
+const TR = require('./transcribe.js');
 const PUSH = require('./push.js');
 
 const PORT = +process.env.PORT || 8787, HOST = process.env.HOST || '0.0.0.0';
@@ -30,6 +31,7 @@ CREATE TABLE IF NOT EXISTS files(id TEXT PRIMARY KEY, uid TEXT, name TEXT, type 
 CREATE TABLE IF NOT EXISTS ai_log(at INTEGER, uid TEXT, kind TEXT, in_tok INTEGER, out_tok INTEGER, ok INTEGER);
 CREATE TABLE IF NOT EXISTS devices(token TEXT PRIMARY KEY, uid TEXT, platform TEXT, created INTEGER);
 CREATE TABLE IF NOT EXISTS ai_jobs(summary_id TEXT PRIMARY KEY, at INTEGER);
+CREATE TABLE IF NOT EXISTS transcripts(file_id TEXT PRIMARY KEY, status TEXT, at INTEGER);
 CREATE TABLE IF NOT EXISTS ops(seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, uid TEXT, action TEXT, payload TEXT, ok INTEGER, error TEXT);`);
 if (!db.prepare('PRAGMA table_info(sessions)').all().some(c => c.name === 'ft')) db.exec('ALTER TABLE sessions ADD COLUMN ft TEXT');
 if (!db.prepare('PRAGMA table_info(devices)').all().some(c => c.name === 'session')) db.exec('ALTER TABLE devices ADD COLUMN session TEXT');
@@ -194,7 +196,7 @@ const routes = {
     try { r = TM.act(S, me.uid, name, payload); }
     catch (e) { S = JSON.parse(snap); console.error('act 异常', name, e); r = { ok: false, error: '服务器处理出错，已回滚' }; }
     q('INSERT INTO ops(at,uid,action,payload,ok,error) VALUES(?,?,?,?,?,?)').run(Date.now(), me.uid, name, JSON.stringify(payload).slice(0, 20000), r.ok ? 1 : 0, r.ok ? null : String(r.error || '').slice(0, 200));
-    if (r.ok) { changed(nNotif); autoAnalyze(S.summaries.slice(nSum)); }
+    if (r.ok) { changed(nNotif); autoAnalyze(S.summaries.slice(nSum)); if (/^idea\.(create|attach|update|submit)$/.test(name)) setTimeout(trScan, 50); }
     return [200, { ok: !!r.ok, error: r.ok ? undefined : r.error, r: pickR(r), ...stateFor(me.uid) }];
   },
   'POST /api/password': async (req, url, b, me) => {
@@ -229,7 +231,7 @@ const routes = {
   },
   'POST /api/devices/remove': async (req, url, b, me) => { q('DELETE FROM devices WHERE token=? AND uid=?').run(String(b.token || '').toLowerCase(), me.uid); return [200, { ok: true }]; },
   /* 真实 AI：没配置密钥或没有权限时 enabled=false，客户端用规则模拟 */
-  'GET /api/ai/status': async (req, url, b, me) => [200, { enabled: AI.enabled() && AI.allowed(S, me.uid), configured: AI.enabled(), model: AI.MODEL }],
+  'GET /api/ai/status': async (req, url, b, me) => [200, { enabled: AI.enabled() && AI.allowed(S, me.uid), configured: AI.enabled(), model: AI.MODEL, transcribe: TR.enabled() }],
   'POST /api/ai/ask': async (req, url, b, me) => aiRun(me, 'ask', () => AI.ask(S, me.uid, String(b.q || ''), b.history)),
   'POST /api/ai/kb': async (req, url, b, me) => {
     if (!TM.kbCan(S, me.uid)) return [403, { error: '只有老板或管理员可以整理知识库' }];
@@ -361,6 +363,7 @@ function putFile(req, res, id, me) {
       let name = ''; try { name = decodeURIComponent(req.headers['x-file-name'] || ''); } catch (e) {}
       q(`INSERT INTO files(id,uid,name,type,size,created) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,type=excluded.type,size=excluded.size`).run(id, me.uid, name.slice(0, 200), safeType(req.headers['content-type']), n, Date.now());
       send(res, 200, { id, size: n });
+      setTimeout(trScan, 50); // 录音 / 视频传上来了：看看要不要转写
     });
   });
   out.on('error', () => abort(500, '保存文件失败'));
@@ -501,6 +504,40 @@ const server = http.createServer(async (req, res) => {
 });
 process.on('unhandledRejection', (e) => console.error('未处理的异步错误（已忽略，服务继续运行）', e));
 /* 重启后补做：只补「发起过、但因为重启没做完」的后台任务（记录在 ai_jobs 里），不会去动其他规则版内容 */
+/* 录音 / 视频转文字（server/transcribe.js，本机 whisper 离线转写）：想法里的音视频附件上传到服务器后自动转写，
+   写回想法（idea.transcript），整理稿按「原文 + 转写」重新生成。转过或失败的记在 transcripts 表，重启后不重做 */
+const trQueued = new Set();
+// 转写提示：团队成员名字、正在做的项目、常用词，能明显减少同音错字（例如「感恩」被听成「赶恩」）
+const TR_WORDS = '同工、同工会、感恩、感恩节、事工、宣教、福音、灵修、团契、教会、门徒、祷告、敬拜、奉献、预算、方案、项目、活动、场地、海报、报名、复盘';
+function trPrompt() {
+  const works = S.workItems.filter(w => w.status !== 'done').slice(-12).map(w => w.title).filter(Boolean).join('、');
+  return '以下是团队工作想法和会议的普通话录音，用简体中文和中文标点。团队成员：' + S.users.map(u => u.name).join('、') + '。' + (works ? '正在做的项目：' + works + '。' : '') + '常用词：' + TR_WORDS + '。';
+}
+function trScan() {
+  if (!S || !TR.enabled()) return;
+  S.ideas.forEach(d => {
+    if (d.deleted) return;
+    (d.media || []).forEach(m => {
+      if (!(m.kind === 'audio' || m.kind === 'video') || !m.localId || m.transcriptStatus === 'done' || m.transcriptStatus === 'failed' || trQueued.has(m.localId)) return;
+      if (!FILE_ID.test(m.localId) || !fs.existsSync(path.join(FILES, m.localId))) return; // 文件还没传上来
+      const row = q('SELECT status FROM transcripts WHERE file_id=?').get(m.localId); if (row && row.status !== 'queued') return;
+      trQueued.add(m.localId); q('INSERT OR REPLACE INTO transcripts VALUES(?,?,?)').run(m.localId, 'queued', Date.now());
+      trWrite({ id: d.id, localId: m.localId, status: 'pending' });
+      TR.transcribe(path.join(FILES, m.localId), trPrompt()).then(text => {
+        trQueued.delete(m.localId); q('INSERT OR REPLACE INTO transcripts VALUES(?,?,?)').run(m.localId, 'done', Date.now());
+        const nSum = S.summaries.length; trWrite({ id: d.id, localId: m.localId, status: 'done', text: text || '' });
+        autoAnalyze(S.summaries.slice(nSum));
+      }).catch(e => {
+        trQueued.delete(m.localId); q('INSERT OR REPLACE INTO transcripts VALUES(?,?,?)').run(m.localId, 'failed', Date.now());
+        console.error('转写失败', m.localId, e.message); trWrite({ id: d.id, localId: m.localId, status: 'failed' });
+      });
+    });
+  });
+}
+function trWrite(p) {
+  if (!S) return; const snap = JSON.stringify(S), n0 = S.notifications.length;
+  try { const r = TM.act(S, 'agent', 'idea.transcript', p); if (r.ok) changed(n0); } catch (e) { S = JSON.parse(snap); console.error('写回转写出错，已回滚', e); }
+}
 function sweepAi() {
   if (!S) return; const ids = new Set(q('SELECT summary_id FROM ai_jobs WHERE at > ?').all(Date.now() - 2 * 864e5).map(r => r.summary_id)); q('DELETE FROM ai_jobs').run();
   autoAnalyze(S.summaries.filter(x => ids.has(x.id) && x.payload && x.payload.simulated && TM.latestSummary(S, x.ideaId, x.kind) === x));
@@ -530,7 +567,8 @@ function scheduleBrief() {
 /* 每天清理一次（启动 1 分钟后先跑一次） */
 function housekeep() { if (!S) return; try { const r = TM.act(S, 'agent', 'system.housekeep', {}); if (r.ok && r.removed) { changed(); console.log('日常清理：删掉 ' + r.removed + ' 条旧通知'); } } catch (e) { console.error('日常清理出错', e); } }
 if (require.main === module) server.listen(PORT, HOST, () => {
-  setTimeout(sweepAi, 3000);
+  setTimeout(sweepAi, 3000); setTimeout(trScan, 4000);
+  console.log(TR.enabled() ? '语音转写：已启用（' + TR.status().model + '）' : '语音转写：未安装（运行 scripts/whisper-mac.sh 安装后，录音和视频会自动转成文字）');
   setTimeout(housekeep, 60e3).unref(); setInterval(housekeep, 864e5).unref();
   scheduleBrief(); if (process.env.BRIEF_NOW === '1') setTimeout(dailyBrief, 800);
   console.log(`团队协同服务器已启动：http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  数据目录：${DATA}`);

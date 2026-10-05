@@ -64,6 +64,15 @@ team.example.com {
 | `SETUP_CODE` | 随机 | 首次创建团队的初始化码 |
 | `TRUST_PROXY` | 关 | 设为 1：在反向代理后按 X-Forwarded-For 识别 IP（登录限流用） |
 
+## 录音 / 视频自动转文字（可选，推荐）
+
+在服务器这台 Mac 上运行一次：
+```
+scripts/whisper-mac.sh
+scripts/server-mac.sh install   # 重启服务器
+```
+之后同事上传的录音和视频会在这台电脑上自动转成文字（不发给任何第三方），再用来生成整理稿。需要 ffmpeg；模型约 550MB。
+
 ## 安卓 App 的安装与更新（不经过应用商店）
 
 - **发布新版**：在服务器这台 Mac 上，先把 `android/app/build.gradle` 里的 `versionCode` 加 1、`versionName` 改成新版本号，然后运行：

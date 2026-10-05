@@ -141,7 +141,7 @@ async function analyzeIdea(S, ideaId) {
 公司方向：${S.settings.direction || '（未填写）'}` + kbBlock(view, owner, S), cache_control: { type: 'ephemeral' } }
   ];
   const media = (d.media || []).map(m => m.name).filter(Boolean).join('、');
-  const msg = `想法标题：${d.title || '（无）'}\n发起人：${TM.name(S, d.creatorId)}\n标签：${(d.tags || []).join('、') || '无'}\n附件：${media || '无'}\n原文：\n${String(d.note || '').slice(0, 8000)}`;
+  const msg = `想法标题：${d.title || '（无）'}\n发起人：${TM.name(S, d.creatorId)}\n标签：${(d.tags || []).join('、') || '无'}\n附件：${media || '无'}\n原文：\n${String(d.note || '').slice(0, 8000)}${(d.media || []).filter(m => m.transcript).map(m => `\n\n【${m.kind === 'video' ? '视频' : '录音'}「${m.name}」的转写（机器转写，可能有错别字）】\n${m.transcript.slice(0, 8000)}`).join('')}`;
   const r = await call({ system, messages: [{ role: 'user', content: msg }], schema: ANALYSIS_SCHEMA, effort: 'medium', maxTokens: 8000 });
   let o; try { o = JSON.parse(r.text); } catch (e) { throw { status: 502, error: 'AI 返回的格式不对' }; }
   return { payload: o, usage: r.usage };

@@ -27,8 +27,8 @@
   TM.migrate(S);
   var PHOTOS = { u_owner: '__ENOS__' };
   /* 真实 AI：服务器模式下老板 / 管理员可用（服务器配置了密钥时）；否则一律规则模拟 */
-  var AI_ON = false;
-  if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.aiStatus().then(function (r) { AI_ON = !!(r && r.enabled); if (AI_ON && aiS && aiS.open) renderAI(); });
+  var AI_ON = false; var TR_ON = false; // 团队服务器装了语音转写（录音 / 视频自动转文字）
+  if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.aiStatus().then(function (r) { AI_ON = !!(r && r.enabled); TR_ON = !!(r && r.transcribe); if (AI_ON && aiS && aiS.open) renderAI(); });
   /* 头像：裁成正方形、压到 256 像素再上传（服务器模式）；演示模式只存在本机 */
   function avatarPick(f) {
     if (!/^image\//.test(f.type)) return toast('请选一张图片', true);
@@ -52,6 +52,16 @@
       return fetch(u).then(function (r) { return r.blob(); }).then(function (b) { return TMN.shareFile(b, name); }).catch(function () { toast('这个文件打不开', true); });
     }
     openLink(u);
+  }
+  // 录音 / 视频的转写（团队服务器上的 whisper 转好后写回）
+  function trBlock(m) {
+    if (!(m.kind === 'audio' || m.kind === 'video')) return '';
+    var what = m.kind === 'video' ? '视频' : '录音';
+    if (m.transcriptStatus === 'pending') return '<div class="ix2-tr wait"><i></i>正在把' + what + '里的话转成文字…</div>';
+    if (m.transcriptStatus === 'failed') return '<div class="ix2-tr bad">这段' + what + '没能转成文字</div>';
+    if (m.transcriptStatus === 'done' && !m.transcript) return '<div class="ix2-tr bad">这段' + what + '里没有识别到说话</div>';
+    if (m.transcript) return '<details class="ix2-tr"><summary>' + what + '转成的文字 · ' + m.transcript.length + ' 字</summary><p>' + esc(m.transcript) + '</p></details>';
+    return '';
   }
   function blobUrl(id) { return id ? (blobs[id] || (typeof TMS !== 'undefined' && TMS.loggedIn() ? TMS.fileUrl(id) : null)) : null; }
   try { me = localStorage.getItem(KU); } catch (e) {}
@@ -195,9 +205,9 @@
     [/演示版只有 App 内通知。/g, '目前只有 App 内通知。'],
     [/演示版还没接入云盘，正式版会支持 Google Drive、OneDrive 等/g, '暂不支持直接连接云盘，可以贴分享链接'],
     [/演示版暂不支持识别图片内容，正式版接入后可识别白板和纸质记录/g, '暂不支持识别图片内容'],
-    [/演示版不会上传视频，也无法读取视频里的语音。正式版会提取音轨并自动转写。/g, '视频会作为附件上传，暂时无法读取视频里的语音。'],
-    [/演示版无法读取视频里的语音。正式版会提取音轨并自动转写。/g, '暂时无法读取视频里的语音。'],
-    [/演示版不会上传，也不会转写。正式版接入后会断点续传并自动转写。/g, '录音会作为附件上传到团队服务器。'],
+    [/演示版不会上传视频，也无法读取视频里的语音。正式版会提取音轨并自动转写。/g, function () { return TR_ON ? '视频会上传到团队服务器，服务器自动把里面的话转成文字，再交给 AI 整理。' : '视频会作为附件上传，暂时无法读取视频里的语音。'; }],
+    [/演示版无法读取视频里的语音。正式版会提取音轨并自动转写。/g, function () { return TR_ON ? '视频里的话会在上传后由服务器自动转成文字。' : '暂时无法读取视频里的语音。'; }],
+    [/演示版不会上传，也不会转写。正式版接入后会断点续传并自动转写。/g, function () { return TR_ON ? '录音会上传到团队服务器，并自动转成文字。' : '录音会作为附件上传到团队服务器。'; }],
     [/（演示版不上传）。?/g, ''], [/演示版不会上传。/g, '会上传到团队服务器。'], [/演示版不上传/g, '会上传到团队服务器'],
     [/演示版没有上传，这个文件只在添加它的设备上、刷新前能打开/g, '这个文件还没上传完，或者已被删除'],
     [/演示版只能读取/g, '目前只能读取'],
@@ -2176,7 +2186,7 @@
       return '<div class="ix-file ix2-file' + (m.hidden ? ' off' : '') + '"><button class="ix2-fo" data-do="ixOpen" data-i="' + i + '"><span class="ix-fi ' + k[0] + '">' + (k[1] === 'link' ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>' : ai2(k[1], 1.7)) + '</span><span class="ix-ft"><b>' + esc(m.name) + '</b><small>' + esc(meta) + (m.kind !== 'link' && !b ? ' · 本机未缓存' : '') + '</small>' + (orig || m.hidden ? '<span class="ix2-fl">' + (orig ? '<em>记录时上传</em>' : '') + (m.hidden ? '<em class="h">不呈现</em>' : '') + '</span>' : '') + '</span></button>' +
         (canShow ? '<button class="ix2-eye' + (m.hidden ? '' : ' on') + '" data-do="ixShow" data-i="' + i + '" role="switch" aria-checked="' + !m.hidden + '" aria-label="' + (m.hidden ? '点击呈现' : '点击不呈现') + ' ' + esc(m.name) + '"><i></i><span>' + (m.hidden ? '不呈现' : '呈现') + '</span></button>' : '') +
         (canDel ? '<button class="ix2-del" data-do="ixDetach" data-i="' + i + '" aria-label="删除 ' + esc(m.name) + '">×</button>' : '') +
-        (b && m.kind === 'audio' ? '<audio controls src="' + b + '"></audio>' : b && m.kind === 'video' ? '<video controls playsinline src="' + b + '"></video>' : '') + '</div>';
+        (b && m.kind === 'audio' ? '<audio controls src="' + b + '"></audio>' : b && m.kind === 'video' ? '<video controls playsinline src="' + b + '"></video>' : '') + trBlock(m) + '</div>';
     }).join('');
     var wk = TM.ideaLocked(d) && S.workItems.find(function (w) { return w.ideaId === d.id && TM.canViewWork(S, me, w); });
     return h + (TM.ideaLocked(d) ? '<p class="ix2-note lock">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>' + '已形成项目，附件已锁定。' + (wk ? '新资料请加到<a href="#/work/' + wk.id + '">项目</a>里。' : '') + '</p>' : '<p class="ix2-note">' + (SRV ? '附件会上传到团队服务器。' : '演示版：附件只保存在这台设备，刷新后只保留文件名。') + '</p>') + '</section>';

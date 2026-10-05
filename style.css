@@ -3047,3 +3047,11 @@ html[data-nav=fade]::view-transition-new(root){animation:navFadeIn .24s cubic-be
 @keyframes navInL2{from{transform:translateX(-24%);opacity:0}}
 /* 弹窗收起动画层（closeSheet） */
 #layer-out{pointer-events:none}
+
+/* 录音 / 视频转写（想法详情的附件下方） */
+.ix2-tr{grid-column:1/-1;margin:8px 0 2px;font-size:13.5px;color:var(--ink2);background:var(--sunken);border-radius:12px;padding:9px 12px}
+.ix2-tr summary{cursor:pointer;font-weight:600;color:var(--ink)}
+.ix2-tr p{margin:8px 0 0;white-space:pre-wrap;line-height:1.65}
+.ix2-tr.wait{display:flex;align-items:center;gap:8px}
+.ix2-tr.wait i{width:8px;height:8px;border-radius:50%;background:#3B76F0;animation:blink 1.2s infinite}
+.ix2-tr.bad{color:#9A5B00;background:#FFF6E8}

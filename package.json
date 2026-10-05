@@ -6,7 +6,7 @@
   "scripts": {
     "build": "node build.js",
     "dev": "node scripts/dev.js",
-    "test": "node test.js && node test_sync.js && node test_fuzz.js 3000 7 && node test_fuzz.js 3000 2026 && node test_server.js && node test_ai.js && node test_push.js",
+    "test": "node test.js && node test_sync.js && node test_fuzz.js 3000 7 && node test_fuzz.js 3000 2026 && node test_server.js && node test_ai.js && node test_push.js && node test_transcribe.js",
     "e2e": "node scripts/e2e.js",
     "check": "npm run build && npm test && npm run e2e",
     "setup": "npx playwright install chromium",

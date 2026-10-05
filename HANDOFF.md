@@ -5,7 +5,7 @@
 **现在能做什么**
 - iOS App 能在模拟器运行；真机发布版本能编译，只差签名。
 - 团队服务器：在办公室 Mac 上运行 `scripts/server-mac.sh install`，同事在同一个 Wi-Fi 下就能用。
-- **Android APK**（2026-10-05，当前 1.6，也放在本机服务器上：手机浏览器打开 http://192.168.1.108:8787/app 下载）：`npm run android` 生成并复制到桌面「团队协同.apk」，可直接装到安卓手机（需允许「安装未知来源应用」）；同一签名，新版可直接覆盖安装。
+- **Android APK**（2026-10-05，当前 1.7，也放在本机服务器上：手机浏览器打开 http://192.168.1.108:8787/app 下载）：`npm run android` 生成并复制到桌面「团队协同.apk」，可直接装到安卓手机（需允许「安装未知来源应用」）；同一签名，新版可直接覆盖安装。
 - 按角色区分的界面、老板分派账号（扫码加入）、实时同步、离线补发、附件、推送（代码已就绪）、AI（代码已就绪）、早报和截止提醒都已完成并测试。
 
 **需要你做 / 决定的事**
@@ -169,6 +169,14 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
 59. **语音转文字在用户手机上不可用**（1.5 上提示「已暂停转写」）：国产手机默认识别服务常不让第三方用 / 连不上 / 不认 zh-CN。SpeechPlugin.java 改为**自动换识别器**：上次能用的 → 默认服务 → 离线识别（API 31+）→ 手机上其他 RecognitionService，每个再试一种中文写法（zh-CN / cmn-Hans-CN）；出过结果的记在 SharedPreferences 下次直接用。模拟器上把默认服务改成不存在的组件实测：自动换到离线识别，语音页正常。
     - 诊断：`Speech.diagnose()`；出错事件带 code / tried / service / device；提示里显示「错误代码 X」；登录了团队服务器时自动 `POST /api/diag` 记到 `DATA/diag.log`（每人每小时 20 条上限；闪退记录也会发）。**排查用户真机问题先看 server/data/diag.log**。
     - 安卓 1.6（versionCode 7）。
+
+60. **录音 / 视频自动转文字**（用户反馈：放进视频后 AI 没识别文字）：Claude 不能听音频，所以在服务器这台 Mac 上离线运行 **whisper.cpp**（`scripts/whisper-mac.sh` 安装到 ~/Library/TeamOps，模型 large-v3-turbo q5，约 550MB，M4 Pro 上几秒内完成）。
+    - server/transcribe.js：ffmpeg 取音轨 → whisper-cli（中文、提示词含团队成员 / 进行中项目 / 常用词）→ 中文标点整理；一次只转一个；`TRANSCRIBE=0` 关闭；WHISPER_BIN / WHISPER_MODEL / FFMPEG 可配。
+    - 服务器：附件上传完成或想法同步上来后扫描未转写的音视频（`trScan`），状态记在 transcripts 表（重启不重做）；写回用系统动作 `idea.transcript`（pending / done / failed），整理稿是系统生成且想法没推进时按「原文 + 转写」重新生成；启用 Claude 时再交给 Claude（ai.js 提示里带上转写）。
+    - App：想法详情的录音 / 视频下方显示「正在转成文字… / 转成的文字（可展开）/ 没识别到说话 / 失败」；服务器开了转写时提示语改成「会自动转成文字」（`/api/ai/status` 返回 transcribe）。
+    - 测试：test.js 转写规则（434）、test_transcribe.js（假 ffmpeg / whisper 走完整链路，11）、e2e_tr（7）；真 whisper 实测：上传中文视频 1.5 秒转好并重新生成整理稿。
+    - **AI 整理稿仍是规则模拟版，要真正读懂内容需要 ANTHROPIC_API_KEY。**
+    - 安卓 1.7（versionCode 8）。
 
 测试现状：业务 418 + 同步一致性 254 次操作 + 随机操作 2×3000 + 服务器 90 + AI 代理 50 + 推送 19；端到端 25 组；界面爬虫另跑。提交前看 `npm run check` 的退出码。
 

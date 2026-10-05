@@ -104,8 +104,13 @@ var TM = (function () {
   /* ---------- 模拟 AI（演示，规则生成，非真实大模型） ---------- */
   function has(t, words) { return words.some(function (w) { return t.indexOf(w) >= 0; }); }
   /* 规则模拟：把原文整理成「核心概述 / 目标 / 当前问题 / 建议方向」 */
+  // 想法的全部文字：原文 + 录音 / 视频的转写（服务器用 whisper 转写后写入 media[].transcript）
+  function noteOf(d) {
+    var tr = (d.media || []).filter(function (m) { return m.transcript; }).map(function (m) { return m.transcript; });
+    return [txt(d.note)].concat(tr).filter(Boolean).join('\n');
+  }
   function deriveAnalysis(d) {
-    var note = txt(d.note), title = d.title || note.slice(0, 18) || '这件事', t = title + ' ' + note;
+    var note = txt(noteOf(d)), title = d.title || note.slice(0, 18) || '这件事', t = title + ' ' + note;
     var hire = has(t, ['招聘', '招人', '招两', '招一', '扩编', '人手', '人力', '团队扩']);
     var cat = has(t, ['网线', '采购', '场地', '报销', '办公', '打印', '维修', '投影', '设备', '会议室', '饮水', '墨盒']) ? 'admin' : has(t, ['App', 'app', '产品', '原型', '功能', '系统', '小程序', '网站', '官网', '界面']) ? 'product' : 'other';
     var sents = note.split(/[。！？!?\n；;]/).map(function (x) { return x.replace(/^(?:【[^】]*】|\d+\s*[.、．]\s*)+/, '').trim(); }).filter(function (x) { return x.length > 3; });
@@ -132,7 +137,7 @@ var TM = (function () {
   var FILLER = /^(?:我觉得|觉得|我想|我们|我|大家|咱们|最近|可能|需要|想要|想|希望|考虑|打算|准备好|应该|要|先|再|还是|就|也|能不能|可不可以|是否|一下|一个)+/;
   var ACT = /招|扩编|开发|做|建|搭建|换|改|更新|升级|采购|买|准备|举办|办|订|预订|上线|发布|推出|培训|整理|优化|设立|成立|组织|装|安装|修|维修|制定|规划|策划|调整|录|拍|写|设计|对接|申请|报名|开通/;
   function aiTitle(d) {
-    var raw = String((d && d.note) || '').replace(/【[^】]*】[。.]?/g, ' ').replace(/(^|\n)\s*(?:\d+\s*[.、．)）]\s*|[·•-]\s*)+/g, '$1');
+    var raw = String(d ? noteOf(d) : '').replace(/【[^】]*】[。.]?/g, ' ').replace(/(^|\n)\s*(?:\d+\s*[.、．)）]\s*|[·•-]\s*)+/g, '$1');
     if (!raw.trim()) return (d && d.media && d.media.length) ? (d.media[0].kind === 'audio' ? '语音想法（待整理）' : d.media[0].kind === 'video' ? '视频想法（待整理）' : '文件想法（待整理）') : '未命名想法';
     var t = raw.replace(/\s+/g, ' ');
     var when = (t.match(/明年|今年年底|年底|下个月|下周|本月|这个月|(\d{1,2})\s*月(?:份)?/) || [''])[0].replace(/\s+/g, '');
@@ -268,7 +273,7 @@ var TM = (function () {
     return r;
   }
   function mockAnalysis(s, d) {
-    var t = (d.title || '') + ' ' + (d.note || '');
+    var t = (d.title || '') + ' ' + noteOf(d);
     var cat = has(t, ['网线', '网速', '采购', '场地', '报销', '办公', '打印', '订', '搬', '装修', '物资', '年会', '证件', '投影', '坏了', '维修', '饮水', '墨盒', '签到', '会议室', '设备', '换一']) ? 'admin'
       : has(t, ['App', 'app', '产品', '原型', '功能', '开发', '系统', '小程序', '灵修', '网站', '官网', '界面']) ? 'product' : 'other';
     var flags = [];
@@ -1015,6 +1020,22 @@ var TM = (function () {
   }
   /* 真实 AI 整理稿：只有服务器以系统身份（agent）能写入；最新一版已经是人工写的就不覆盖 */
   var AI_CAT = ['admin', 'product', 'other'], AI_FLAGS = ['strategy_change', 'over_budget', 'personnel', 'major_release'], AI_ROUTE = ['operator_direct', 'to_lead', 'to_owner'];
+  /* 录音 / 视频转写（系统身份，由服务器调用）：status pending → done / failed。转写完成后，如果整理稿还是系统生成的、
+     想法还没往前推进，就按「原文 + 转写」重新生成整理稿（服务器启用 AI 时会再交给 Claude） */
+  A['idea.transcript'] = function (s, uid, p) {
+    need(uid === 'agent', '只有系统可以写入转写结果');
+    var d = s.ideas.find(function (x) { return x.id === p.id; }); need(d && !d.deleted, '想法不存在');
+    var m = (d.media || []).find(function (x) { return x.localId && x.localId === p.localId; }); need(m, '附件不存在');
+    need(['pending', 'done', 'failed'].indexOf(p.status) >= 0, '状态不对');
+    m.transcriptStatus = p.status;
+    if (p.status !== 'done') return {};
+    var t = txt(p.text).slice(0, 20000); m.transcript = t; m.transcriptAt = now(s);
+    ev(s, { ideaId: d.id, actor: 'agent', action: 'idea.transcript', text: (m.kind === 'video' ? '视频' : '录音') + '「' + m.name + '」转写完成（' + t.length + ' 字）' });
+    var sm = latestSummary(s, d.id, 'analysis');
+    var fresh = d.status === 'triage' && (!sm || (sm.authorType === 'agent' && sm.payload && sm.payload.simulated)) && !s.workItems.some(function (w) { return w.ideaId === d.id; });
+    if (t && fresh && d.submittedAt) { addSummary(s, d, 'analysis', mockAnalysis(s, d), 'agent'); d.aiStatus = 'ready'; return { reanalyzed: true }; }
+    return {};
+  };
   A['idea.aiResult'] = function (s, uid, p) {
     need(uid === 'agent', '只有系统可以写入 AI 整理结果');
     var d = s.ideas.find(function (x) { return x.id === p.id; }); need(d && !d.deleted, '想法不存在');
@@ -1272,7 +1293,7 @@ var TM = (function () {
   return {
     L: L, STAGES: STAGES, TONE: TONE, DAY: DAY, act: act, seed: seed, user: user, name: name, hasRole: hasRole, canInitiate: canInitiate, usersWith: usersWith,
     primaryRole: primaryRole, followUsers: followUsers, canFollow: canFollow, leadUsers: leadUsers, briefStats: briefStats, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
-    latestSummary: latestSummary, deriveAnalysis: deriveAnalysis, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, migrate: migrate, viewFor: viewFor, blank: blank, canCreateProject: canCreateProject, canAssign: canAssign, caps: caps, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
+    latestSummary: latestSummary, deriveAnalysis: deriveAnalysis, noteOf: noteOf, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, migrate: migrate, viewFor: viewFor, blank: blank, canCreateProject: canCreateProject, canAssign: canAssign, caps: caps, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
     nextForTask: nextForTask, PTYPE: PTYPE, GROUPS: GROUPS, seedTodos: seedTodos, ensureTodos: ensureTodos, nextForIdea: nextForIdea, ideaProgress: ideaProgress, workProgress: workProgress, TT: TT
   };
 })();
