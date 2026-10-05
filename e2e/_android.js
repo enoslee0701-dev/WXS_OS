@@ -10,4 +10,15 @@ async function restartApp(d) {
   }
   throw new Error('找不到 App 的 WebView（App 是否是调试版？）');
 }
-module.exports = { PKG, restartApp };
+// 页面自己刷新后（例如登录后），旧版 WebView 上原来的页面对象会失效：重新找到当前页面，并等到满足条件
+async function currentPage(d, until, timeout) {
+  const end = Date.now() + (timeout || 20000);
+  while (Date.now() < end) {
+    const pid = String(await d.shell(`pidof ${PKG}`)).trim();
+    const w = d.webViews().find(x => x.pkg() === PKG && String(x.pid()) === pid);
+    if (w) { try { const p = await w.page(); if (await p.evaluate(until || (() => !!window.__tm))) return p; } catch (e) {} }
+    await new Promise(r => setTimeout(r, 400));
+  }
+  throw new Error('等不到页面就绪');
+}
+module.exports = { PKG, restartApp, currentPage };

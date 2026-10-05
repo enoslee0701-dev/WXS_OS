@@ -4,7 +4,7 @@
 // 用法：node e2e/device_android_flow.js
 const { execSync, spawn } = require('child_process'), path = require('path'), fs = require('fs'), os = require('os');
 const { _android } = require('playwright');
-const { restartApp } = require('./_android');
+const { restartApp, currentPage } = require('./_android');
 const ADB = path.join(process.env.ANDROID_HOME || path.join(process.env.HOME, 'Library/Android/sdk'), 'platform-tools/adb');
 const adb = (c) => { try { return execSync(`"${ADB}" ${c}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { return ''; } };
 const PKG = 'com.teamops.app', PORT = 28000 + Math.floor(Math.random() * 1000), DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-dev-'));
@@ -32,7 +32,8 @@ const api = async (method, p, body, token) => (await fetch(API + p, { method, he
   await p.fill('form[data-form=srvSetup] input[name=code]', '135790'); await p.fill('form[data-form=srvSetup] input[name=name]', '王老板');
   await p.fill('form[data-form=srvSetup] input[name=login]', 'boss'); await p.fill('form[data-form=srvSetup] input[name=password]', 'boss123456');
   await tap('form[data-form=srvSetup] button[type=submit]');
-  await p.waitForSelector('.hm-card', { timeout: 15000 }); await p.waitForTimeout(800);
+  // 建好团队后页面会刷新：重新拿当前页面
+  p = await currentPage(d, () => !!document.querySelector('.hm-card'), 20000); p.on('pageerror', e => errs.push(e.message)); await p.waitForTimeout(800);
   if (await p.locator('#layer .sheet').count()) { await tap('#layer .sheet footer button[type=button]'); await p.waitForTimeout(300); } // 「三步开始」引导：以后再说
   ok(await p.evaluate(() => TMS.loggedIn() && window.__tm.S.users[0].name === '王老板'), '建好团队并以老板身份登录');
   const tok = (await api('POST', '/api/login', { login: 'boss', password: 'boss123456' })).token;
@@ -66,9 +67,8 @@ const api = async (method, p, body, token) => (await fetch(API + p, { method, he
   // 7. 退出登录
   await p.evaluate(() => { location.hash = '#/me'; }); await p.waitForTimeout(500);
   await tap('[data-do=srvLogout]'); await p.waitForTimeout(400); await tap('.sheet footer button[type=submit]');
-  await p.waitForSelector('form[data-form=srvLogin]', { timeout: 15000 }).catch(() => {});
-  // 退出时会重新加载页面（先等原生备份写完），要重新连上页面
-  await p.waitForTimeout(3000);
+  // 退出时会重新加载页面（先等原生备份写完）：重新拿当前页面
+  p = await currentPage(d, () => !!document.querySelector('form[data-form=srvLogin]'), 20000);
   ok(await p.evaluate(() => !TMS.loggedIn() && !!document.querySelector('form[data-form=srvLogin]')), '退出登录回到登录页');
   ok(!adb('logcat -d -b crash').trim(), '没有崩溃日志');
   ok(errs.length === 0, '无报错 ' + errs.join(' | '));
