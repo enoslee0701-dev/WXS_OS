@@ -34,7 +34,7 @@ const waitFor = async (k, n, ms) => { for (let t = 0; t < ms; t += 250) { if ((g
 col.listen(0, '127.0.0.1', async () => {
   try {
     const cport = col.address().port;
-    srv = spawn(process.execPath, [path.join(ROOT, 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'c' }, stdio: ['ignore', 'pipe', 'inherit'] });
+    srv = spawn(process.execPath, [path.join(ROOT, 'server', 'server.js')], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'c' }, stdio: ['ignore', 'pipe', 'inherit'] });
     await new Promise(r => srv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }));
     const tok = (await api('POST', '/api/setup', { name: '王老板', login: 'boss', password: 'boss123456', code: 'c' })).token;
     const devs = Object.values(JSON.parse(sh('xcrun simctl list devices available -j')).devices).flat();

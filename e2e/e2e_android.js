@@ -137,7 +137,7 @@ const FAKE = (opts) => {
   { const { spawn } = require('child_process'), fs = require('fs'), os = require('os'), path = require('path');
     const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-upd-')), PORT = 26000 + Math.floor(Math.random() * 900), SRV = 'http://127.0.0.1:' + PORT;
     fs.mkdirSync(path.join(DIR, 'app')); fs.writeFileSync(path.join(DIR, 'app', 'teamops.apk'), 'apk'); fs.writeFileSync(path.join(DIR, 'app', 'android.json'), JSON.stringify({ versionName: '1.4', versionCode: 5, notes: '修复录音问题' }));
-    const sv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'c' }, stdio: ['ignore', 'pipe', 'ignore'] });
+    const sv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'c' }, stdio: ['ignore', 'pipe', 'ignore'] });
     await new Promise(r => sv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }));
     await fetch(SRV + '/api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '王老板', login: 'boss', password: 'boss123456', code: 'c' }) });
     p = await mk(); await p.context().route(SRV + '/app/android.apk', r => r.fulfill({ status: 200, contentType: 'text/plain', body: 'apk' }));

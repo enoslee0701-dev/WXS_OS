@@ -73,6 +73,14 @@ scripts/server-mac.sh install   # 重启服务器
 ```
 之后同事上传的录音和视频会在这台电脑上自动转成文字（不发给任何第三方），再用来生成整理稿。需要 ffmpeg；模型约 550MB。
 
+## 本机 AI（没有 Claude 密钥时，可选）
+
+```
+scripts/llm-mac.sh
+scripts/server-mac.sh install   # 重启服务器
+```
+在服务器这台 Mac 上运行开源中文模型（Qwen2.5 7B，约 4.7GB，建议 16GB 以上内存的 Apple 芯片 Mac）。AI 整理想法、AI 助手、拆待办、新建项目解析等由它完成，数据不出这台电脑、不花钱。配置 `ANTHROPIC_API_KEY` 后自动改用 Claude（效果更好，还能看图片、读 PDF）。
+
 ## 安卓 App 的安装与更新（不经过应用商店）
 
 - **发布新版**：在服务器这台 Mac 上，先把 `android/app/build.gradle` 里的 `versionCode` 加 1、`versionName` 改成新版本号，然后运行：

@@ -4,7 +4,7 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-srv-')), PORT = 18000 + Math.floor(Math.random() * 2000);
 const B = 'http://127.0.0.1:' + PORT;
 function start() {
-  const p = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: DIR, MAX_FILE_MB: '1', SETUP_CODE: 'code-1234' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const p = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, MAX_FILE_MB: '1', SETUP_CODE: 'code-1234' }, stdio: ['ignore', 'pipe', 'pipe'] });
   p.stderr.on('data', d => { const t = String(d); if (!/ExperimentalWarning|act 异常/.test(t)) process.stderr.write(t); });
   return new Promise(r => p.stdout.on('data', d => { if (/已启动/.test(String(d))) r(p); }));
 }
@@ -213,10 +213,10 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   srv.kill(); await new Promise(z => setTimeout(z, 300));
   const bk = path.join(DIR, 'backups', fs.readdirSync(path.join(DIR, 'backups')).find(f => f.startsWith('state-')));
   const { spawnSync } = require('child_process');
-  let rs1 = spawnSync(process.execPath, [path.join(__dirname, 'server', 'restore.js'), bk], { env: { ...process.env, DATA_DIR: DIR }, encoding: 'utf8' });
+  let rs1 = spawnSync(process.execPath, [path.join(__dirname, 'server', 'restore.js'), bk], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', DATA_DIR: DIR }, encoding: 'utf8' });
   ok(/加 --yes/.test(rs1.stdout), '不加 --yes 只预览不恢复');
-  ok(spawnSync(process.execPath, [path.join(__dirname, 'server', 'restore.js'), path.join(__dirname, 'package.json'), '--yes'], { env: { ...process.env, DATA_DIR: DIR }, encoding: 'utf8' }).status === 1, '无效文件被拒');
-  rs1 = spawnSync(process.execPath, [path.join(__dirname, 'server', 'restore.js'), bk, '--yes'], { env: { ...process.env, DATA_DIR: DIR }, encoding: 'utf8' });
+  ok(spawnSync(process.execPath, [path.join(__dirname, 'server', 'restore.js'), path.join(__dirname, 'package.json'), '--yes'], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', DATA_DIR: DIR }, encoding: 'utf8' }).status === 1, '无效文件被拒');
+  rs1 = spawnSync(process.execPath, [path.join(__dirname, 'server', 'restore.js'), bk, '--yes'], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', DATA_DIR: DIR }, encoding: 'utf8' });
   ok(rs1.status === 0 && /已恢复/.test(rs1.stdout) && fs.readdirSync(path.join(DIR, 'backups')).some(f => f.startsWith('before-restore-')), '从每日备份恢复，恢复前另存当前数据');
   srv = await start();
   ok((await get('/api/state', boss)).status === 200, '恢复后账号仍能登录');

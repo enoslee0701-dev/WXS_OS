@@ -16,7 +16,7 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', d => b
 (async () => {
   await new Promise(r => mock.listen(0, '127.0.0.1', r));
   const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-air-')), PORT = 25000 + Math.floor(Math.random() * 2000), URL = 'http://127.0.0.1:' + PORT + '/';
-  srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'code-1234', ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: 'http://127.0.0.1:' + mock.address().port }, stdio: ['ignore', 'pipe', 'inherit'] });
+  srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'code-1234', ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: 'http://127.0.0.1:' + mock.address().port }, stdio: ['ignore', 'pipe', 'inherit'] });
   await new Promise(r => srv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }));
   const api = async (m, u, body, tok) => (await fetch(URL.slice(0, -1) + u, { method: m, headers: { 'Content-Type': 'application/json', ...(tok ? { Authorization: 'Bearer ' + tok } : {}) }, body: body ? JSON.stringify(body) : undefined })).json();
   const boss = (await api('POST', '/api/setup', { name: 'Enos', login: 'enos', password: 'enos123', demo: true, code: 'code-1234' })).token;

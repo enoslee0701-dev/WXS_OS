@@ -10,7 +10,7 @@ const adb = (c) => { try { return execSync(`"${ADB}" ${c}`, { encoding: 'utf8', 
 const PKG = 'com.teamops.app', PORT = 28000 + Math.floor(Math.random() * 1000), DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-dev-'));
 const API = 'http://127.0.0.1:' + PORT;
 let pass = 0, fail = 0, srv = null; const ok = (c, m) => { if (c) pass++; else { fail++; console.log('✗', m); } };
-const startSrv = () => new Promise(r => { srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: '135790' }, stdio: ['ignore', 'pipe', 'inherit'] }); srv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }); });
+const startSrv = () => new Promise(r => { srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: '135790' }, stdio: ['ignore', 'pipe', 'inherit'] }); srv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }); });
 const api = async (method, p, body, token) => (await fetch(API + p, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: body ? JSON.stringify(body) : undefined })).json();
 (async () => {
   await startSrv();

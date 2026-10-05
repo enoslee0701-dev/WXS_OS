@@ -6,12 +6,16 @@
 'use strict';
 const Anthropic = require('@anthropic-ai/sdk');
 const TM = require('../engine.js');
+const LLM = require('./llm.js');
 
 const MODEL = process.env.AI_MODEL || 'claude-opus-5-5';
 const LIMIT = +process.env.AI_DAILY_LIMIT || 200;
 const SYSTEM_LIMIT = +process.env.AI_SYSTEM_LIMIT || 100; // 后台自动整理 / 总结的全队每日上限
 let client = null;
-const enabled = () => !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+// 有 Claude 密钥就用 Claude；没有时用服务器本机的开源模型（server/llm.js）；都没有则 enabled() 为 false，客户端用规则版
+const claudeOn = () => !!(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN);
+const enabled = () => claudeOn() || LLM.enabled();
+const provider = () => claudeOn() ? 'claude' : LLM.enabled() ? 'local' : null;
 const cli = () => client || (client = new Anthropic());
 const allowed = (S, uid) => process.env.AI_FOR_ALL === '1' || TM.hasRole(S, uid, 'owner') || TM.hasRole(S, uid, 'admin');
 
@@ -49,6 +53,7 @@ function snapshot(view, uid) {
 
 /* ---------- 调用 ---------- */
 async function call({ system, messages, schema, effort, maxTokens }) {
+  if (!claudeOn()) return callLocal({ system, messages, schema, maxTokens });
   const req = {
     model: MODEL, max_tokens: maxTokens || 16000,
     system, messages,
@@ -68,6 +73,18 @@ async function call({ system, messages, schema, effort, maxTokens }) {
   if (res.stop_reason === 'refusal') throw { status: 422, error: 'AI 没有回答这个请求' };
   const text = res.content.filter(b => b.type === 'text').map(b => b.text).join('');
   return { text, usage: res.usage, truncated: res.stop_reason === 'max_tokens' };
+}
+
+/* 本机模型：把 Claude 格式的请求换成 OpenAI 兼容格式；图片、PDF 读不了 */
+async function callLocal({ system, messages, schema, maxTokens }) {
+  const sys = (Array.isArray(system) ? system : [{ text: String(system || '') }]).map(b => b.text || '').join('\n\n');
+  const msgs = messages.map(m => {
+    if (typeof m.content === 'string') return { role: m.role, content: m.content };
+    if (m.content.some(b => b.type === 'image' || b.type === 'document')) throw { status: 501, error: '本机 AI 不能看图片、读 PDF：需要老板在服务器上配置 Claude 密钥' };
+    return { role: m.role, content: m.content.map(b => b.text || '').join('\n') };
+  });
+  const r = await LLM.chat({ system: sys + (schema ? '\n\n只输出符合要求的 JSON，不要输出其他内容。' : ''), messages: msgs, schema, maxTokens });
+  return { text: r.text, usage: { input_tokens: 0, output_tokens: 0 }, truncated: r.truncated }; // 本机运行不花钱：用量按 0 记
 }
 
 /* 自由提问（AI 助手面板） */
@@ -301,4 +318,6 @@ async function pdfToMarkdown(base64, name) {
   return { text: r.text, truncated: r.truncated, usage: r.usage };
 }
 
-module.exports = { enabled, allowed, readImage, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, parseProject, parseTodos, writeHelper, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };
+module.exports = { enabled, provider, claudeOn, allowed, readImage, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, parseProject, parseTodos, writeHelper, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };
+// 模型名：Claude 或本机模型（界面和用量统计里显示）
+Object.defineProperty(module.exports, 'MODEL', { get: () => claudeOn() ? MODEL : '本机 ' + LLM.NAME, enumerable: true });

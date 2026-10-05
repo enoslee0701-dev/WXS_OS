@@ -11,7 +11,7 @@ fs.chmodSync(path.join(BIN, 'ffmpeg'), 0o755); fs.chmodSync(path.join(BIN, 'whis
 const PORT = 23000 + Math.floor(Math.random() * 2000), SRV = 'http://127.0.0.1:' + PORT;
 let srv;
 (async () => {
-  srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: path.join(DIR, 'data'), SETUP_CODE: 'c', WHISPER_BIN: path.join(BIN, 'whisper'), WHISPER_MODEL: path.join(DIR, 'm.bin'), FFMPEG: path.join(BIN, 'ffmpeg') }, stdio: ['ignore', 'pipe', 'ignore'] });
+  srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, LLM: '0', PORT, HOST: '127.0.0.1', DATA_DIR: path.join(DIR, 'data'), SETUP_CODE: 'c', WHISPER_BIN: path.join(BIN, 'whisper'), WHISPER_MODEL: path.join(DIR, 'm.bin'), FFMPEG: path.join(BIN, 'ffmpeg') }, stdio: ['ignore', 'pipe', 'ignore'] });
   await new Promise(r => { let o = ''; srv.stdout.on('data', d => { o += d; if (/已启动/.test(o)) r(); }); });
   await fetch(SRV + '/api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '王老板', login: 'boss', password: 'boss123456', code: 'c', demo: true }) });
   const b = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });

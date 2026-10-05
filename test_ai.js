@@ -26,7 +26,7 @@ const mock = http.createServer((req, res) => {
 });
 function start(env, dir) {
   const DIR = dir || fs.mkdtempSync(path.join(os.tmpdir(), 'tm-ai-')), PORT = rnd();
-  const p = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env: { ...process.env, ANTHROPIC_API_KEY: '', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'code-1234', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const p = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', ANTHROPIC_API_KEY: '', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'code-1234', ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
   p.stderr.on('data', d => { if (!/ExperimentalWarning|AI 出错/.test(String(d))) process.stderr.write(d); });
   p.B = 'http://127.0.0.1:' + PORT; p.DIR = DIR; p.env = env;
   return new Promise(r => p.stdout.on('data', d => { if (/已启动/.test(String(d))) r(p); }));

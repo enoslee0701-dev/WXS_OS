@@ -11,6 +11,7 @@ const { DatabaseSync } = require('node:sqlite');
 const TM = require('../engine.js');
 const AI = require('./ai.js');
 const TR = require('./transcribe.js');
+const LLM = require('./llm.js');
 const PUSH = require('./push.js');
 
 const PORT = +process.env.PORT || 8787, HOST = process.env.HOST || '0.0.0.0';
@@ -231,7 +232,7 @@ const routes = {
   },
   'POST /api/devices/remove': async (req, url, b, me) => { q('DELETE FROM devices WHERE token=? AND uid=?').run(String(b.token || '').toLowerCase(), me.uid); return [200, { ok: true }]; },
   /* 真实 AI：没配置密钥或没有权限时 enabled=false，客户端用规则模拟 */
-  'GET /api/ai/status': async (req, url, b, me) => [200, { enabled: AI.enabled() && AI.allowed(S, me.uid), configured: AI.enabled(), model: AI.MODEL, transcribe: TR.enabled() }],
+  'GET /api/ai/status': async (req, url, b, me) => [200, { enabled: AI.enabled() && AI.allowed(S, me.uid), configured: AI.enabled(), model: AI.MODEL, provider: AI.provider(), transcribe: TR.enabled() }],
   'POST /api/ai/ask': async (req, url, b, me) => aiRun(me, 'ask', () => AI.ask(S, me.uid, String(b.q || ''), b.history, b.focus && typeof b.focus === 'object' ? { type: String(b.focus.type || ''), id: String(b.focus.id || '') } : null)),
   'POST /api/ai/kb': async (req, url, b, me) => {
     if (!TM.kbCan(S, me.uid)) return [403, { error: '只有老板或管理员可以整理知识库' }];
@@ -611,6 +612,8 @@ function scheduleBrief() {
 function housekeep() { if (!S) return; try { const r = TM.act(S, 'agent', 'system.housekeep', {}); if (r.ok && r.removed) { changed(); console.log('日常清理：删掉 ' + r.removed + ' 条旧通知'); } } catch (e) { console.error('日常清理出错', e); } }
 if (require.main === module) server.listen(PORT, HOST, () => {
   setTimeout(sweepAi, 3000); setTimeout(trScan, 4000);
+  // 没有 Claude 密钥时拉起本机 AI（装了才会启动）
+  if (!AI.claudeOn()) { LLM.start(); if (!LLM.configured()) console.log('AI：没有 Claude 密钥，也没有安装本机 AI（运行 scripts/llm-mac.sh 安装），先用规则版'); }
   console.log(TR.enabled() ? '语音转写：已启用（' + TR.status().model + '）' : '语音转写：未安装（运行 scripts/whisper-mac.sh 安装后，录音和视频会自动转成文字）');
   setTimeout(housekeep, 60e3).unref(); setInterval(housekeep, 864e5).unref();
   scheduleBrief(); if (process.env.BRIEF_NOW === '1') setTimeout(dailyBrief, 800);

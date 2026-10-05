@@ -20,7 +20,7 @@ echo "下周二开同工会, 讨论感恩晚会的预算和场地, \${who}请林
 fs.chmodSync(path.join(BIN, 'ffmpeg'), 0o755); fs.chmodSync(path.join(BIN, 'whisper'), 0o755);
 const MODEL = path.join(DIR, 'model.bin'); fs.writeFileSync(MODEL, 'm');
 function start() {
-  const p = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: path.join(DIR, 'data'), SETUP_CODE: 'c', WHISPER_BIN: path.join(BIN, 'whisper'), WHISPER_MODEL: MODEL, FFMPEG: path.join(BIN, 'ffmpeg') }, stdio: ['ignore', 'pipe', 'pipe'] });
+  const p = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env: { ...process.env, LLM: '0', PORT, HOST: '127.0.0.1', DATA_DIR: path.join(DIR, 'data'), SETUP_CODE: 'c', WHISPER_BIN: path.join(BIN, 'whisper'), WHISPER_MODEL: MODEL, FFMPEG: path.join(BIN, 'ffmpeg') }, stdio: ['ignore', 'pipe', 'pipe'] });
   p.stderr.on('data', d => { const t = String(d); if (!/ExperimentalWarning|转写失败/.test(t)) process.stderr.write(t); });
   return new Promise(r => { let out = ''; p.stdout.on('data', d => { out += d; if (/已启动/.test(out) && /语音转写/.test(out)) r([p, out]); }); });
 }

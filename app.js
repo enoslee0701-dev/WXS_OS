@@ -27,10 +27,10 @@
   TM.migrate(S);
   var PHOTOS = { u_owner: '__ENOS__' };
   /* 真实 AI：服务器模式下老板 / 管理员可用（服务器配置了密钥时）；否则一律规则模拟 */
-  var AI_ON = false; var TR_ON = false, APPV = ''; // APPV：安装的 App 版本号（原生 App 才有）
+  var AI_ON = false; var TR_ON = false, APPV = '', AI_LOCAL = false, AI_MODEL = ''; // AI_LOCAL：没有 Claude 密钥，用的是服务器本机的开源模型 // APPV：安装的 App 版本号（原生 App 才有）
   if (typeof TMN !== 'undefined' && TMN.appInfo) TMN.appInfo().then(function (i) { if (i && i.version) APPV = i.version; });
   // 团队服务器装了语音转写（录音 / 视频自动转文字）
-  if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.aiStatus().then(function (r) { AI_ON = !!(r && r.enabled); TR_ON = !!(r && r.transcribe); if (AI_ON && aiS && aiS.open) renderAI(); });
+  if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.aiStatus().then(function (r) { AI_ON = !!(r && r.enabled); TR_ON = !!(r && r.transcribe); AI_LOCAL = !!(r && r.provider === 'local'); AI_MODEL = r && r.model || ''; if (AI_ON && aiS && aiS.open) renderAI(); });
   /* 头像：裁成正方形、压到 256 像素再上传（服务器模式）；演示模式只存在本机 */
   function avatarPick(f) {
     if (!/^image\//.test(f.type)) return toast('请选一张图片', true);
@@ -249,6 +249,7 @@
     if (typeof h !== 'string') return h;
     if (SRV) h = SRV_WORDS.reduce(function (x, r) { return x.replace(r[0], r[1]); }, h);
     if (IS_APP) h = APP_WORDS.reduce(function (x, r) { return x.replace(r[0], r[1]); }, h);
+    if (AI_LOCAL) h = h.replace(/Claude/g, '本机 AI'); // 用的是服务器本机的开源模型
     return h;
   }
   function srvPrefill() { try { return localStorage.getItem('tm_prefill_login') || ''; } catch (e) { return ''; } }
@@ -1880,7 +1881,7 @@
       var li = function (k, v) { return '<div><span>' + k + '</span><b>' + v + '</b></div>'; };
       var plat = typeof TMN !== 'undefined' && TMN.native ? (TMN.platform === 'ios' ? 'iPhone' : '安卓') : '网页';
       var h = '<div class="cred">' + li('版本', esc((APPV || '') + (APPV ? ' · ' : '') + plat + ' 版')) +
-        (SRV ? li('团队服务器', esc(TMS.serverUrl())) + li('AI（Claude）', AI_ON ? '已启用' : '未启用，由规则生成') + li('录音转文字', TR_ON ? '已启用（服务器离线转写）' : '未安装') + li('数据', '保存在团队服务器，每天自动备份') : li('模式', '演示模式（数据只在这台设备）')) + '</div>';
+        (SRV ? li('团队服务器', esc(TMS.serverUrl())) + li('AI', AI_ON ? (AI_LOCAL ? '本机 AI（' + esc(AI_MODEL.replace(/^本机 /, '')) + '）' : 'Claude') : '未启用，由规则生成') + li('录音转文字', TR_ON ? '已启用（服务器离线转写）' : '未安装') + li('数据', '保存在团队服务器，每天自动备份') : li('模式', '演示模式（数据只在这台设备）')) + '</div>';
       if (!SRV) h += '<p class="muted" style="font-size:14px;margin:12px 0 0">演示模式里账号是预设的，AI 由规则模拟。连接团队服务器后，用老板分派的账号登录，数据在团队里实时同步，录音和视频能自动转成文字，老板配置后 AI 由 Claude 完成。</p>';
       else h += '<button type="button" class="btn block mt" data-do="mePrivacy">隐私政策</button>';
       openSheet('关于团队协同', h, '知道了', function () { closeSheet(); });
@@ -2120,6 +2121,7 @@
     // 拍照识别（白板、纸质记录、手写便签）：服务器启用 Claude 时可用；照片在手机上先压缩再发
     aiPhoto: function () {
       if (!AI_ON) return toast('演示版暂不支持识别图片内容，正式版接入后可识别白板和纸质记录', true);
+      if (AI_LOCAL) return toast('看照片需要 Claude：请老板在服务器上配置 Claude 密钥。现在可以把照片里的文字打出来发给我', true);
       openSheet('拍照识别', '<p class="muted" style="margin:0 0 12px;font-size:14px">拍白板、纸质会议记录、手写便签或截图，Claude 会把上面的字整理出来，并列出要点和可以变成待办的事。</p><div class="ix2-opts"><label class="ix2-opt"><input type="file" accept="image/*" capture="environment" data-aiimg="1"><span class="ix2-oi">' + ai2('img', 1.7) + '</span><b>拍照</b><small>用相机拍一张</small></label><label class="ix2-opt"><input type="file" accept="image/*" data-aiimg="1"><span class="ix2-oi">' + ai2('doc2', 1.7) + '</span><b>从相册选</b><small>选一张照片或截图</small></label></div>', '关闭', function () { closeSheet(); });
     }
   };

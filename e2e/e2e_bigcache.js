@@ -6,7 +6,7 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-big-')), PORT = 27000 + Math.floor(Math.random() * 2000), URL = 'http://127.0.0.1:' + PORT + '/';
 let srv = null;
 (async () => {
-  srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'c' }, stdio: ['ignore', 'pipe', 'inherit'] });
+  srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'c' }, stdio: ['ignore', 'pipe', 'inherit'] });
   await new Promise(r => srv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }));
   await (await fetch(URL + 'api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '王老板', login: 'enos', password: 'enos123', demo: true, code: 'c' }) })).json();
   const b = await chromium.launch(); const c = await b.newContext({ ...devices['iPhone 13'] });
