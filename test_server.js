@@ -194,6 +194,13 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
     ok(d.status === 200 && d.headers.get('content-type') === 'application/vnd.android.package-archive' && /attachment/.test(d.headers.get('content-disposition')) && buf.length === 2048, '下载安装包（不用登录）');
     const pg = await fetch(B + '/app'), html = await pg.text();
     ok(pg.status === 200 && html.includes('下载安卓 App') && html.includes('1.4') && html.includes('/app/android.apk') && pg.headers.get('x-frame-options') === 'DENY', '安装页显示版本和下载按钮'); }
+  // 8.98 App 发来的诊断信息：要登录；记到 diag.log；太频繁会被拒
+  ok((await post('/api/diag', { kind: 'speech', code: 5 })).status === 401, '诊断信息：没登录不收');
+  { const r1 = await post('/api/diag', { kind: 'speech', error: 'aborted', code: 5, device: 'Xiaomi 13 · Android 14' }, boss);
+    const log = fs.readFileSync(path.join(DIR, 'diag.log'), 'utf8');
+    ok(r1.status === 200 && log.includes('"code":5') && log.includes('Xiaomi 13') && log.includes('"uid":"u_owner"'), '诊断信息记到 diag.log');
+    let last = 0; for (let i = 0; i < 20; i++) last = (await post('/api/diag', { kind: 'x', i }, boss)).status;
+    ok(last === 429, '一小时超过 20 条被拒'); }
   // 9. 重启后数据还在
   srv.kill(); await new Promise(z => setTimeout(z, 200)); srv = await start();
   r = await get('/api/state', boss);

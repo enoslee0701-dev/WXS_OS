@@ -158,6 +158,8 @@ var TMS = (function () {
     location.hash = '#/home';
     if (big) api.cacheBig(j).then(reloadSafe, reloadSafe); else reloadSafe();
   }
+  // 诊断信息（语音识别出错等，不含内容）：发给服务器记到 diag.log，失败就算了
+  api.diag = function (o) { if (!api.loggedIn()) return; req('POST', '/api/diag', o).catch(function () {}); };
   api.serverUrl = function () { return api.sameOrigin ? location.origin : api.base; };
   api.probe = function (server) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'GET', '/api/health').then(function (r) { return { base: b, setup: r.setup }; }); };
   api.login = function (server, login, password) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'POST', '/api/login', { login: login, password: password }).then(function (res) { establish(b, res); }); };

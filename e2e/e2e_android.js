@@ -18,7 +18,7 @@ const FAKE = (opts) => {
       if (pl === 'Preferences') { if (m === 'get') return Promise.resolve({ value: null }); if (m === 'keys') return Promise.resolve({ keys: [] }); return Promise.resolve({}); }
       if (pl === 'Speech' && m === 'available') return Promise.resolve({ available: !o.noSpeech });
       // 模拟「一启动就出错」的语音服务（某些手机）
-      if (pl === 'Speech' && m === 'start' && o.srBroken) { F.starts = (F.starts || 0) + 1; setTimeout(() => F.emit('Speech', 'error', { error: o.srBroken }), 20); return Promise.resolve({}); }
+      if (pl === 'Speech' && m === 'start' && o.srBroken) { F.starts = (F.starts || 0) + 1; setTimeout(() => F.emit('Speech', 'error', { error: o.srBroken, code: 5, tried: ['default#5'], service: 'com.vendor/.Svc', device: 'Vendor X1 · Android 14' }), 20); return Promise.resolve({}); }
       if (pl === 'Speech' && m === 'requestPermissions') return Promise.resolve({ speech: 'granted', microphone: 'granted' });
       if (pl === 'App' && m === 'getInfo') return Promise.resolve({ version: '1.3', build: '4' });
       if (pl === 'Diag' && m === 'lastCrash') return Promise.resolve({ text: o.crash || '' });
@@ -119,6 +119,7 @@ const FAKE = (opts) => {
     const n = await p.evaluate(() => window.__fake.starts || 0);
     ok(n >= 1 && n <= 5, `识别出错（${code}）：5 秒内只启动了 ${n} 次`);
     ok((await p.textContent('#toast')).includes('语音转文字'), `识别出错（${code}）：提示用户改用输入法语音键 ` + await p.textContent('#toast'));
+    ok(await p.evaluate(() => TMN.lastSpeechError && TMN.lastSpeechError.code === 5), `识别出错（${code}）：记下原生给的错误代码`);
     ok(p.errs.length === 0, '无报错 ' + p.errs.join('|'));
     await p.context().close();
   }

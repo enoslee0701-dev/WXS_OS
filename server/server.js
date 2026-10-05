@@ -141,6 +141,16 @@ const routes = {
   'GET /api/health': async () => [200, { ok: true, version, setup: !!S }],
   // 安卓安装包（npm run android 会把新版放到 DATA/app/）：App 启动时查有没有新版本
   'GET /api/app': async () => [200, { android: androidMeta() }],
+  // App 发来的诊断信息（语音识别出错的错误代码、手机型号等，不含内容）：记到 DATA/diag.log，方便排查真机问题
+  'POST /api/diag': async (req, url, b, me) => {
+    const now = Date.now(), k = me.uid, w = diagRate.get(k) || []; const recent = w.filter(t => now - t < 3600e3);
+    if (recent.length >= 20) return [429, { error: '太频繁' }];
+    recent.push(now); diagRate.set(k, recent);
+    const line = JSON.stringify({ at: new Date(now).toISOString(), uid: me.uid, login: me.login, ua: String(req.headers['user-agent'] || '').slice(0, 200), d: b }).slice(0, 4000);
+    const f = path.join(DATA, 'diag.log');
+    try { if (fs.existsSync(f) && fs.statSync(f).size > 1048576) fs.renameSync(f, f + '.old'); fs.appendFileSync(f, line + '\n'); } catch (e) {}
+    return [200, { ok: true }];
+  },
   'GET /api/setup': async () => [200, { needsSetup: !S }],
   /* 首次启动：老板创建团队（可选带演示数据），需要服务器日志里的初始化码 */
   'POST /api/setup': async (req, url, b) => {
@@ -314,7 +324,7 @@ const routes = {
   }
 };
 /* 没改初始密码前只能做这些 */
-const MUST_OK = new Set(['POST /api/devices', 'POST /api/devices/remove', 'POST /api/account/deactivate', 'GET /api/me', 'GET /api/state', 'POST /api/password', 'POST /api/logout', 'GET /api/ai/status']);
+const MUST_OK = new Set(['POST /api/diag', 'POST /api/devices', 'POST /api/devices/remove', 'POST /api/account/deactivate', 'GET /api/me', 'GET /api/state', 'POST /api/password', 'POST /api/logout', 'GET /api/ai/status']);
 
 /* ---------- 附件 ---------- */
 const FILE_ID = /^[A-Za-z0-9_-]{4,64}$/;
@@ -442,6 +452,7 @@ ${m ? `<p>安卓版 ${esc(m.versionName)} · ${(m.size / 1048576).toFixed(1)} MB
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' });
   res.end(html);
 }
+const diagRate = new Map();
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type, X-File-Name, Range');

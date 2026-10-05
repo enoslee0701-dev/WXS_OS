@@ -940,7 +940,7 @@
      连续 3 次启动不到 1.5 秒就结束则放弃；重启前稍等一下，越快结束等得越久。onGiveUp(是否致命错误) 由调用方提示用户。 */
   function srKeep(r, alive, onGiveUp) {
     var quick = 0, t0 = Date.now(), fatal = false, prevErr = r.onerror;
-    r.onerror = function (e) { if (/not-allowed|service-not-allowed|audio-capture|language-not-supported/.test(e && e.error || '')) fatal = true; if (prevErr) prevErr.call(r, e); };
+    r.onerror = function (e) { if (/not-allowed|service-not-allowed|audio-capture|language-not-supported/.test(e && e.error || '')) fatal = true; if (e && e.detail) srDiag(e.error, e.detail); if (prevErr) prevErr.call(r, e); };
     r.onend = function () {
       if (!alive()) return;
       quick = Date.now() - t0 < 1500 ? quick + 1 : 0;
@@ -948,7 +948,14 @@
       setTimeout(function () { if (!alive()) return; t0 = Date.now(); try { r.start(); } catch (e) { if (onGiveUp) onGiveUp(true); } }, quick ? 400 * quick : 150);
     };
   }
-  function srGaveUp(fatal) { toast(fatal ? '语音转文字暂时不可用，录音照常进行，可以手动输入要点' : '这台手机的语音转文字不稳定，已暂停转写，录音照常进行', true); }
+  // 语音识别出错的诊断信息（安卓原生给出：错误代码、试过的识别服务、手机型号）：登录了团队服务器就发一份过去，方便排查；每次打开 App 最多发 3 次
+  var srDiagN = 0;
+  function srDiag(err, d) {
+    if (srDiagN >= 3 || !(SRV && TMS.loggedIn() && TMS.diag)) return; srDiagN++;
+    TMS.diag({ kind: 'speech', error: err, code: d.code, tried: d.tried, service: d.service, device: d.device });
+  }
+  function srCodeText() { var d = typeof TMN !== 'undefined' && TMN.lastSpeechError; return d && d.code ? '（错误代码 ' + d.code + '）' : ''; }
+  function srGaveUp(fatal) { toast((fatal ? '语音转文字暂时不可用' : '这台手机的语音转文字连不上') + srCodeText() + '，录音照常进行。也可以用输入法的话筒说到文字框里', true); }
   function voSR() {
     if (!SR) return; try { var r = new SR(); r.lang = 'zh-CN'; r.continuous = true; r.onresult = function (e) { for (var i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) { vo.text = (vo.text + e.results[i][0].transcript + '。').slice(0, 1000); var ta = document.querySelector('[data-cap="vo.text"]'); if (ta) ta.value = vo.text; } }; srKeep(r, function () { return vo.state === 'rec' && vo.sr === r; }, srGaveUp); r.start(); vo.sr = r; } catch (e) {}
   }
@@ -3272,7 +3279,7 @@
     r.onresult = function (e) { var it = ''; for (var i = e.resultIndex; i < e.results.length; i++) { var x = e.results[i][0].transcript.trim(); if (!x) continue; if (e.results[i].isFinal) kbv.text += (kbv.text && !/[。！？，\n]$/.test(kbv.text) ? '。' : '') + x; else it += x; }
       kbv.interim = it; var ta = document.getElementById('kbv-text'); if (ta) { ta.value = kbv.text + (it ? (kbv.text ? '。' : '') + it : ''); ta.scrollTop = ta.scrollHeight; } var nn = document.getElementById('kbv-n'); if (nn) nn.textContent = (kbv.text + it).length + ' 字'; };
     r.onerror = function (ev) { if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') { toast('没有麦克风权限，可以改用输入法的语音键', true); kbvStop(); } };
-    srKeep(r, function () { return kbv.rec && kbv.sr === r; }, function (fatal) { if (kbv.rec) { kbvStop(); if (!fatal) toast('这台手机的语音转文字不稳定，可以用输入法的语音键说到下方文本框里', true); } });
+    srKeep(r, function () { return kbv.rec && kbv.sr === r; }, function (fatal) { if (kbv.rec) { kbvStop(); if (!fatal) toast('这台手机的语音转文字连不上' + srCodeText() + '，可以用输入法的语音键说到下方文本框里', true); } });
     kbv.sr = r; kbv.rec = true; kbv.t0 = Date.now(); try { r.start(); } catch (e) {}
     kbv.timer = setInterval(function () { var el = document.getElementById('kbv-t'); if (el) { var s2 = Math.round((Date.now() - kbv.t0) / 1000); el.textContent = '正在听 ' + Math.floor(s2 / 60) + ':' + ('0' + s2 % 60).slice(-2); } }, 500);
     render();
@@ -3632,6 +3639,7 @@
   // 上次 App 意外关闭（Android 记录的原因）：提示一次，可复制发给开发者
   if (typeof TMN !== 'undefined' && TMN.lastCrash) TMN.lastCrash().then(function (t) {
     if (!t) return;
+    if (SRV && TMS.loggedIn() && TMS.diag) TMS.diag({ kind: 'crash', text: t.slice(0, 3000) }); // 登录了团队服务器：同时发一份给服务器
     // 稍等一下再弹（刚打开时用户可能马上点进别的页面，切页会关掉弹窗）；已有弹窗时等它关掉
     setTimeout(function show() {
       if (document.querySelector('#layer .sheet')) return setTimeout(show, 1000);

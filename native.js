@@ -84,7 +84,7 @@ var TMN = (function () {
       return Promise.all([
         Speech.addListener('partial', function (e) { if (!self._on) return; self._full = e.text || ''; var b = self._base; var d = self._full.indexOf(b) === 0 ? self._full.slice(b.length) : self._full; if (d.trim()) self._emit(d.replace(/^[\s，。,.]+/, ''), false); clearTimeout(self._pt); self._pt = setTimeout(function () { if (self.continuous) self._commit(); else self.stop(); }, PAUSE); }),
         Speech.addListener('end', function () { if (self._on) self._finish(); }),
-        Speech.addListener('error', function (e) { if (self._on) self._fail(e && e.error || 'network'); })
+        Speech.addListener('error', function (e) { if (self._on) self._fail(e && e.error || 'network', e); })
       ]).then(function (subs) {
         self._subs = subs;
         // 没网时用手机本地识别
@@ -92,7 +92,7 @@ var TMN = (function () {
       });
     }).catch(function (e) { self._fail(/permission|denied|authori/i.test(String(e && e.message)) ? 'not-allowed' : 'audio-capture'); });
   };
-  NSR.prototype._fail = function (code) { var self = this; srFails.push(Date.now()); if (self.onerror) try { self.onerror({ error: code }); } catch (e) {} self._finish(); };
+  NSR.prototype._fail = function (code, detail) { var self = this; srFails.push(Date.now()); if (detail && detail.code != null) api.lastSpeechError = detail; if (self.onerror) try { self.onerror({ error: code, detail: detail || null }); } catch (e) {} self._finish(); };
   NSR.prototype._finish = function () {
     if (!this._on) return; this._on = false; clearTimeout(this._pt); this._commit();
     this._subs.forEach(function (s) { try { s.remove(); } catch (e) {} }); this._subs = [];
