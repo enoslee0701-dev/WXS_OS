@@ -1,5 +1,5 @@
 #!/bin/zsh
-# 在这台 Mac 上把团队服务器装成常驻服务（开机自启、崩溃自动重启）。
+# 在这台 Mac 上把团队服务器装成常驻服务（登录后自动启动、崩溃自动重启；运行期间不让电脑自动睡眠）。
 # 用法：scripts/server-mac.sh install | uninstall | status | logs
 # 可选环境变量：PORT（默认 8787）、ANTHROPIC_API_KEY（填了才启用真实 AI）
 set -e

@@ -612,6 +612,10 @@ function scheduleBrief() {
 function housekeep() { if (!S) return; try { const r = TM.act(S, 'agent', 'system.housekeep', {}); if (r.ok && r.removed) { changed(); console.log('日常清理：删掉 ' + r.removed + ' 条旧通知'); } } catch (e) { console.error('日常清理出错', e); } }
 if (require.main === module) server.listen(PORT, HOST, () => {
   setTimeout(sweepAi, 3000); setTimeout(trScan, 4000);
+  // Mac 上运行时不让电脑自动睡眠（睡着了同事就连不上）；caffeinate -w 跟着本进程，服务器退出它也退出。KEEP_AWAKE=0 关闭
+  if (process.platform === 'darwin' && process.env.KEEP_AWAKE !== '0' && fs.existsSync('/usr/bin/caffeinate')) { try { require('child_process').spawn('/usr/bin/caffeinate', ['-i', '-w', String(process.pid)], { stdio: 'ignore', detached: true }).unref(); } catch (e) {} }
+  // 日志别无限长：每小时看一次，超过 10MB 就把最后 1MB 留到 server.log.old，再清空（launchd 以追加方式写，清空是安全的）
+  setInterval(() => { const f = path.join(DATA, 'server.log'); try { const st = fs.statSync(f); if (st.size > 10 * 1048576) { const fd = fs.openSync(f, 'r'), b = Buffer.alloc(1048576); fs.readSync(fd, b, 0, b.length, st.size - b.length); fs.closeSync(fd); fs.writeFileSync(f + '.old', b); fs.truncateSync(f, 0); } } catch (e) {} }, 3600e3).unref();
   // 没有 Claude 密钥时拉起本机 AI（装了才会启动）
   if (!AI.claudeOn()) { LLM.start(); if (!LLM.configured()) console.log('AI：没有 Claude 密钥，也没有安装本机 AI（运行 scripts/llm-mac.sh 安装），先用规则版'); }
   console.log(TR.enabled() ? '语音转写：已启用（' + TR.status().model + '）' : '语音转写：未安装（运行 scripts/whisper-mac.sh 安装后，录音和视频会自动转成文字）');

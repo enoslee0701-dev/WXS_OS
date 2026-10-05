@@ -10,7 +10,7 @@ const adb = (c) => { try { return execSync(`"${ADB}" ${c}`, { encoding: 'utf8', 
 const PKG = 'com.teamops.app', PORT = 28000 + Math.floor(Math.random() * 1000), DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-dev-'));
 const API = 'http://127.0.0.1:' + PORT;
 let pass = 0, fail = 0, srv = null; const ok = (c, m) => { if (c) pass++; else { fail++; console.log('✗', m); } };
-const startSrv = () => new Promise(r => { srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: '135790' }, stdio: ['ignore', 'pipe', 'inherit'] }); srv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }); });
+const startSrv = () => new Promise(r => { srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, LLM: '0', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: '135790' }, stdio: ['ignore', 'pipe', 'inherit'] }); srv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }); });
 const api = async (method, p, body, token) => (await fetch(API + p, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: body ? JSON.stringify(body) : undefined })).json();
 (async () => {
   await startSrv();
@@ -44,6 +44,18 @@ const api = async (method, p, body, token) => (await fetch(API + p, { method, he
   let st = await api('GET', '/api/state', null, tok);
   ok(st.state.ideas.some(x => x.title === '安卓测试想法'), '服务器收到手机上记的想法');
   ok((await p.evaluate(() => location.hash)).startsWith('#/idea/'), '保存后到想法详情');
+  // 2b. 手机转不了文字时，录音交给服务器转（服务器装了 whisper 才测；模拟器麦克风是静音，所以结果是「没有识别到说话」或一段文字，只要流程走通）
+  const trOn = await p.evaluate(() => TMS.aiStatus().then(r => !!r.transcribe));
+  if (trOn) {
+    await p.evaluate(() => { location.hash = '#/new/voice'; }); await p.waitForTimeout(800);
+    const sr = await p.evaluate(() => !!window.SpeechRecognition);
+    if (!sr) {
+      await tap('.vr-c[data-do=voStart]'); await p.waitForTimeout(3000); await tap('.vr-c[data-do=voStop]');
+      let res = ''; for (let i = 0; i < 40 && !res; i++) { await p.waitForTimeout(500); res = await p.evaluate(() => { const t = document.getElementById('toast'); const v = document.querySelector('[data-cap="vo.text"]'); return v && v.value ? 'text:' + v.value : (t.className.includes('on') && /识别到说话|转文字失败|连不上/.test(t.textContent) ? 'toast:' + t.textContent : ''); }); }
+      ok(/^text:|没有识别到说话/.test(res), '这台手机没有语音识别：录音交给服务器转写，流程走通 ' + res);
+      await p.evaluate(() => { location.hash = '#/home'; }); await p.waitForTimeout(500);
+    } else console.log('（这台设备有语音识别服务，跳过服务器转写这一步）');
+  } else console.log('（服务器没装语音转写，跳过）');
   // 3. 手机返回键：回到开始记录前的页面（首页）
   adb('shell input keyevent 4'); await p.waitForTimeout(800);
   ok(await p.evaluate(() => location.hash) === '#/home', '手机返回键回到首页：' + await p.evaluate(() => location.hash));
