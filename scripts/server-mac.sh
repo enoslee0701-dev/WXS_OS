@@ -31,7 +31,9 @@ case "$1" in
 P
     chmod 600 $PLIST
     launchctl bootout gui/$(id -u)/$LABEL 2>/dev/null || true
-    launchctl bootstrap gui/$(id -u) $PLIST
+    # 等旧进程完全退出再启动（立刻启动会报 Bootstrap failed: 5），失败再试一次
+    for i in 1 2 3 4 5 6 7 8 9 10; do launchctl print gui/$(id -u)/$LABEL >/dev/null 2>&1 || break; sleep 1; done
+    launchctl bootstrap gui/$(id -u) $PLIST 2>/dev/null || { sleep 2; launchctl bootstrap gui/$(id -u) $PLIST; }
     sleep 1
     IP=$(ipconfig getifaddr en0 || ipconfig getifaddr en1 || echo 本机IP)
     echo "已安装并启动。同事在同一个 Wi-Fi 下用：http://$IP:${PORT:-8787}"
