@@ -7,6 +7,7 @@ const p=await c.newPage();const errs=[];p.on('pageerror',e=>errs.push(e.message)
 const toast=async()=>p.textContent('#toast');const sub=async()=>{await p.click('.sheet footer button[type=submit]');await p.waitForTimeout(150);};
 await p.goto(URL);await p.click('.acct:has-text("Enos")');await p.click('.tabs a:has-text("我的")');await p.waitForTimeout(150);
 ok((await p.textContent('.tk2-top h1'))==='我的','我的页');
+await p.click('[data-do=meAbout]');await p.waitForTimeout(200);ok((await p.textContent('#layer .sheet')).includes('演示模式')&&!(await p.textContent('#layer .sheet')).includes('Supabase'),'关于：显示当前模式，不再有过时说明');await p.click('#layer .sheet footer button[type=submit]');await p.waitForTimeout(150);
 ok((await p.textContent('.me-badge')).includes('老板') && (await p.textContent('.me-meta')).includes('清迈'),'资料卡：老板、所在地');
 ok(await p.locator('.me-stats .tm-stat').count()===4,'4 个统计');
 await p.screenshot({path:'me.png',fullPage:true});

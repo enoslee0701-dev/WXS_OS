@@ -37,9 +37,13 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', d => b
   const last = await p.locator('.ai-m.bot').last().innerHTML();
   ok(/<b>结论<\/b>/.test(last) && /清醒/.test(last) && /kb-li|•/.test(last), '回答按格式渲染（加粗、列表）');
   ok(calls === n0 + 1, '只调用一次 AI');
+  // 拍照识别：选照片 → 压缩后交给 Claude → 结果显示在对话里
+  { const n1 = calls; await p.click('[data-do=aiPhoto]'); await p.waitForSelector('#layer .sheet h2:has-text("拍照识别")');
+    await p.setInputFiles('#layer input[data-aiimg]:not([capture])', require('path').join(__dirname, 'fixtures', 'pic.jpg'));
+    ok(await until(async () => calls === n1 + 1 && (await p.locator('.ai-m.bot .ai-real').count()) >= 2), '拍照识别：照片交给 Claude，结果显示在对话里'); }
   // 结构化动作仍用规则版（有可点按钮）
   await send('明天下午3点和林晓开会，周五前交报价');
-  ok(await until(async () => (await p.locator('.ai-m.bot').last().textContent()).includes('Claude 拆分')) && calls === n0 + 2, '拆待办交给 Claude，展示和按钮不变');
+  ok(await until(async () => (await p.locator('.ai-m.bot').last().textContent()).includes('Claude 拆分')) && calls === n0 + 3, '拆待办交给 Claude，展示和按钮不变');
   ok(await p.locator('.ai-m.bot').last().locator('[data-do=aiAddTodos]').count() === 1, '仍有一键添加待办按钮');
   // 出错 → 自动退回规则答案
   mode = 'down'; await send('项目进度怎么样');

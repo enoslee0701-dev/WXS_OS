@@ -232,7 +232,7 @@ const routes = {
   'POST /api/devices/remove': async (req, url, b, me) => { q('DELETE FROM devices WHERE token=? AND uid=?').run(String(b.token || '').toLowerCase(), me.uid); return [200, { ok: true }]; },
   /* 真实 AI：没配置密钥或没有权限时 enabled=false，客户端用规则模拟 */
   'GET /api/ai/status': async (req, url, b, me) => [200, { enabled: AI.enabled() && AI.allowed(S, me.uid), configured: AI.enabled(), model: AI.MODEL, transcribe: TR.enabled() }],
-  'POST /api/ai/ask': async (req, url, b, me) => aiRun(me, 'ask', () => AI.ask(S, me.uid, String(b.q || ''), b.history)),
+  'POST /api/ai/ask': async (req, url, b, me) => aiRun(me, 'ask', () => AI.ask(S, me.uid, String(b.q || ''), b.history, b.focus && typeof b.focus === 'object' ? { type: String(b.focus.type || ''), id: String(b.focus.id || '') } : null)),
   'POST /api/ai/kb': async (req, url, b, me) => {
     if (!TM.kbCan(S, me.uid)) return [403, { error: '只有老板或管理员可以整理知识库' }];
     return aiRun(me, 'kb', () => AI.kbOrganize(S, me.uid, String(b.topic || ''), String(b.text || '')));
@@ -243,13 +243,20 @@ const routes = {
     return aiRun(me, 'project', () => AI.parseProject(S, me.uid, text));
   },
   'POST /api/ai/write': async (req, url, b, me) => {
-    const kind = b.kind === 'goal' ? 'goal' : 'optimize';
+    const kind = b.kind === 'goal' ? 'goal' : b.kind === 'task' ? 'task' : 'optimize';
     if (!String(b.title || b.note || '').trim()) return [400, { error: '先写项目名称或描述' }];
     return aiRun(me, 'write', () => AI.writeHelper(kind, b.title, b.note, b.due));
   },
   'POST /api/ai/todos': async (req, url, b, me) => {
     const text = String(b.text || '').trim(); if (text.length < 4) return [400, { error: '内容太少' }];
     return aiRun(me, 'todos', () => AI.parseTodos(S, me.uid, text));
+  },
+  'POST /api/ai/image': async (req, url, b, me) => {
+    const data = String(b.data || ''), type = String(b.type || '');
+    if (!/^image\/(jpeg|png|webp|gif)$/.test(type)) return [400, { error: '只支持 JPG、PNG、WebP、GIF 图片' }];
+    if (!/^[A-Za-z0-9+/=]+$/.test(data) || data.length < 16) return [400, { error: '图片格式不对' }];
+    if (data.length > 7 * 1048576) return [413, { error: '图片太大' }];
+    return aiRun(me, 'image', () => AI.readImage(data, type));
   },
   'POST /api/ai/doc': async (req, url, b, me) => {
     if (!TM.kbCan(S, me.uid)) return [403, { error: '只有老板或管理员可以整理知识库' }];
@@ -430,7 +437,7 @@ async function aiRun(me, kind, fn, system) {
   }
 }
 
-const BIG_BODY = new Set(['POST /api/ai/doc']); // 上传 PDF 给 AI 读，单独放宽请求体上限
+const BIG_BODY = new Set(['POST /api/ai/doc', 'POST /api/ai/image']); // 上传 PDF 给 AI 读，单独放宽请求体上限
 const PUBLIC = new Set(['GET /api/health', 'GET /api/app', 'GET /api/setup', 'POST /api/setup', 'POST /api/login']);
 
 /* 安卓安装包分发：不上应用商店，由团队服务器提供下载和新版本提示 */
@@ -443,6 +450,22 @@ function sendApk(req, res) {
   const st = fs.statSync(APK);
   res.writeHead(200, { 'Content-Type': 'application/vnd.android.package-archive', 'Content-Length': st.size, 'Content-Disposition': "attachment; filename=\"team-ops.apk\"; filename*=UTF-8''" + encodeURIComponent('团队协同.apk'), 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' });
   fs.createReadStream(APK).pipe(res);
+}
+// 隐私政策（PRIVACY.md 转成网页；上架应用商店时填这个地址）
+function privacyPage(res) {
+  let md = ''; try { md = fs.readFileSync(path.join(__dirname, '..', 'PRIVACY.md'), 'utf8'); } catch (e) { return send(res, 404, { error: '没有隐私政策' }); }
+  const esc = (t) => String(t).replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';'), inl = (t) => esc(t).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
+  let html = '', inList = false;
+  md.split('\n').forEach(l => {
+    const li = /^\s*-\s+(.*)/.exec(l);
+    if (li) { if (!inList) { html += '<ul>'; inList = true; } html += '<li>' + inl(li[1]) + '</li>'; return; }
+    if (inList) { html += '</ul>'; inList = false; }
+    const h = /^(#{1,3})\s+(.*)/.exec(l); if (h) { html += '<h' + h[1].length + '>' + inl(h[2]) + '</h' + h[1].length + '>'; return; }
+    if (l.trim()) html += '<p>' + inl(l) + '</p>';
+  });
+  if (inList) html += '</ul>';
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' });
+  res.end('<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>隐私政策 · 团队协同</title><style>body{margin:0;font:16px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#F3F6FB;color:#141B2D}.w{max-width:680px;margin:0 auto;padding:32px 22px 60px}h1{font-size:26px}h2{font-size:19px;margin-top:28px}li{margin:6px 0}p,li{color:#3A4356}</style></head><body><div class="w">' + html + '</div></body></html>');
 }
 // 扫码后在手机浏览器里打开的安装页
 function appPage(res) {
@@ -507,6 +530,7 @@ const server = http.createServer(async (req, res) => {
       return send(res, code, out);
     }
     if (req.method === 'GET' && (url.pathname === '/app' || url.pathname === '/app/')) return appPage(res);
+    if (req.method === 'GET' && url.pathname === '/privacy') return privacyPage(res);
     if (req.method === 'GET' && url.pathname === '/app/android.apk') return sendApk(req, res);
     if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
       if (!fs.existsSync(WEB)) return send(res, 404, { error: '请先运行 npm run build' });

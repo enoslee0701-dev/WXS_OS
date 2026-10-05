@@ -169,6 +169,26 @@ async function team(api) {
   ok(!!fixed, '重启后补做没做完的后台整理');
   ok(seen.slice(c0).length === 1, '只补做没做完的那一个（不会去整理其他规则版内容）');
   s3.kill();
+  // 在想法 / 项目页面里问（新起一个实例，不受前面用掉的每日额度影响）
+  const s5 = await start({ ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: MOCK }); const api5 = mkApi(s5.B), t5 = await team(api5);
+  { let r; const st = (await api5('GET', '/api/state', null, t5.boss)).state, d = st.ideas.find(x => x.status !== 'draft' && x.note), w = st.workItems[0];
+    r = await api5('POST', '/api/ai/ask', { q: '这个想法有什么风险？', focus: { type: 'idea', id: d.id } }, t5.boss);
+    let fs = seen[seen.length - 1].body.system.map(x => x.text).join('\n');
+    ok(r.status === 200 && fs.includes('# 当前讨论的想法') && fs.includes(String(d.note).slice(0, 10)), '想法页问 AI：带上这条想法的原文');
+    r = await api5('POST', '/api/ai/ask', { q: '进度怎么样？', focus: { type: 'work', id: w.id } }, t5.boss);
+    fs = seen[seen.length - 1].body.system.map(x => x.text).join('\n');
+    ok(r.status === 200 && fs.includes('# 当前讨论的项目「' + w.title + '」') && /- 任务「/.test(fs), '项目页问 AI：带上项目的任务');
+    r = await api5('POST', '/api/ai/ask', { q: 'x', focus: { type: 'idea', id: 'I_nope' } }, t5.boss);
+    fs = seen[seen.length - 1].body.system.map(x => x.text).join('\n');
+    ok(r.status === 200 && !fs.includes('# 当前讨论的想法'), '看不到 / 不存在的想法：不带详情'); }
+  // 拍照识别：只收图片；图片作为 image 块交给 Claude
+  ok((await api5('POST', '/api/ai/image', { data: 'aGVsbG8gd29ybGQgaGVsbG8=', type: 'application/pdf' }, t5.boss)).status === 400, '拍照识别：不是图片被拒');
+  { const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const ri = await api5('POST', '/api/ai/image', { data: png, type: 'image/png' }, t5.boss), rq = seen[seen.length - 1].body;
+    ok(ri.status === 200 && rq.messages[0].content[0].type === 'image' && rq.messages[0].content[0].source.media_type === 'image/png' && /## 原文/.test(rq.system[0].text), '拍照识别：图片交给 Claude，要求转录原文、要点、待办'); }
+  { const rw = await api5('POST', '/api/ai/write', { kind: 'task', title: '布置会场', note: '所属项目：感恩晚会' }, t5.boss), rq = seen[seen.length - 1].body;
+    ok(rw.status === 200 && /任务描述/.test(rq.system[0].text) && /感恩晚会/.test(rq.messages[0].content), '分配任务：Claude 写任务描述（带上所属项目）'); }
+  s5.kill(); fs.rmSync(s5.DIR, { recursive: true, force: true });
   s2.kill(); fs.rmSync(s2.DIR, { recursive: true, force: true }); mock.close();
   console.log(`\nAI 代理 通过 ${pass}，失败 ${fail}`); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

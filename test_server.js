@@ -194,6 +194,8 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
     ok(d.status === 200 && d.headers.get('content-type') === 'application/vnd.android.package-archive' && /attachment/.test(d.headers.get('content-disposition')) && buf.length === 2048, '下载安装包（不用登录）');
     const pg = await fetch(B + '/app'), html = await pg.text();
     ok(pg.status === 200 && html.includes('下载安卓 App') && html.includes('1.4') && html.includes('/app/android.apk') && pg.headers.get('x-frame-options') === 'DENY', '安装页显示版本和下载按钮'); }
+  { const pv = await fetch(B + '/privacy'), ht = await pv.text();
+    ok(pv.status === 200 && /<h1>团队协同 · 隐私政策<\/h1>/.test(ht) && ht.includes('离线转写') && ht.includes('<li>') && !ht.includes('**'), '隐私政策网页（上架时填这个地址）'); }
   // 8.98 App 发来的诊断信息：要登录；记到 diag.log；太频繁会被拒
   ok((await post('/api/diag', { kind: 'speech', code: 5 })).status === 401, '诊断信息：没登录不收');
   { const r1 = await post('/api/diag', { kind: 'speech', error: 'aborted', code: 5, device: 'Xiaomi 13 · Android 14' }, boss);

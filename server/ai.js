@@ -71,11 +71,37 @@ async function call({ system, messages, schema, effort, maxTokens }) {
 }
 
 /* 自由提问（AI 助手面板） */
-async function ask(S, uid, q, history) {
-  const view = TM.viewFor(S, uid);
+/* 在想法 / 项目页面里问 AI：把这条想法或这个项目的详细内容（只取提问人能看到的）一起给 Claude */
+function focusBlock(view, focus) {
+  if (!focus || !focus.id) return '';
+  const nm = (id) => TM.name(view, id), L = TM.L, out = [];
+  if (focus.type === 'idea') {
+    const d = view.ideas.find(x => x.id === focus.id); if (!d) return '';
+    out.push(`# 当前讨论的想法「${d.title || ''}」（${L.idea[d.status] || d.status}；发起 ${nm(d.creatorId)}${d.followerId ? '，跟进 ' + nm(d.followerId) : ''}）`);
+    out.push('原文：' + String(d.note || '').slice(0, 6000));
+    (d.media || []).filter(m => m.transcript).forEach(m => out.push(`【${m.kind === 'video' ? '视频' : '录音'}「${m.name}」转写】${m.transcript.slice(0, 6000)}`));
+    const sm = TM.latestSummary(view, d.id, 'analysis'); if (sm) out.push('整理稿：' + JSON.stringify(sm.payload).slice(0, 4000));
+    const sug = (view.suggestions || []).filter(x => x.ideaId === d.id); if (sug.length) { out.push('团队建议：'); sug.slice(-40).forEach(x => out.push(`- ${nm(x.authorId)}：${String(x.body || '').slice(0, 400)}`)); }
+    view.events.filter(e => e.ideaId === d.id).slice(-15).forEach(e => out.push(`- 动态 ${day(e.at)} ${e.text || e.action}`));
+  } else if (focus.type === 'work') {
+    const w = view.workItems.find(x => x.id === focus.id); if (!w) return '';
+    out.push(`# 当前讨论的项目「${w.title}」（${L.work[w.status] || w.status}；负责人 ${w.leadId ? nm(w.leadId) : '无'}，跟进 ${w.operatorId ? nm(w.operatorId) : '无'}，截止 ${w.due || '未定'}）`);
+    if (w.goal) out.push('目标：' + w.goal); if (w.note) out.push('描述：' + String(w.note).slice(0, 3000));
+    view.tasks.filter(t => t.workId === w.id).forEach(t => {
+      out.push(`- 任务「${t.title}」${L.task[t.status] || t.status}；执行 ${nm(t.ownerId)}；截止 ${t.due || '未定'}${t.blockedReason ? '；阻碍：' + t.blockedReason : ''}`);
+      (view.deliverables || []).filter(x => x.taskId === t.id).slice(-3).forEach(x => out.push(`  交付：${String(x.note || x.url || '').slice(0, 300)}${(x.media || []).length ? '（附 ' + x.media.length + ' 个文件）' : ''}`));
+      (view.comments || []).filter(x => x.taskId === t.id).slice(-5).forEach(x => out.push(`  评论 ${nm(x.authorId)}：${String(x.body || '').slice(0, 200)}`));
+    });
+    (w.files || []).forEach(f => out.push(`- 文件：${f.name}`));
+    view.events.filter(e => e.workId === w.id).slice(-20).forEach(e => out.push(`- 动态 ${day(e.at)} ${e.text || e.action}`));
+  }
+  return out.join('\n').slice(0, 30000);
+}
+async function ask(S, uid, q, history, focus) {
+  const view = TM.viewFor(S, uid), fb = focusBlock(view, focus);
   const system = [
     { type: 'text', text: BASE + kbBlock(view, uid, S), cache_control: { type: 'ephemeral' } },
-    { type: 'text', text: snapshot(view, uid) }
+    { type: 'text', text: snapshot(view, uid) + (fb ? '\n\n' + fb + '\n\n请优先根据上面这条想法 / 这个项目的内容回答。' : '') }
   ];
   const msgs = [];
   (Array.isArray(history) ? history : []).slice(-8).forEach(h => { if (h && (h.role === 'user' || h.role === 'assistant') && h.text) msgs.push({ role: h.role, content: String(h.text).slice(0, 4000) }); });
@@ -231,6 +257,8 @@ async function parseProject(S, uid, text) {
 async function writeHelper(kind, title, note, due) {
   const sys = kind === 'goal'
     ? '根据项目名称和描述，拟一句可以验收的项目目标：做成什么样、到什么时候、怎么算完成。60 字以内，只输出这一句。'
+    : kind === 'task'
+    ? '根据任务标题和所属项目，给执行人写任务描述：分 2–4 条编号写清楚要做什么、交付什么、注意什么，忠于已知信息，不编造人名和日期。总共不超过 300 字，只输出这几条。'
     : '把项目描述整理成四段，格式严格是：\n【背景】…\n【要解决的问题】…\n【目标】…\n【关键要点】…\n忠于原文，原文没说的写「待补充」，总共不超过 400 字，只输出这四段。';
   const r = await call({ system: [{ type: 'text', text: sys }], messages: [{ role: 'user', content: `项目名称：${String(title || '').slice(0, 50)}\n截止：${due || '未定'}\n描述：${String(note || '').slice(0, 2000)}` }], effort: 'low', maxTokens: 2000 });
   return { text: r.text.trim().slice(0, kind === 'goal' ? 200 : 500), usage: r.usage };
@@ -255,6 +283,15 @@ async function parseTodos(S, uid, text) {
 }
 
 /* PDF → Markdown（知识库上传 PDF）：Claude 读文档，整理出正文 */
+/* 拍照识别：白板、纸质记录、手写便签、截图 → 文字 + 要点 + 可以变成待办的事 */
+async function readImage(base64, mediaType) {
+  const r = await call({
+    system: [{ type: 'text', text: '你帮团队把手机拍的照片（白板、纸质会议记录、手写便签、截图等）整理成文字。用 Markdown 输出三部分：\n## 原文\n尽量完整、按原来的顺序转录照片里能看清的文字（看不清的写「（看不清）」，不要编）。\n## 要点\n3–6 条。\n## 可以变成待办的事\n每条写清楚做什么、谁（照片里有的话）、什么时候（照片里有的话）；没有就写「无」。\n照片里没有文字时，简单描述照片内容。用简体中文。' }],
+    messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } }, { type: 'text', text: '请整理这张照片。' }] }],
+    effort: 'low', maxTokens: 6000
+  });
+  return { text: r.text, usage: r.usage };
+}
 async function pdfToMarkdown(base64, name) {
   const r = await call({
     system: [{ type: 'text', text: '你把上传的 PDF 文档的正文整理成 Markdown，存进团队的知识库。保留标题层级（#、##）、列表和要点；去掉页眉页脚、页码、目录；不总结、不改写、不加评论，只整理原文。' }],
@@ -264,4 +301,4 @@ async function pdfToMarkdown(base64, name) {
   return { text: r.text, truncated: r.truncated, usage: r.usage };
 }
 
-module.exports = { enabled, allowed, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, parseProject, parseTodos, writeHelper, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };
+module.exports = { enabled, allowed, readImage, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, parseProject, parseTodos, writeHelper, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };

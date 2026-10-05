@@ -232,7 +232,8 @@ var TMS = (function () {
   /* ---------- 真实 AI（服务器代理）：未启用或出错时由调用方退回规则模拟 ---------- */
   var aiSt = null;
   api.aiStatus = function () { if (!api.loggedIn()) return Promise.resolve({ enabled: false }); return aiSt || (aiSt = req('GET', '/api/ai/status').catch(function () { aiSt = null; return { enabled: false }; })); };
-  api.aiAsk = function (q, history) { return req('POST', '/api/ai/ask', { q: q, history: history || [] }, AI_WAIT); };
+  api.aiImage = function (data, type) { return req('POST', '/api/ai/image', { data: data, type: type }, AI_WAIT); };
+  api.aiAsk = function (q, history, focus) { return req('POST', '/api/ai/ask', { q: q, history: history || [], focus: focus || null }, AI_WAIT); };
   // 决策弹窗开着时常规同步会推迟，这里直接应用（用户就是在等这份结果）
   api.aiAdvice = function (id) { return req('POST', '/api/ai/advice', { id: id }, AI_WAIT).then(function (r) { if (!api.outbox.length && !busy && r.version >= api.version && window.__tm) { api.version = r.version; put('tm_ver', r.version); keepLocal(r.state, window.__tm.S); window.__tm.setState(r.state); } return r; }); };
   api.aiProject = function (text) { return req('POST', '/api/ai/project', { text: text }, AI_WAIT); };

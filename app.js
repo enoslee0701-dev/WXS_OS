@@ -27,7 +27,9 @@
   TM.migrate(S);
   var PHOTOS = { u_owner: '__ENOS__' };
   /* 真实 AI：服务器模式下老板 / 管理员可用（服务器配置了密钥时）；否则一律规则模拟 */
-  var AI_ON = false; var TR_ON = false; // 团队服务器装了语音转写（录音 / 视频自动转文字）
+  var AI_ON = false; var TR_ON = false, APPV = ''; // APPV：安装的 App 版本号（原生 App 才有）
+  if (typeof TMN !== 'undefined' && TMN.appInfo) TMN.appInfo().then(function (i) { if (i && i.version) APPV = i.version; });
+  // 团队服务器装了语音转写（录音 / 视频自动转文字）
   if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.aiStatus().then(function (r) { AI_ON = !!(r && r.enabled); TR_ON = !!(r && r.transcribe); if (AI_ON && aiS && aiS.open) renderAI(); });
   /* 头像：裁成正方形、压到 256 像素再上传（服务器模式）；演示模式只存在本机 */
   function avatarPick(f) {
@@ -1601,7 +1603,14 @@
     goAssign: function () { if (!canAssign()) return toast('分配任务由项目负责人、跟进的运营者或老板完成', true); asg = freshAsg(); location.hash = '#/assign'; },
     asTab: function (el) { asg.tab = el.dataset.t; render(); window.scrollTo(0, 0); },
     asSet: function (el) { var k = el.dataset.k, v = el.dataset.v; asg[k] = k === 'more' ? !!v : v; if (k === 'ttype' || k === 'priority') { asg.aiCollabs = null; asg.pick = ''; } render(); },
-    asWrite: function () { if (!asg.title.trim()) return toast('先写任务标题，AI 再帮你写描述', true); var t = asg.title.trim(); asg.desc = ('1. 明确「' + t + '」的目标、范围和要求；\n2. 完成' + t.replace(/^完成/, '') + '，与项目整体方案保持一致；\n3. 输出成果并与相关同事对齐、确认。').slice(0, 500); render(); toast('已生成描述（演示：规则模拟）'); },
+    asWrite: function () {
+      if (!asg.title.trim()) return toast('先写任务标题，AI 再帮你写描述', true); var t = asg.title.trim();
+      var rule = function () { asg.desc = ('1. 明确「' + t + '」的目标、范围和要求；\n2. 完成' + t.replace(/^完成/, '') + '，与项目整体方案保持一致；\n3. 输出成果并与相关同事对齐、确认。').slice(0, 500); render(); toast('已生成描述（演示：规则模拟）'); };
+      if (!AI_ON) return rule();
+      // Claude 写：带上项目名称和目标，让描述贴合项目
+      var w = W(asg.workId), b = document.querySelector('[data-do=asWrite]'); if (b) { b.disabled = true; b.textContent = 'Claude 正在写…'; }
+      TMS.aiWrite('task', t, w ? '所属项目：' + w.title + (w.goal ? '；项目目标：' + w.goal : '') : '', asg.due || '').then(function (r) { asg.desc = String(r.text || '').slice(0, 500); render(); toast('Claude 已写好描述，可以再改'); }, function (e) { toast((e && e.error) || 'AI 暂时不可用，先用规则生成', true); rule(); });
+    },
     asFromIdea: function () {
       var xs = vIdeas().filter(function (d) { return d.status !== 'draft' && d.status !== 'declined'; });
       if (!xs.length) return toast('没有可用的想法', true);
@@ -1860,14 +1869,23 @@
       '<button class="me-info" data-do="quickAI">' + hi('spark', 1.7) + '<span>AI 助手</span><b>整理、分析、建议、创作</b>' + hi('chev', 2) + '</button>' +
       '<a class="me-info" href="#/inbox">' + hi('bell', 1.7) + '<span>通知中心</span><b>' + (nU ? nU + ' 条未读' : '全部已读') + '</b>' + hi('chev', 2) + '</a>' +
       (can ? '<a class="me-info" href="#/settings">' + ai2('ctx', 1.7) + '<span>更多设置</span><b>终验、标签、提醒、演示工具</b>' + hi('chev', 2) + '</a>' : '') +
-      '<button class="me-info" data-do="meAbout">' + ai2('info', 1.7) + '<span>关于本版</span><b>演示版（阶段 1）</b>' + hi('chev', 2) + '</button></section>';
+      '<button class="me-info" data-do="meAbout">' + ai2('info', 1.7) + '<span>关于</span><b>' + esc(SRV ? (APPV ? '版本 ' + APPV : '正式版') : '演示模式') + '</b>' + hi('chev', 2) + '</button></section>';
   }
   var ME = {
     meEdit: function (el) {
       var k = el.dataset.k, u = TM.user(S, me), L2 = { name: ['姓名', 20], title: ['职位', 16], email: ['邮箱', 60], phone: ['手机', 20], location: ['所在地', 20], bio: ['个人签名', 30] }[k];
       openSheet('修改' + L2[0], field(L2[0], '<input type="text" inputmode="' + (k === 'email' ? 'email' : k === 'phone' ? 'tel' : 'text') + '" name="v" maxlength="' + L2[1] + '" value="' + esc(u[k] || '') + '">', k === 'name' ? '姓名由老板或管理员修改。' : ''), '保存', function (o) { var p = { id: me }; p[k] = o.v; act('member.update', p, '已保存'); });
     },
-    meAbout: function () { openSheet('关于本版', '<p><b>团队协同 · 演示版（阶段 1）</b></p><ul class="t-help-l"><li>账号是预设的，数据只存在这台设备的浏览器里。</li><li>AI 整理、共创汇总、分配推荐由规则模拟，标注了「AI 模拟输出」。</li><li>录音、视频不上传，语音转文字用浏览器自带识别。</li><li>阶段 2 接入 Supabase（真实账号与多人数据），阶段 3 接入转写和大模型。</li></ul>', '知道了', function () { closeSheet(); }); }
+    meAbout: function () {
+      var li = function (k, v) { return '<div><span>' + k + '</span><b>' + v + '</b></div>'; };
+      var plat = typeof TMN !== 'undefined' && TMN.native ? (TMN.platform === 'ios' ? 'iPhone' : '安卓') : '网页';
+      var h = '<div class="cred">' + li('版本', esc((APPV || '') + (APPV ? ' · ' : '') + plat + ' 版')) +
+        (SRV ? li('团队服务器', esc(TMS.serverUrl())) + li('AI（Claude）', AI_ON ? '已启用' : '未启用，由规则生成') + li('录音转文字', TR_ON ? '已启用（服务器离线转写）' : '未安装') + li('数据', '保存在团队服务器，每天自动备份') : li('模式', '演示模式（数据只在这台设备）')) + '</div>';
+      if (!SRV) h += '<p class="muted" style="font-size:14px;margin:12px 0 0">演示模式里账号是预设的，AI 由规则模拟。连接团队服务器后，用老板分派的账号登录，数据在团队里实时同步，录音和视频能自动转成文字，老板配置后 AI 由 Claude 完成。</p>';
+      else h += '<button type="button" class="btn block mt" data-do="mePrivacy">隐私政策</button>';
+      openSheet('关于团队协同', h, '知道了', function () { closeSheet(); });
+    },
+    mePrivacy: function () { closeSheet(); openLink(TMS.serverUrl() + '/privacy'); },
   };
   /* ---------- AI 助手（底部大面板 + 对话） ---------- */
   var AIC = [['rec', '推荐', 'spark'], ['org', '整理', 'doc2'], ['ana', '分析', 'ops'], ['adv', '建议', 'bulb'], ['cre', '创作', 'edit']];
@@ -2038,6 +2056,23 @@
     aiRuleAnswer(text);
   }
   /* 交给 Claude：先显示「思考中」，回来后替换；失败退回规则答案 */
+  // 照片压缩到长边 1600 像素以内（JPEG），再交给 Claude 识别
+  function shrinkImage(file) {
+    return new Promise(function (ok, no) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () { var k = Math.min(1, 1600 / Math.max(img.width, img.height)), cv = document.createElement('canvas'); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url); ok(cv.toDataURL('image/jpeg', 0.85).split(',')[1]); };
+      img.onerror = function () { URL.revokeObjectURL(url); no(new Error('这张图片打不开')); };
+      img.src = url;
+    });
+  }
+  function aiImageRead(file) {
+    aiS.open = true;
+    var me1 = { who: 'me', html: '<p>拍照识别：' + esc(file.name || '照片') + '</p>' }, msg = { who: 'bot', html: '<span class="ai-typing"><i></i><i></i><i></i></span> 正在识别照片…', pending: true };
+    aiS.msgs.push(me1, msg); renderAI();
+    shrinkImage(file).then(function (b64) { return TMS.aiImage(b64, 'image/jpeg'); }).then(function (r) {
+      msg.pending = false; msg.html = '<div class="ai-md">' + kbMd(r.text || '') + '</div><span class="ai-sim ai-real">Claude 识别 · 请核对原文</span>'; aiS.lastCopy = r.text || ''; aiS.lastText = r.text || ''; renderAI();
+    }, function (e) { aiS.msgs.splice(aiS.msgs.indexOf(msg), 1); toast((e && (e.error || e.message)) || '识别失败', true); renderAI(); });
+  }
   function aiReal(text, fallback) {
     var hist = aiS.msgs.slice(0, -1).filter(function (m) { return !m.pending; }).slice(-8).map(function (m) { var d = document.createElement('div'); d.innerHTML = m.html; var x = d.querySelector('.ai-sim'); if (x) x.remove(); return { role: m.who === 'me' ? 'user' : 'assistant', text: d.textContent.trim() }; });
     var msg = { who: 'bot', html: '<span class="ai-typing"><i></i><i></i><i></i></span> 正在思考…', pending: true }; aiS.msgs.push(msg); aiS.lastText = text;
@@ -2082,7 +2117,11 @@
       if (aiS.sr) { try { aiS.sr.stop(); } catch (e) {} return; }
       try { var r = new SR(); r.lang = 'zh-CN'; r.interimResults = false; r.onresult = function (e) { var t = ''; for (var i = 0; i < e.results.length; i++) t += e.results[i][0].transcript; aiS.input = (aiS.input + t).slice(0, 2000); }; r.onend = function () { aiS.sr = null; aiS.listening = false; renderAI(); }; r.start(); aiS.sr = r; aiS.listening = true; renderAI(); } catch (e) { toast('无法启动语音输入', true); }
     },
-    aiPhoto: function () { toast('演示版暂不支持识别图片内容，正式版接入后可识别白板和纸质记录', true); }
+    // 拍照识别（白板、纸质记录、手写便签）：服务器启用 Claude 时可用；照片在手机上先压缩再发
+    aiPhoto: function () {
+      if (!AI_ON) return toast('演示版暂不支持识别图片内容，正式版接入后可识别白板和纸质记录', true);
+      openSheet('拍照识别', '<p class="muted" style="margin:0 0 12px;font-size:14px">拍白板、纸质会议记录、手写便签或截图，Claude 会把上面的字整理出来，并列出要点和可以变成待办的事。</p><div class="ix2-opts"><label class="ix2-opt"><input type="file" accept="image/*" capture="environment" data-aiimg="1"><span class="ix2-oi">' + ai2('img', 1.7) + '</span><b>拍照</b><small>用相机拍一张</small></label><label class="ix2-opt"><input type="file" accept="image/*" data-aiimg="1"><span class="ix2-oi">' + ai2('doc2', 1.7) + '</span><b>从相册选</b><small>选一张照片或截图</small></label></div>', '关闭', function () { closeSheet(); });
+    }
   };
   /* ---------- 页面：想法详情 ---------- */
   function trailIdea(d) {
@@ -2303,17 +2342,17 @@
       '<div class="ic-in"><input type="text" id="ic-q" maxlength="80" placeholder="输入问题，或点话筒说话"><button class="ic-mic" data-do="icMic" aria-label="语音提问">' + ai2('mic', 1.8) + '</button><button class="ic-go" data-do="icSend" aria-label="发送">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>' + '</button></div><p class="ix2-advf">AI 模拟回答，按关键词从讨论和资料里找答案。</p></div>';
   }
   /* 想法 / 项目里的「问 AI」：AI 已启用时交给 Claude（带上这条想法 / 项目的背景），失败退回规则回答 */
-  function aiChatPush(store, key, ctx, q, rule, after) {
+  function aiChatPush(store, key, ctx, q, rule, after, focus) {
     var list = store[key] = store[key] || [];
     var hist = list.filter(function (m) { return !m.pending; }).slice(-6).map(function (m) { var dd = document.createElement('div'); dd.innerHTML = m.html || ''; return { role: m.me ? 'user' : 'assistant', text: m.me ? m.text : dd.textContent }; });
     var msg = { html: '<span class="ai-typing"><i></i><i></i><i></i></span> 正在思考…', src: [], pending: true };
     list.push({ me: true, text: q }, msg); render(); after();
-    TMS.aiAsk(ctx + '\n问题：' + q, hist).then(function (r) { msg.pending = false; msg.html = '<div class="ai-md">' + kbMd(r.text || '') + '</div>'; msg.src = ['Claude 回答，只读你能看到的数据']; render(); after(); },
+    TMS.aiAsk(ctx + '\n问题：' + q, hist, focus).then(function (r) { msg.pending = false; msg.html = '<div class="ai-md">' + kbMd(r.text || '') + '</div>'; msg.src = ['Claude 回答，只读你能看到的数据']; render(); after(); },
       function (e) { var a = rule(); msg.pending = false; msg.html = a.html; msg.src = a.src; toast((e && e.error) || 'AI 暂时不可用', true); render(); after(); });
   }
   function icPush(d, q) {
     var after = function () { setTimeout(function () { var l = document.getElementById('ic-list'); if (l) l.scrollTop = l.scrollHeight; }, 30); };
-    if (AI_ON) return aiChatPush(ichat, d.id, '关于想法「' + (d.title || '') + '」（' + L.idea[d.status] + '，发起人 ' + nm(d.creatorId) + '）。原文：' + String(d.note || '').slice(0, 800), q, function () { return ichatAnswer(d, q); }, after);
+    if (AI_ON) return aiChatPush(ichat, d.id, '关于想法「' + (d.title || '') + '」（' + L.idea[d.status] + '，发起人 ' + nm(d.creatorId) + '）。原文：' + String(d.note || '').slice(0, 800), q, function () { return ichatAnswer(d, q); }, after, { type: 'idea', id: d.id });
     var a2 = ichatAnswer(d, q); (ichat[d.id] = ichat[d.id] || []).push({ me: true, text: q }, { html: a2.html, src: a2.src }); render(); setTimeout(function () { var l = document.getElementById('ic-list'); if (l) l.scrollTop = l.scrollHeight; var pn = document.getElementById('ic-panel'); if (pn) pn.scrollIntoView({ block: 'nearest' }); }, 30); }
   function digestHTML(d) {
     if (!isOwner()) return '';
@@ -2569,7 +2608,7 @@
       '<div class="ic-in"><input type="text" id="wc-q" maxlength="80" placeholder="输入问题，或点话筒说话"><button class="ic-mic" data-do="wcMic" aria-label="语音提问">' + ai2('mic', 1.8) + '</button><button class="ic-go" data-do="wcSend" aria-label="发送"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div><p class="ix2-advf">AI 模拟回答，按关键词从项目任务和资料里找答案。</p></div>';
   }
   function wcPush(w, q) {
-    if (AI_ON) return aiChatPush(wchat, w.id, '关于项目「' + w.title + '」（' + L.work[w.status] + '，负责人 ' + (w.leadId ? nm(w.leadId) : '无') + '，跟进 ' + (w.operatorId ? nm(w.operatorId) : '无') + '，截止 ' + (w.due || '未定') + '）。目标：' + (w.goal || ''), q, function () { return wchatAnswer(w, q); }, function () { setTimeout(function () { var l = document.getElementById('wc-list'); if (l) l.scrollTop = l.scrollHeight; }, 30); });
+    if (AI_ON) return aiChatPush(wchat, w.id, '关于项目「' + w.title + '」（' + L.work[w.status] + '，负责人 ' + (w.leadId ? nm(w.leadId) : '无') + '，跟进 ' + (w.operatorId ? nm(w.operatorId) : '无') + '，截止 ' + (w.due || '未定') + '）。目标：' + (w.goal || ''), q, function () { return wchatAnswer(w, q); }, function () { setTimeout(function () { var l = document.getElementById('wc-list'); if (l) l.scrollTop = l.scrollHeight; }, 30); }, { type: 'work', id: w.id });
     var a2 = wchatAnswer(w, q); (wchat[w.id] = wchat[w.id] || []).push({ me: true, text: q }, { html: a2.html, src: a2.src }); render(); setTimeout(function () { var l = document.getElementById('wc-list'); if (l) l.scrollTop = l.scrollHeight; }, 30); }
   /* 任务 / 成员 / 文件 标签页 */
   var WTF = [['all', '全部'], ['doing', '进行中'], ['review', '待验收'], ['done', '已完成'], ['flag', '需关注']];
@@ -3155,7 +3194,7 @@
   DO.srvUsage = function () {
     TMS.usage().then(function (u) {
       var mb = function (n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB'; };
-      var K = { ask: 'AI 助手提问', kb: '口述整理', analyze: '想法整理稿', digest: '讨论总结', advice: '决策建议', project: '新建项目解析' };
+      var K = { ask: 'AI 助手提问', kb: '口述整理', analyze: '想法整理稿', digest: '讨论总结', advice: '决策建议', project: '新建项目解析', image: '拍照识别', doc: '读 PDF', todos: '拆待办', write: '写描述 / 目标', brief: '老板早报' };
       var row = function (a, b) { return '<div class="cred-r"><span>' + a + '</span><b>' + b + '</b></div>'; };
       openSheet('使用情况', '<div class="cred">' +
         row('AI', u.ai.enabled ? '已启用（' + esc(u.ai.model) + '）' : '未启用（规则模拟）') +
@@ -3563,6 +3602,7 @@
     }
     if (el.dataset && (el.dataset.pd || el.dataset.pt != null) && pd) { if (el.dataset.pd) pd[el.dataset.pd] = el.value; else pd.tasks[+el.dataset.pt][el.dataset.f] = el.value; if (el.dataset.pd === 'leadId' || el.dataset.pd === 'due') render(); return; }
     if (el.dataset && el.dataset.camfile && el.files.length) { addVideos(el.files); return; }
+    if (el.dataset && el.dataset.aiimg && el.files[0]) { var imf = el.files[0]; el.value = ''; closeSheet(); aiImageRead(imf); return; }
     if (el.dataset && el.dataset.aifile && el.files[0]) { var af = el.files[0]; if (!/\.(txt|md)$/i.test(af.name) && !/^text\//.test(af.type)) { toast('演示版只能读取 TXT、Markdown 文本文件', true); return; } var rd = new FileReader(); rd.onload = function () { var tx2 = String(rd.result).slice(0, 4000); if (!aiS.mode) aiS.mode = 'minutes'; aiHandle(tx2); renderAI(); }; rd.readAsText(af); return; }
     if (el.dataset && el.dataset.pref) { var pp = {}; pp[el.dataset.pref] = el.checked; act('member.update', { id: me, prefs: pp }, el.checked ? '已开启' : '已关闭'); return; }
     if (el.dataset && el.dataset.kbfile && el.files.length) { var fs = Array.prototype.slice.call(el.files), n = 0, bad = []; var next = function () { var f = fs.shift(); if (!f) { save(); render(); toast(n ? '已添加 ' + n + ' 份资料' + (bad.length ? '；' + bad.join('、') + ' 没读到内容' : '') : '没有添加成功：' + bad.join('、'), !n); return; } if (f.size > (/\.(docx|pdf)$/i.test(f.name) ? 10000000 : 600000)) { bad.push(f.name + '（太大）'); return next(); } var f2title = ''; var addKb = function (body) { var r = TM.act(S, me, 'kb.add', { title: f.name.replace(/\.(md|markdown|txt|docx|pdf)$/i, '').slice(0, 40) + f2title, body: body, scope: 'team' }); if (r.ok) n++; else bad.push(f.name + '（' + r.error + '）'); next(); }; if (/\.docx$/i.test(f.name)) { docxToMd(f).then(addKb, function (e) { bad.push(f.name + '（' + (e && e.message || '读不出来') + '）'); next(); }); return; } if (/\.pdf$/i.test(f.name)) { if (!AI_ON) { bad.push(f.name + '（PDF 需要启用 AI 才能读取）'); return next(); } toast('Claude 正在读「' + f.name + '」…'); var fr2 = new FileReader(); fr2.onerror = function () { bad.push(f.name + '（读不出来）'); next(); }; fr2.onload = function () { TMS.aiDoc(f.name, String(fr2.result).split(',')[1] || '').then(function (r) { if (r.truncated) f2title = '（内容不完整）'; addKb(r.text || ''); }, function (e) { bad.push(f.name + '（' + ((e && e.error) || 'AI 读取失败') + '）'); next(); }); }; fr2.readAsDataURL(f); return; } var rd = new FileReader(); rd.onload = function () { addKb(String(rd.result || '')); }; rd.onerror = function () { bad.push(f.name); next(); }; rd.readAsText(f); }; next(); el.value = ''; return; }
