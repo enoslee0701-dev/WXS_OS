@@ -187,7 +187,8 @@ var TMN = (function () {
   /* ---------- 4. 外观 ---------- */
   if (Bar) Bar.setStyle({ style: 'LIGHT' }).catch(function () {});
   if (Kb && api.platform === 'ios') Kb.setAccessoryBarVisible({ isVisible: true }).catch(function () {}); // 只有 iOS 有键盘工具条
-  window.addEventListener('load', function () { setTimeout(function () { if (Splash) Splash.hide({ fadeOutDuration: 200 }).catch(function () {}); }, 60); });
+  // 关启动屏：页面加载很快时，第一次调用可能早于系统准备好启动屏（Android 11 及以下实测会被忽略，屏幕一直黑着），所以隔一会儿再补两次
+  window.addEventListener('load', function () { [60, 700, 1800].forEach(function (t) { setTimeout(function () { if (Splash) Splash.hide({ fadeOutDuration: 200 }).catch(function () {}); }, t); }); });
   } catch (e) {
     // 桥接层出错不能挡住 App：记录错误，至少把启动屏关掉
     api.error = String(e && e.message || e);

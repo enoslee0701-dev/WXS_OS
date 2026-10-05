@@ -1141,6 +1141,7 @@
   function onboardDone() { try { if (localStorage.getItem('tm_onboard_' + me) === '1') return true; } catch (e) {} return onboardSteps().every(function (x) { return x[3]; }); }
 
   function afterRender() {
+    markChecked(); flexGapFix(document.getElementById('app'));
     if (SRV && me && TMS.mustChange && !mustAsked && !document.querySelector('#layer .sheet')) { mustAsked = true; setTimeout(function () { DO.srvPassword(); }, 300); }
     if (SRV && me && isOwner() && S.real && !S.loading && cur().name === 'home' && !onboardAsked && !document.querySelector('#layer .sheet') && !onboardDone()) { onboardAsked = true; setTimeout(function () { DO.onboard(); }, 400); }
     var strip = document.getElementById('tkdays');
@@ -2988,7 +2989,7 @@
     var nT = vTasks().filter(function (t) { var nx = TM.nextForTask(S, t); return nx && nx.who === me; }).length;
     var home = c.name === 'home' || c.name === 'new' || c.name === 'project' || c.name === 'tasks' || c.name === 'todo' || c.name === 'assign' || c.name === 'work' || c.name === 'ideas' || c.name === 'stat' || c.name === 'team' || c.name === 'me' || c.name === 'inbox' || c.name === 'idea' || c.name === 'kb' || c.name === 'task' || c.name === 'settings';
     document.body.classList.toggle('is-home', home);
-    document.body.classList.toggle('home-lock', c.name === 'home');
+    document.body.classList.toggle('home-lock', c.name === 'home'); document.documentElement.classList.toggle('home-lock', c.name === 'home'); // 旧 WebView 不支持 :has()
     document.body.classList.toggle('is-new', c.name === 'new' || c.name === 'project' || c.name === 'tasks' || c.name === 'todo' || c.name === 'assign' || c.name === 'work' || c.name === 'ideas' || c.name === 'stat' || c.name === 'team' || c.name === 'me' || c.name === 'inbox');
     document.body.classList.toggle('is-work', (c.name === 'work' && !!c.id) || c.name === 'idea' || c.name === 'kb' || c.name === 'task' || c.name === 'settings');
     document.body.classList.toggle('no-dock', c.name === 'inbox' || c.name === 'stat' || c.name === 'project' || c.name === 'assign' || (c.name === 'new' && !!c.id) || (c.name === 'todo' && !!c.sub));
@@ -3407,8 +3408,37 @@
     var d = new Date(f.lastModified || Date.now()), p2 = function (x) { return (x < 10 ? '0' : '') + x; };
     return kind + ' ' + (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ext.toLowerCase();
   }
+  // 选项卡片的选中样式：新浏览器靠 CSS :has(input:checked)，旧版安卓 WebView / iOS 15.3 以前不支持，用 is-checked 类兜底
+  var CHECK_SEL = '.opt, .who label, .as-pi, .np-po';
+  function markChecked(root) { Array.prototype.forEach.call((root || document).querySelectorAll(CHECK_SEL), function (l) { var i = l.querySelector('input'); l.classList.toggle('is-checked', !!(i && i.checked)); }); }
+  // flex 布局的 gap：Chrome 84 以前（没更新过的 Android 11 等）不支持，元素会挤在一起。检测到不支持时，把 gap 换成子元素的外边距（子元素自己已有外边距的那一边不动）
+  var flexGapOK = null;
+  function hasFlexGap() {
+    if (window.__tmNoFlexGap) return false;
+    if (flexGapOK === null) { var d = document.createElement('div'); d.style.cssText = 'display:flex;flex-direction:column;row-gap:1px;position:absolute;visibility:hidden'; d.appendChild(document.createElement('div')); d.appendChild(document.createElement('div')); document.body.appendChild(d); flexGapOK = d.scrollHeight === 1; d.parentNode.removeChild(d); }
+    return flexGapOK;
+  }
+  function flexGapFix(root) {
+    if (hasFlexGap()) return;
+    Array.prototype.forEach.call((root || document).querySelectorAll('*'), function (el) {
+      if (el.dataset.fg) return;
+      var cs = getComputedStyle(el); if (cs.display.indexOf('flex') < 0) return;
+      var cg = parseFloat(cs.columnGap) || 0, rg = parseFloat(cs.rowGap) || 0; if (!cg && !rg) return;
+      var col = cs.flexDirection.indexOf('column') === 0, wrap = cs.flexWrap !== 'nowrap', first = true;
+      el.dataset.fg = '1';
+      Array.prototype.forEach.call(el.children, function (k) {
+        var ks = getComputedStyle(k); if (ks.position === 'absolute' || ks.position === 'fixed' || ks.display === 'none') return;
+        if (wrap) { if (!parseFloat(ks.marginRight) && cg) k.style.marginRight = cg + 'px'; if (!parseFloat(ks.marginBottom) && rg) k.style.marginBottom = rg + 'px'; return; }
+        if (first) { first = false; return; }
+        if (col) { if (ks.marginTop === '0px' && rg) k.style.marginTop = rg + 'px'; }
+        else if (ks.marginLeft === '0px' && cg) k.style.marginLeft = cg + 'px';
+      });
+    });
+  }
+  new MutationObserver(function () { markChecked(); flexGapFix(document.getElementById('layer')); }).observe(document.getElementById('layer'), { childList: true });
   document.addEventListener('change', function (e) {
     var el = e.target;
+    if (el.type === 'radio' || el.type === 'checkbox') markChecked();
     if (el.type === 'file' && el.files) Array.prototype.forEach.call(el.files, function (f) { var nn = niceFileName(f); if (nn !== f.name) try { Object.defineProperty(f, 'name', { value: nn }); } catch (x) {} });
     if (el.dataset && (el.dataset.pd || el.dataset.pt != null) && pd) { if (el.dataset.pd) pd[el.dataset.pd] = el.value; else pd.tasks[+el.dataset.pt][el.dataset.f] = el.value; if (el.dataset.pd === 'leadId' || el.dataset.pd === 'due') render(); return; }
     if (el.dataset && el.dataset.camfile && el.files.length) { addVideos(el.files); return; }

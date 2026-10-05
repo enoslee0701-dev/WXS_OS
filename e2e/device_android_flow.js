@@ -4,19 +4,13 @@
 // 用法：node e2e/device_android_flow.js
 const { execSync, spawn } = require('child_process'), path = require('path'), fs = require('fs'), os = require('os');
 const { _android } = require('playwright');
+const { restartApp } = require('./_android');
 const ADB = path.join(process.env.ANDROID_HOME || path.join(process.env.HOME, 'Library/Android/sdk'), 'platform-tools/adb');
 const adb = (c) => { try { return execSync(`"${ADB}" ${c}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { return ''; } };
 const PKG = 'com.teamops.app', PORT = 28000 + Math.floor(Math.random() * 1000), DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-dev-'));
 const API = 'http://127.0.0.1:' + PORT;
 let pass = 0, fail = 0, srv = null; const ok = (c, m) => { if (c) pass++; else { fail++; console.log('✗', m); } };
 const startSrv = () => new Promise(r => { srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: '135790' }, stdio: ['ignore', 'pipe', 'inherit'] }); srv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }); });
-// 重启 App 后，按新进程号找它的 WebView（旧进程的 WebView 记录可能还在）
-const attach = async (d) => {
-  await d.shell(`am force-stop ${PKG}`); await d.shell(`am start -n ${PKG}/.MainActivity`);
-  let pid = ''; for (let i = 0; i < 40 && !pid; i++) { await new Promise(r => setTimeout(r, 250)); pid = String(await d.shell(`pidof ${PKG}`)).trim(); }
-  for (let i = 0; i < 80; i++) { const w = d.webViews().find(x => x.pkg() === PKG && String(x.pid()) === pid); if (w) { const pg = await w.page(); await pg.waitForFunction(() => window.__tm, null, { timeout: 15000 }); return pg; } await new Promise(r => setTimeout(r, 250)); }
-  throw new Error('找不到 App 的 WebView');
-};
 const api = async (method, p, body, token) => (await fetch(API + p, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: body ? JSON.stringify(body) : undefined })).json();
 (async () => {
   await startSrv();
@@ -24,7 +18,7 @@ const api = async (method, p, body, token) => (await fetch(API + p, { method, he
   console.log('设备：' + d.model());
   adb(`reverse tcp:${PORT} tcp:${PORT}`); // 手机上的 localhost:PORT 就是这台 Mac
   adb('logcat -c -b crash');
-  let p = await attach(d);
+  let p = await restartApp(d);
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   // 页面用了 CSS zoom，旧版安卓 WebView 上 Playwright 算出的点击坐标会偏：直接触发元素的点击
   const tap = (sel) => p.evaluate((x) => document.querySelector(x).click(), sel);
@@ -67,7 +61,7 @@ const api = async (method, p, body, token) => (await fetch(API + p, { method, he
   ok(synced, '服务器恢复后自动补发');
   ok(await p.evaluate(() => TMS.outbox.length === 0), '待同步清空');
   // 6. 重新打开 App：仍是登录状态，数据还在
-  p = await attach(d); p.on('pageerror', e => errs.push(e.message)); await p.waitForTimeout(2500);
+  p = await restartApp(d); p.on('pageerror', e => errs.push(e.message)); await p.waitForTimeout(2500);
   ok(await p.evaluate(() => TMS.loggedIn() && window.__tm.S.ideas.some(x => x.title === '离线想法')), '重开 App 仍登录、数据还在');
   // 7. 退出登录
   await p.evaluate(() => { location.hash = '#/me'; }); await p.waitForTimeout(500);

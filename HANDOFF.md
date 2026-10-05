@@ -5,7 +5,7 @@
 **现在能做什么**
 - iOS App 能在模拟器运行；真机发布版本能编译，只差签名。
 - 团队服务器：在办公室 Mac 上运行 `scripts/server-mac.sh install`，同事在同一个 Wi-Fi 下就能用。
-- **Android APK**（2026-10-05，当前 1.1）：`npm run android` 生成并复制到桌面「团队协同.apk」，可直接装到安卓手机（需允许「安装未知来源应用」）；同一签名，新版可直接覆盖安装。
+- **Android APK**（2026-10-05，当前 1.3）：`npm run android` 生成并复制到桌面「团队协同.apk」，可直接装到安卓手机（需允许「安装未知来源应用」）；同一签名，新版可直接覆盖安装。
 - 按角色区分的界面、老板分派账号（扫码加入）、实时同步、离线补发、附件、推送（代码已就绪）、AI（代码已就绪）、早报和截止提醒都已完成并测试。
 
 **需要你做 / 决定的事**
@@ -144,6 +144,14 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
     - 用户可见文字去掉 npm、setup-code.txt 等技术词。
     - 测试：e2e_ask（10）、e2e_android（22）；`node e2e/device_android_flow.js`（安卓真机环境：建团队 → 记想法 → 服务器收到 → 实时同步 → 断开补发 → 重开仍登录 → 退出，13 项）。
     - 设备爬虫结果：安卓（Android 14 / WebView 113，无 Google 服务）5 个角色 796 次点击 0 报错 0 闪退；iOS 模拟器 892 次点击，0 报错（复测）。
+
+53. **老系统兼容（Android 11 / WebView 83 模拟器实测）**：
+    - **黑屏 / 「App 没有响应」**：页面加载太快时，第一次关启动屏的调用早于系统准备好，被忽略，屏幕一直黑（0 帧）。修：native.js 加载后 60 / 700 / 1800 ms 各发一次 hide；capacitor.config 启动屏 `launchAutoHide: true`、最长 2 秒兜底。去掉 Capacitor 8 不建议的 `Keyboard.resizeOnFullScreen`。
+    - CSS `inset` 简写（Chrome 87+）：build.js `cssCompat` 自动在前面补 top/right/bottom/left。
+    - `:has()`（Chrome 105+ / iOS 15.4+）：选项卡片选中样式改由 JS 加 `is-checked` 类兜底（`markChecked`）；首页锁定给 html 加 `home-lock` 类。
+    - flex `gap`（Chrome 84+）：检测不支持时把 gap 换成子元素外边距（`flexGapFix`，只在旧 WebView 上运行）。
+    - Android 11 上全角色爬虫 890 次点击 0 报错 0 闪退。
+    - 设备测试共用 `e2e/_android.js`（按新进程号找 WebView，避免拿到旧进程的）。
 
 测试现状：业务 418 + 同步一致性 254 次操作 + 随机操作 2×3000 + 服务器 90 + AI 代理 50 + 推送 19；端到端 25 组；界面爬虫另跑。提交前看 `npm run check` 的退出码。
 

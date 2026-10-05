@@ -5,6 +5,7 @@
 const { execSync } = require('child_process'), path = require('path');
 const { _android } = require('playwright');
 const collector = require('./_collector');
+const { restartApp } = require('./_android');
 const ADB = path.join(process.env.ANDROID_HOME || path.join(process.env.HOME, 'Library/Android/sdk'), 'platform-tools/adb');
 const adb = (c) => { try { return execSync(`"${ADB}" ${c}`, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); } catch (e) { return ''; } };
 const PKG = 'com.teamops.app';
@@ -14,11 +15,12 @@ collector(async (port, st, srv) => {
   adb(`reverse tcp:${port} tcp:${port}`); // 手机访问 localhost:port 就是这台 Mac
   adb(`shell pm grant ${PKG} android.permission.RECORD_AUDIO`);
   adb('logcat -c -b crash');
-  adb(`shell am force-stop ${PKG}`); adb(`shell am start -n ${PKG}/.MainActivity`);
-  const wv = await d.webView({ pkg: PKG }, { timeout: 30000 }); const p = await wv.page();
+  const p = await restartApp(d);
   // 清掉网页存储和原生备份，从演示模式开始
   await p.evaluate(async () => { await TMN.plugins.Preferences.clear(); localStorage.clear(); localStorage.setItem('tm_demo_chosen', '1'); });
-  await p.reload(); await p.waitForTimeout(1500);
+  // 旧版 WebView 上 Playwright 的 reload() 可能一直等不到加载完成：从页面里刷新，再等 App 准备好
+  await p.evaluate(() => { setTimeout(() => location.reload(), 50); }); await p.waitForTimeout(2500);
+  await p.waitForFunction(() => window.__tm && window.__tm.S, null, { timeout: 30000 });
   await p.evaluate((u) => { const s = document.createElement('script'); s.src = u; document.body.appendChild(s); }, `http://localhost:${port}/crawl.js` + (process.argv.slice(2).length ? '?roles=' + encodeURIComponent(process.argv.slice(2).join(',')) : ''));
   console.log('开始点按钮');
   let crashed = false, covered = 0;

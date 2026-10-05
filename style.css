@@ -200,11 +200,11 @@ input:focus,textarea:focus,select:focus{outline:none;background:var(--surface);b
 .opt input{margin:3px 0 0;width:20px;height:20px;accent-color:var(--black);flex:none}
 .opt b{display:block;font-size:15.5px}
 .opt small{color:var(--ink3);font-size:13.5px}
-.opt:has(input:checked){border-color:var(--black);background:var(--sunken)}
+.opt:has(input:checked),.opt.is-checked{border-color:var(--black);background:var(--sunken)}
 .who{display:flex;flex-wrap:wrap;gap:8px}
 .who label{display:flex;align-items:center;gap:6px;background:var(--chip);border-radius:999px;padding:4px 14px 4px 4px;cursor:pointer;min-height:40px;font-size:14.5px;border:1.5px solid transparent}
 .who input{display:none}
-.who label:has(input:checked){border-color:var(--black);background:var(--surface);font-weight:650}
+.who label:has(input:checked),.who label.is-checked{border-color:var(--black);background:var(--surface);font-weight:650}
 .callout{border-radius:18px;padding:13px 16px;font-size:14.5px;background:var(--sunken);color:var(--ink2);margin:10px 0}
 .callout.ai{background:linear-gradient(100deg,#DDF3E9,#DCE7FB);color:#1E3550}
 .callout.warn{background:var(--wait-bg);color:var(--wait)}
@@ -961,7 +961,7 @@ a.n-mode{text-decoration:none}
 .as-pi{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:14px;border:1.5px solid #EEF1F5;cursor:pointer}
 .as-pi input{width:20px;height:20px;accent-color:#2563EB;flex:none;min-height:0}
 .as-pi span{flex:1;min-width:0}.as-pi b{display:block;font-size:15px}.as-pi small{font-size:12.5px;color:#7A8394}
-.as-pi:has(input:checked){border-color:#3B76F0;background:#F5F8FF}
+.as-pi:has(input:checked),.as-pi.is-checked{border-color:#3B76F0;background:#F5F8FF}
 
 /* ===== 项目列表 ===== */
 .w-top{display:flex;align-items:center;gap:8px;padding:calc(var(--sat) + 18px) 2px 12px}
@@ -1515,7 +1515,7 @@ body.is-home:has(.tk-top){background:linear-gradient(180deg,#EEF2F8 0%,#F5F7FA 4
 .tk-foot::before{background:linear-gradient(180deg,#F3F5F8 0%,rgba(243,245,248,.86) 35%,rgba(236,240,246,.74) 70%,rgba(243,245,248,.85) 100%)}
 .tk-foot{background-position:50% 12%}
 /* 首页固定一屏，不滚动 */
-html:has(body.home-lock),body.home-lock{height:100%;overflow:hidden;overscroll-behavior:none}
+html:has(body.home-lock),html.home-lock,body.home-lock{height:100%;overflow:hidden;overscroll-behavior:none}
 body.home-lock #app{padding-bottom:0;min-height:0;height:100%}
 .hm{height:calc(100dvh / .86);min-height:0!important;padding-bottom:calc((92px + var(--sab)) / .86);box-sizing:border-box}
 .hm-copy{margin-top:min(46px,4.5vh)}
@@ -2848,7 +2848,7 @@ textarea{min-height:76px;padding:9px 12px;font-size:15px;border-radius:12px}
 .np-pick{display:flex;flex-direction:column;gap:6px}
 .np-po{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid #E8ECF3;border-radius:14px;background:#fff;cursor:pointer}
 .np-po input{position:absolute;opacity:0;pointer-events:none}
-.np-po:has(input:checked){border-color:#1E2638;box-shadow:0 0 0 1px #1E2638;background:#F7F9FC}
+.np-po:has(input:checked),.np-po.is-checked{border-color:#1E2638;box-shadow:0 0 0 1px #1E2638;background:#F7F9FC}
 .np-po > span:nth-of-type(2){flex:1;min-width:0;display:flex;flex-direction:column}
 .np-po b{font-size:14px}.np-po small{font-size:11.5px;color:#8A93A6}.np-po em{font-style:normal;font-size:11.5px;color:#9AA3B2}
 .np-po .av{flex:none}
@@ -2970,7 +2970,7 @@ textarea{min-height:76px;padding:9px 12px;font-size:15px;border-radius:12px}
 .me-acct .me-out span{color:var(--bad,#D93A3A)}
 
 /* 首页锁定滚动时 body 是 overflow:hidden，会裁掉 .hm 用负 margin 顶进安全区的部分（iPhone 上顶部、底部各露一条白边）：首页不要根元素的安全区内边距，.hm 自己处理 */
-:root:has(body.home-lock){padding-top:0;padding-bottom:0}
+:root:has(body.home-lock),html.home-lock{padding-top:0;padding-bottom:0}
 body.home-lock .hm{margin-top:0}
 /* 根元素透明：画布用 body 的背景铺满（含 iPhone 安全区）；顶部渐变层也延伸进安全区，避免状态栏下出现白条 */
 html{background:transparent!important}

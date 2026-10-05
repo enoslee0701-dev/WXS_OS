@@ -46,6 +46,8 @@ const c0route = (p) => p.context().route('http://join.test:8787/**', r => r.fulf
   ok(await p.evaluate(() => TMN.native && TMN.platform === 'ios' && document.documentElement.classList.contains('p-ios')), '识别为 iOS 原生');
   ok(await p.evaluate(() => window.SpeechRecognition === TMN.SpeechRecognition && window.webkitSpeechRecognition === TMN.SpeechRecognition), '语音识别换成原生实现');
   ok(await p.evaluate(() => __fake.calls.includes('SplashScreen.hide')), '加载后关闭启动屏');
+  await p.waitForTimeout(2000);
+  ok(await p.evaluate(() => __fake.calls.filter(x => x === 'SplashScreen.hide').length >= 3), '启动屏关闭请求会补发（Android 11 及以下第一次可能被忽略）');
   ok(await p.evaluate(() => !TMN.error), '桥接层无错误');
   ok(await p.evaluate(() => /maximum-scale=1/.test(document.querySelector('meta[name=viewport]').content)), 'App 里禁止缩放（避免点输入框页面放大）');
 

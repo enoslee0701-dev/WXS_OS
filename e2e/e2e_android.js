@@ -76,6 +76,14 @@ const FAKE = (opts) => {
   await p.evaluate(() => document.querySelector('[data-do=wUpload]').click()); await p.waitForTimeout(300);
   ok(await p.locator('#layer .sheet footer button').count() === 1 && (await p.textContent('#layer .sheet footer')).trim() === '关闭', '上传面板底部只有「关闭」');
   await p.evaluate(() => window.__tm.back()); await p.waitForTimeout(200);
+  // 4d. 旧 WebView 不支持 :has()：选中的选项卡片靠 is-checked 类显示
+  await p.evaluate(() => { location.hash = '#/team'; }); await p.waitForTimeout(300);
+  await p.evaluate(() => document.querySelector('[data-do=tmInvite]').click()); await p.waitForTimeout(300);
+  ok(await p.locator('#layer .opt.is-checked').count() === 1, '打开面板时默认选项有选中样式');
+  await p.locator('#layer .opt').nth(1).click(); await p.waitForTimeout(100);
+  ok(await p.evaluate(() => { const l = [...document.querySelectorAll('#layer .opt')]; return l[1].classList.contains('is-checked') && !l[0].classList.contains('is-checked'); }), '点另一个选项：选中样式跟着移动');
+  await p.evaluate(() => window.__tm.back()); await p.waitForTimeout(200);
+  ok(await p.evaluate(() => { location.hash = '#/home'; return new Promise(r => setTimeout(() => r(document.documentElement.classList.contains('home-lock')), 300)); }), '首页给 html 加 home-lock（代替 :has）');
   // 5. 外部链接交给系统浏览器（页面导航到外部地址，由 Capacitor 转给系统浏览器）
   await p.context().route('https://example.org/**', r => r.fulfill({ status: 200, contentType: 'text/html', body: 'ext' }));
   await p.evaluate(() => { const x = document.createElement('a'); x.href = 'https://example.org/doc'; x.target = '_blank'; x.textContent = 'ext'; x.id = 'extl'; x.style.cssText = 'position:fixed;top:120px;left:20px;z-index:9999;padding:10px;background:#fff'; document.body.appendChild(x); });
@@ -84,9 +92,16 @@ const FAKE = (opts) => {
   ok(p.url() === 'https://example.org/doc' && p.context().pages().length === pages0, '外部链接（target=_blank）不开新窗口，交给系统浏览器：' + p.url());
   await p.context().close();
 
+  // 5b. 旧 WebView 不支持 flex gap：换成子元素外边距（这里强制按不支持处理）
+  { const c3 = await b.newContext({ ...devices['Pixel 7'] }); await c3.addInitScript(() => { window.__tmNoFlexGap = true; localStorage.setItem('tm_demo_chosen', '1'); });
+    const p3 = await c3.newPage(); const e3 = []; p3.on('pageerror', e => e3.push(e.message)); await p3.goto(URL); await p3.click('.acct:has-text("Enos")'); await p3.evaluate(() => { location.hash = '#/ideas'; }); await p3.waitForTimeout(400);
+    const r = await p3.evaluate(() => { const fx = [...document.querySelectorAll('[data-fg]')]; const kids = fx.flatMap(e => [...e.children]).filter(k => k.style.marginLeft || k.style.marginTop || k.style.marginRight || k.style.marginBottom); return { fx: fx.length, kids: kids.length }; });
+    ok(r.fx > 5 && r.kids > 5, '不支持 flex gap 时补上外边距 ' + JSON.stringify(r));
+    ok(e3.length === 0, '无报错 ' + e3.join('|')); await c3.close(); }
   // 6. 没有语音识别服务的手机（不少国产手机）
   p = await mk({ noSpeech: true }, '#/new/voice'); await p.waitForTimeout(500);
   ok(await p.evaluate(() => TMN.noSpeech === true && !window.SpeechRecognition), '没有识别服务：去掉语音转文字');
+  ok(await p.evaluate(() => !document.querySelector('[data-fg]')), '支持 flex gap 的浏览器不做任何改动');
   await p.evaluate(() => { location.hash = '#/new/voice'; }); await p.waitForTimeout(300);
   ok((await p.textContent('.vr-card')).includes('这台手机不支持转写'), '语音页提示不支持转写（录音照常）：' + (await p.textContent('.vr-card')).slice(0, 40));
   ok(p.errs.length === 0, '无报错 ' + p.errs.join('|'));

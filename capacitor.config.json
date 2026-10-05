@@ -10,14 +10,13 @@
   },
   "plugins": {
     "SplashScreen": {
-      "launchShowDuration": 3000,
-      "launchAutoHide": false,
+      "launchShowDuration": 2000,
+      "launchAutoHide": true,
       "backgroundColor": "#FFFFFF",
       "showSpinner": false
     },
     "Keyboard": {
-      "resize": "native",
-      "resizeOnFullScreen": true
+      "resize": "native"
     },
     "StatusBar": {
       "overlaysWebView": true,
