@@ -19,6 +19,11 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         // 网页渲染进程被系统杀掉或崩溃（内存不足、内核问题）：系统默认会让整个 App 闪退。
         // 这里记下原因并重建页面，用户最多看到页面重新加载一次
+        if (bridge != null && bridge.getWebView() != null) {
+            // 手机系统字体调大时 WebView 会按同样比例放大文字；页面是按固定尺寸设计的，最多跟随到 115%，避免卡片重叠
+            float scale = getResources().getConfiguration().fontScale;
+            bridge.getWebView().getSettings().setTextZoom(Math.round(Math.min(scale, 1.15f) * 100));
+        }
         if (bridge != null) {
             bridge.addWebViewListener(new WebViewListener() {
                 @Override
