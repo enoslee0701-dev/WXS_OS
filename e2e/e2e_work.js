@@ -56,4 +56,10 @@ await p.click('.wd-accept [data-do=closeWork]');await sub();ok(await p.locator('
 await p.goto(URL+'#/home');await p.waitForTimeout(80);await p.click('[data-do=switch]');await p.click('.acct:has-text("何静")');await p.goto(URL+'#/work/W1');await p.waitForTimeout(120);
 ok(await p.locator('[data-do=wAddMs]').count()===0 && await p.locator('.actions').count()===0,'执行者只读，无操作按钮');
 ok(errs.length===0,'无报错 '+errs.join('|'));
+// 取消项目：更多操作 → 取消项目 → 写原因 → 项目已取消、任务一并取消
+await p.goto(URL+'#/home');await p.waitForTimeout(80);await p.click('[data-do=switch]');await p.click('.acct:has-text("Enos")');
+await p.goto(URL+'#/work/W1');await p.waitForTimeout(200);await p.click('.actions .btn:has-text("更多操作")');ok(await p.locator('.sheet [data-do=cancelWork]').count()===1,'更多操作含取消项目');
+await p.click('.sheet [data-do=cancelWork]');await p.fill('.sheet textarea[name=reason]','方向调整');await sub();await p.waitForTimeout(150);
+ok(await p.evaluate(()=>{const S=window.__tm.S;return S.workItems.find(w=>w.id==='W1').status==='cancelled'&&S.tasks.filter(t=>t.workId==='W1').every(t=>['done','cancelled'].includes(t.status));}),'取消项目后项目和未完成任务都已取消');
+ok(await p.locator('.actions .btn:has-text("更多操作")').count()===0 || !(await p.evaluate(()=>!!document.querySelector('.sheet [data-do=cancelWork]'))),'已取消的项目不再提供取消');
 console.log(`项目页 E2E 通过 ${pass}，失败 ${fail}`);await b.close();process.exit(fail?1:0);})().catch(e=>{console.error(e);process.exit(1)});

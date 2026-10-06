@@ -508,7 +508,7 @@ var TM = (function () {
     var w = { id: nid(s, 'W'), ideaId: d.id, dept: p.dept || d.dept, kind: kind, title: title, goal: txt(p.goal), status: 'planning', stage: 'clarify',
       operatorId: uid, leadId: null, reviewerId: uid, externalLink: '', due: p.due || null, lastActivity: now(s), createdAt: now(s) };
     if (kind === 'product') {
-      need(p.leadId && hasRole(s, p.leadId, 'lead'), '专业事项请指定项目负责人');
+      need(p.leadId && leadUsers(s).indexOf(p.leadId) >= 0, '专业事项请指定项目负责人'); // 没有负责人的小团队：老板可自任
       w.leadId = p.leadId; w.reviewerId = p.leadId;
     } else {
       var ts = p.tasks || []; need(ts.length, '行政事务请至少派一个任务');
@@ -813,6 +813,20 @@ var TM = (function () {
     var w = work(s, p.id); need(hasRole(s, uid, 'owner'), '只有老板可以恢复'); need(w.status === 'paused', '事项未暂停');
     w.status = w.pausedFrom || 'active'; ev(s, { workId: w.id, actor: uid, action: 'work.resume', from: 'paused', to: w.status, text: '恢复事项' });
     notify(s, relatedOfWork(s, w), uid, '事项已恢复', w.title, '#/work/' + w.id); touchWork(s, w); return {};
+  };
+  /* 取消项目：老板、项目负责人或跟进运营者，必须写原因；未结束的任务一并取消；来源想法没有别的进行中项目时回到「暂缓」（之后可恢复或删除） */
+  A['work.cancel'] = function (s, uid, p) {
+    var w = work(s, p.id); need(hasRole(s, uid, 'owner') || w.leadId === uid || w.operatorId === uid, '只有老板、项目负责人或跟进运营者可以取消项目');
+    need(['done', 'cancelled'].indexOf(w.status) < 0, '项目已结束，不能取消'); var r = txt(p.reason); need(r, '取消项目必须填写原因');
+    var who = relatedOfWork(s, w), f = w.status, n = 0;
+    s.tasks.forEach(function (t) { if (t.workId === w.id && ['done', 'cancelled'].indexOf(t.status) < 0) { t.status = 'cancelled'; t.lastActivity = now(s); n++; } });
+    w.status = 'cancelled'; w.cancelReason = r; w.cancelledAt = now(s); w.cancelledBy = uid;
+    ev(s, { workId: w.id, ideaId: w.ideaId, actor: uid, action: 'work.cancel', from: f, to: 'cancelled', reason: r, text: '取消项目：' + r + (n ? '（一并取消 ' + n + ' 个未完成任务）' : '') });
+    var d = w.ideaId && s.ideas.find(function (x) { return x.id === w.ideaId; });
+    if (d && d.status === 'planned' && !s.workItems.some(function (x) { return x.ideaId === d.id && ['done', 'cancelled'].indexOf(x.status) < 0; })) {
+      d.status = 'on_hold'; touchIdea(s, d); ev(s, { ideaId: d.id, actor: uid, action: 'idea.hold', from: 'planned', to: 'on_hold', text: '形成的项目已取消，想法转为暂缓' });
+    }
+    notify(s, who.concat(usersWith(s, 'owner'), [d && d.creatorId]), uid, '项目已取消', w.title + '：' + r, '#/work/' + w.id); touchWork(s, w); return { tasks: n };
   };
   function relatedOfWork(s, w) {
     var a = [w.operatorId, w.leadId, w.reviewerId];

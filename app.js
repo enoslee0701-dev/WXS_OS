@@ -2702,6 +2702,7 @@
     if ((w.leadId === me || (w.kind !== 'product' && w.operatorId === me) || ow) && TM.STAGES[w.kind].length > 1 && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['推进阶段', 'stage']);
     if (ow && ['planning', 'active', 'acceptance', 'blocked'].indexOf(w.status) >= 0) a.push(['暂停', 'pause']);
     if (ow && w.status === 'paused') a.push(['恢复', 'resume']);
+    if ((ow || w.leadId === me || w.operatorId === me) && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['取消项目', 'cancelWork']);
     return a;
   }
   function workActions(w) {
@@ -2978,6 +2979,8 @@
         function (o) { act('work.stage', { id: w.id, stage: o.stage, note: o.note }, '阶段已更新'); });
     },
     closeWork: function () { var w = W(cur().id); openSheet('确认事项完成', '<p>事项下的任务已全部验收通过。确认后事项完成，老板和发起人会收到通知。</p>' + field('验收意见（可选）', '<textarea name="note" rows="2"></textarea>'), '确认完成', function (o) { act('work.close', { id: w.id, note: o.note }, '事项已完成'); }); },
+    cancelWork: function () { var w = W(cur().id), n = S.tasks.filter(function (t) { return t.workId === w.id && ['done', 'cancelled'].indexOf(t.status) < 0; }).length;
+      openSheet('取消项目', '<div class="callout warn">取消后项目不能再操作' + (n ? '，' + n + ' 个未完成的任务会一并取消' : '') + '，相关人会收到通知，记录保留。来源想法会转为「暂缓」。</div>' + field('原因', '<textarea name="reason" rows="3" required></textarea>'), '确认取消', function (o) { act('work.cancel', { id: w.id, reason: o.reason }, '项目已取消'); }, true); },
     pause: function () { var w = W(cur().id); openSheet('暂停事项（纠偏）', '<div class="callout warn">暂停后所有任务不能操作，相关人会收到通知，原记录保留。</div>' + field('原因', '<textarea name="reason" rows="3"></textarea>'), '暂停', function (o) { act('work.pause', { id: w.id, reason: o.reason }, '已暂停'); }, true); },
     resume: function (el) { act('work.resume', { id: el.dataset.arg || cur().id }, '已恢复'); },
     tt: function (el) { var a = el.dataset.arg; act('task.transition', { id: cur().id, action: a }, { accept: '已接收', start: '已开始', unblock: '阻碍已解除' }[a]); },
@@ -3026,7 +3029,7 @@
   function routeSheet(id) {
     var d = I(id), sm = TM.latestSummary(S, d.id, 'analysis'), p = sm ? sm.payload : {}, st = (p.suggested_tasks || [])[0] || {};
     var cat = p.category || 'admin';
-    var leads = S.users.filter(function (u) { return TM.hasRole(S, u.id, 'lead'); }).map(function (u) { return u.id; });
+    var leads = TM.leadUsers(S); // 没有负责人的小团队：老板自任
     var mustOwner = S.settings.ownerApprovalMode === 'all' && !d.ownerApproved;
     var ai = S.settings.agentDirectRoute && p.suggested_route ? '<div class="callout ai">AI 已按整理稿预填：' + esc(L.route[p.suggested_route]) + '。核对后点「派发」，派发由你决定。</div>' : '';
     openSheet('派发', (mustOwner ? '<div class="callout warn">当前设置为「每条都送老板」。请先通过「更多」上报老板，批准后才能派发。</div>' : '') + ai +

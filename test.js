@@ -629,5 +629,28 @@ ok(!tr2.reanalyzed && s.summaries.length === n2, '人工改过的整理稿不被
 const hid = s.ideas.find(d => d.id === vi2.id).media[0]; const vv = TM.viewFor(s, DV).ideas.find(d => d.id === vi2.id);
 ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV, s.ideas.find(d => d.id === vi2.id), hid), '看不到附件的人拿不到转写');
 
+// ===== 只有老板的团队：想法派发为产品类时老板自任负责人 =====
+{ const b = TM.blank({ name: '王老板' }, clock); const bo = b.users[0].id;
+  const bi = must(TM.act(b, bo, 'idea.create', { note: '做一个报名小程序' }), '小团队老板记想法');
+  must(TM.act(b, bo, 'idea.submit', { id: bi.id, path: 'direct' }), '提交');
+  if (b.ideas.find(d => d.id === bi.id).followerId !== bo) must(TM.act(b, bo, 'idea.claim', { id: bi.id }), '老板兼任跟进认领');
+  const br = must(TM.act(b, bo, 'idea.route', { id: bi.id, kind: 'product', title: '报名小程序', leadId: bo }), '只有老板的团队：派发产品类，老板自任负责人');
+  ok(br.workId && b.workItems.find(w => w.id === br.workId).leadId === bo, '项目负责人是老板'); }
+
+// ===== 取消项目：级联取消任务、想法转暂缓、之后可删除 =====
+{ const c = fresh();
+  const ci = must(TM.act(c, O, 'idea.create', { note: '换会议室投影' }), '建想法'); must(TM.act(c, O, 'idea.submit', { id: ci.id, path: 'direct' }), '提交');
+  must(TM.act(c, OP, 'idea.claim', { id: ci.id }), '认领');
+  const cr = must(TM.act(c, OP, 'idea.route', { id: ci.id, kind: 'admin', title: '换投影', tasks: [{ title: '买投影', ownerId: AX, expected: '发票', criteria: '型号对' }, { title: '装投影', ownerId: AX, expected: '照片', criteria: '能投屏' }] }), '派发');
+  rej(TM.act(c, O, 'idea.delete', { id: ci.id }), '有进行中的项目时不能删想法');
+  rej(TM.act(c, AX, 'work.cancel', { id: cr.workId, reason: '不要了' }), '执行者不能取消项目');
+  rej(TM.act(c, O, 'work.cancel', { id: cr.workId }), '取消项目必须写原因');
+  const cc = must(TM.act(c, O, 'work.cancel', { id: cr.workId, reason: '预算砍了' }), '老板取消项目');
+  ok(cc.tasks === 2 && c.tasks.filter(x => x.workId === cr.workId).every(x => x.status === 'cancelled'), '未完成任务一并取消');
+  ok(c.workItems.find(w => w.id === cr.workId).status === 'cancelled' && c.ideas.find(d => d.id === ci.id).status === 'on_hold', '项目已取消、想法转暂缓');
+  ok(c.notifications.some(n => n.userId === AX && /项目已取消/.test(n.title)), '执行人收到取消通知');
+  rej(TM.act(c, O, 'work.cancel', { id: cr.workId, reason: 'x' }), '已取消的不能再取消');
+  must(TM.act(c, O, 'idea.delete', { id: ci.id, reason: '不做了' }), '项目取消后可以删除想法'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);
