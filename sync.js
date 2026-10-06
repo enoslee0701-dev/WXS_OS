@@ -179,6 +179,28 @@ var TMS = (function () {
   api.probe = function (server) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'GET', '/api/health').then(function (r) { return { base: b, setup: r.setup }; }); };
   api.login = function (server, login, password) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'POST', '/api/login', { login: login, password: password }).then(function (res) { establish(b, res); }); };
   api.setup = function (server, o) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'POST', '/api/setup', o).then(function (res) { establish(b, res); }); };
+  // 在同一个 Wi-Fi 里自动查找团队服务器：按手机自己的网段（拿不到就试常见网段）逐个问 /api/health，返回找到的地址
+  api.scan = function (onProgress) {
+    var port = 8787, hits = [];
+    var nets = function () { return (typeof TMN !== 'undefined' && TMN.localIps ? TMN.localIps() : Promise.resolve([])).then(function (ips) {
+      var own = ips.map(function (ip) { return ip.split('.').slice(0, 3).join('.'); }).filter(function (x, i, a) { return a.indexOf(x) === i; });
+      return own.length ? own : ['192.168.1', '192.168.0', '192.168.31', '192.168.2', '192.168.3', '10.0.0', '192.168.10', '192.168.100'];
+    }); };
+    var probe = function (host) {
+      var ctl = window.AbortController ? new AbortController() : null, tm = setTimeout(function () { if (ctl) ctl.abort(); }, 1200);
+      return fetch('http://' + host + ':' + port + '/api/health', { signal: ctl && ctl.signal }).then(function (r) { return r.json(); }).then(function (j) { clearTimeout(tm); if (j && j.ok === true && 'setup' in j) hits.push('http://' + host + ':' + port); }, function () { clearTimeout(tm); });
+    };
+    return nets().then(function (list) {
+      var hosts = []; list.forEach(function (n) { for (var i = 1; i < 255; i++) hosts.push(n + '.' + i); });
+      var next = 0, done = 0;
+      return new Promise(function (ok) {
+        var worker = function () { if (hits.length) return ok(); if (next >= hosts.length) { if (done >= hosts.length || !hosts.length) ok(); return; } var h = hosts[next++]; probe(h).then(function () { done++; if (onProgress) onProgress(done, hosts.length); worker(); }); };
+        if (!hosts.length) return ok();
+        for (var k = 0; k < 64; k++) worker();
+        setTimeout(ok, 45000); // 最多找 45 秒
+      });
+    }).then(function () { return hits.filter(function (x, i, a) { return a.indexOf(x) === i; }); });
+  };
   api.useServer = function (server) { clearBig(); put('tm_server', norm(server) || 'http://'); put(K, null); put(KU, null); location.hash = '#/login'; reloadSafe(); };
   api.useLocal = function () { clearBig(); ['tm_server', 'tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; reloadSafe(); };
   api.logout = function () {

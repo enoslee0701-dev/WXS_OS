@@ -82,6 +82,27 @@ public class DiagPlugin extends Plugin {
         call.resolve(r);
     }
 
+    /** 手机当前的局域网 IPv4 地址（用来在同一个 Wi-Fi 里自动查找团队服务器；不需要任何权限） */
+    @PluginMethod
+    public void netInfo(PluginCall call) {
+        com.getcapacitor.JSArray ips = new com.getcapacitor.JSArray();
+        try {
+            java.util.Enumeration<java.net.NetworkInterface> it = java.net.NetworkInterface.getNetworkInterfaces();
+            while (it != null && it.hasMoreElements()) {
+                java.net.NetworkInterface ni = it.nextElement();
+                if (!ni.isUp() || ni.isLoopback()) continue;
+                java.util.Enumeration<java.net.InetAddress> as = ni.getInetAddresses();
+                while (as.hasMoreElements()) {
+                    java.net.InetAddress a = as.nextElement();
+                    if (a instanceof java.net.Inet4Address && a.isSiteLocalAddress()) ips.put(a.getHostAddress());
+                }
+            }
+        } catch (Exception ignored) {}
+        JSObject r = new JSObject();
+        r.put("ips", ips);
+        call.resolve(r);
+    }
+
     /** 测试用：模拟一次闪退记录（不会真的让 App 崩溃） */
     @PluginMethod
     public void simulate(PluginCall call) {

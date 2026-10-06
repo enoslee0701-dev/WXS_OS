@@ -184,6 +184,8 @@ var TMN = (function () {
   };
   // 安装的 App 版本（versionName / versionCode），用于检查更新
   api.appInfo = function () { return App && App.getInfo ? App.getInfo().catch(function () { return null; }) : Promise.resolve(null); };
+  // 手机当前的局域网 IP（安卓原生给；其他平台返回空，由调用方按常见网段查找）
+  api.localIps = function () { return Diag && Diag.netInfo ? Diag.netInfo().then(function (r) { return r && r.ips || []; }, function () { return []; }) : Promise.resolve([]); };
   /* ---------- 诊断：上次闪退的原因（Android），由 app.js 启动后提示 ---------- */
   api.lastCrash = function () { return Diag ? Diag.lastCrash().then(function (r) { return r && r.text || ''; }, function () { return ''; }) : Promise.resolve(''); };
   api.plugins.Diag = Diag;

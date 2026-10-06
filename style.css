@@ -231,7 +231,9 @@ input:focus,textarea:focus,select:focus{outline:none;background:var(--surface);b
 .toast.bad{background:var(--bad);color:#fff}
 
 /* 登录 */
-.login{padding:36px 20px 40px}
+.login{padding:calc(36px + var(--sat)) 20px 40px} /* 顶部避开状态栏（新版安卓 WebView 页面铺到状态栏下面） */
+.srv-scan{display:flex;align-items:center;justify-content:center;gap:6px;min-height:40px;border-radius:999px;background:#EEF3FF;color:#2148C0;font-weight:650;font-size:14.5px;margin-top:6px;width:100%}
+.srv-scan[disabled]{opacity:.7}
 .login .mark{font-size:68px;line-height:1;font-weight:800;letter-spacing:-.04em;margin:18px 0 70px}
 .login h1{font-size:22px;line-height:1.3;margin:0 0 4px;font-weight:700}
 .login > p{color:var(--ink2);margin:0 0 18px;font-size:15px}

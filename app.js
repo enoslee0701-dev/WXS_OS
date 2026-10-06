@@ -185,7 +185,7 @@
   }
   function viewSrvLogin() {
     if (!srvL.probed) { srvProbe(); }
-    var urlF = TMS.sameOrigin ? '' : field('服务器地址', '<input type="text" inputmode="url" name="server" value="' + esc(srvL.url) + '" placeholder="例如：http://192.168.1.20:8787" autocapitalize="off" autocorrect="off" required>', srvL.err ? '<span class="srv-err">' + esc(srvL.err) + '</span>' : '');
+    var urlF = TMS.sameOrigin ? '' : field('服务器地址', '<input type="text" inputmode="url" name="server" value="' + esc(srvL.url) + '" placeholder="老板给的地址，例如 192.168.1.x" autocapitalize="off" autocorrect="off" required><button type="button" class="srv-scan" data-do="srvScan">' + hi('spark', 1.6) + '在这个 Wi-Fi 里自动查找</button>', srvL.err ? '<span class="srv-err">' + esc(srvL.err) + '</span>' : '');
     var h = '<div class="login srv-login"><div class="mark" aria-hidden="true">协同</div>';
     if (srvL.probed && srvL.setup && !srvL.err) {
       h += '<h1>创建你的团队</h1><p>第一次使用：先建立老板账号。之后由你给每位成员分派登录账号。</p><form class="srv-form" data-form="srvSetup">' + urlF +
@@ -3132,7 +3132,19 @@
   };
   DO.onboardGo = function (el) { closeSheet(); location.hash = el.dataset.h; };
   DO.demoChoose = function () { try { localStorage.setItem('tm_demo_chosen', '1'); } catch (e) {} render(); };
-  DO.srvConnect = function () { openSheet('连接团队服务器', field('服务器地址', '<input type="text" inputmode="url" name="server" placeholder="例如：http://192.168.1.20:8787" autocapitalize="off" autocorrect="off" required>', '老板在办公室电脑上开启团队服务器后会显示这个地址；同事扫老板给的二维码会自动填好。'), '连接', function (o) { TMS.useServer(o.server); }); };
+  // 自动查找团队服务器：找到就填进地址框（登录页会顺便重新检查）
+  DO.srvScan = function (el) {
+    var inp = el && el.parentNode && el.parentNode.querySelector('input[name=server]') || document.querySelector('input[name=server]');
+    el.disabled = true; var t0 = el.innerHTML; el.textContent = '正在查找…';
+    TMS.scan(function (d, n) { el.textContent = '正在查找… ' + Math.round(d / n * 100) + '%'; }).then(function (list) {
+      el.disabled = false; el.innerHTML = t0;
+      if (!list.length) return toast('这个 Wi-Fi 里没找到团队服务器：确认手机和服务器电脑连的是同一个 Wi-Fi、服务器电脑开着，或者直接填老板给的地址', true);
+      if (inp) inp.value = list[0];
+      if (document.querySelector('form[data-form=srvLogin], form[data-form=srvSetup]')) { srvL.url = list[0]; srvL.probed = false; srvL.err = ''; render(); }
+      toast('找到了团队服务器：' + list[0]);
+    });
+  };
+  DO.srvConnect = function () { openSheet('连接团队服务器', field('服务器地址', '<input type="text" inputmode="url" name="server" placeholder="老板给的地址，例如 192.168.1.x" autocapitalize="off" autocorrect="off" required><button type="button" class="srv-scan" data-do="srvScan">' + hi('spark', 1.6) + '在这个 Wi-Fi 里自动查找</button>', '老板在办公室电脑上开启团队服务器后会显示这个地址；同事扫老板给的二维码会自动填好。'), '连接', function (o) { TMS.useServer(o.server); }); };
   DO.srvLocal = function () { TMS.useLocal(); };
   DO.srvLogout = function () { var n = TMS.outbox.length; openSheet('退出登录', '<p style="margin:0">' + (n ? '还有 <b>' + n + '</b> 项改动没同步到服务器，退出后会丢失。建议联网同步完再退出。' : '退出后需要重新输入账号密码。') + '</p>', '退出登录', function () { TMS.logout(); }, true); };
   DO.srvPassword = function (el) { var must = TMS.mustChange;
