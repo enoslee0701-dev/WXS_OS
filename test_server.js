@@ -132,6 +132,17 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
     const other = ls.sessions.find(x => !x.current); await post('/api/sessions/revoke', { id: other.id }, boss);
     ok((await get('/api/sessions', boss)).sessions.length === ls.sessions.length - 1, '退出某一台设备');
     const ra = await post('/api/sessions/revoke', { all: true }, boss); ok(ra.n >= 1 && (await get('/api/state', t3)).status === 401 && (await get('/api/state', boss)).status === 200, '退出其他全部，这台保留'); }
+  // 8.48 断点续传：分段上传，中断后从服务器已收到的位置接着传
+  { const H = { Authorization: 'Bearer ' + boss, 'Content-Type': 'video/mp4', 'X-File-Name': encodeURIComponent('长视频.mp4') };
+    const big = Buffer.alloc(900 * 1024); for (let i = 0; i < big.length; i++) big[i] = i % 251;
+    const put = (off, buf) => fetch(B + '/api/files/f_chunk01/chunk?offset=' + off + '&total=' + big.length, { method: 'PUT', headers: H, body: buf });
+    let r = await put(0, big.subarray(0, 300 * 1024)); let j = await r.json(); ok(r.status === 200 && !j.done && j.size === 300 * 1024, '第一段收到');
+    const st1 = await (await fetch(B + '/api/files/f_chunk01/upload', { headers: { Authorization: 'Bearer ' + boss } })).json(); ok(!st1.done && st1.size === 300 * 1024, '中断后查到已收到 300KB');
+    r = await put(0, big.subarray(0, 300 * 1024)); j = await r.json(); ok(r.status === 409 && j.size === 300 * 1024, '位置不对时告诉手机从哪里接着传');
+    r = await put(300 * 1024, big.subarray(300 * 1024, 600 * 1024)); r = await put(600 * 1024, big.subarray(600 * 1024)); j = await r.json(); ok(j.done && j.size === big.length, '最后一段传完，文件合成');
+    const got = Buffer.from(await (await fetch(B + '/api/files/f_chunk01', { headers: { Authorization: 'Bearer ' + boss } })).arrayBuffer()); ok(got.equals(big), '合成后的文件内容完全一致');
+    const st2 = await (await fetch(B + '/api/files/f_chunk01/upload', { headers: { Authorization: 'Bearer ' + boss } })).json(); ok(st2.done, '传完后查询显示已完成');
+    r = await fetch(B + '/api/files/f_chunk02/chunk?offset=0&total=' + (5 * 1048576), { method: 'PUT', headers: H, body: Buffer.alloc(10) }); ok(r.status === 413, '总大小超过上限被拒'); }
   // 8.5 附件
   const up = (id, body, tok, type) => fetch(B + '/api/files/' + id, { method: 'PUT', headers: { 'Content-Type': type || 'text/plain', 'X-File-Name': encodeURIComponent('会议记录.txt'), ...(tok ? { Authorization: 'Bearer ' + tok } : {}) }, body });
   const liTok2 = (await post('/api/login', { login: 'xiaoli', password: 'li123456' })).token;

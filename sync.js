@@ -248,6 +248,29 @@ var TMS = (function () {
     return IDB;
   }
   function tx(mode, fn) { return idb().then(function (db) { return new Promise(function (ok, bad) { var t = db.transaction('q', mode), st = t.objectStore('q'), r = fn(st); t.oncomplete = function () { ok(r && r.result); }; t.onerror = function () { bad(t.error); }; }); }); }
+  /* 大文件分段上传、断点续传：先问服务器已经收到多少，从那里接着传，每段 2MB */
+  var CHUNK_MIN = 4 * 1048576, CHUNK = 2 * 1048576;
+  function upChunked(it) {
+    var u = api.base + '/api/files/' + encodeURIComponent(it.id), H = { Authorization: 'Bearer ' + api.token };
+    var fake = function (status, j) { return { ok: status >= 200 && status < 300, status: status, json: function () { return Promise.resolve(j || {}); } }; };
+    return fetch(u + '/upload', { headers: H }).then(function (r) {
+      if (!r.ok) return r;
+      return r.json().then(function (st) {
+        if (st.done) return fake(200, st);
+        var off = st.size || 0, total = it.blob.size;
+        var next = function () {
+          if (off >= total) return fake(200, { done: true });
+          var part = it.blob.slice(off, Math.min(off + CHUNK, total));
+          return fetch(u + '/chunk?offset=' + off + '&total=' + total, { method: 'PUT', headers: Object.assign({ 'Content-Type': it.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(it.name || '') }, H), body: part }).then(function (r2) {
+            if (r2.status === 409) return r2.json().then(function (j) { if (typeof j.size === 'number') { off = j.size; return next(); } return r2; });
+            if (!r2.ok) return r2;
+            return r2.json().then(function (j) { if (j.done) return fake(200, j); off = j.size; api.upProgress = Math.round(off / total * 100); return next(); });
+          });
+        };
+        return next();
+      });
+    });
+  }
   function pump() {
     if (upBusy || !api.loggedIn()) return;
     upBusy = true;
@@ -256,7 +279,7 @@ var TMS = (function () {
     Promise.all([tx('readonly', function (st) { return st.count(); }), idb().then(function (db) { return new Promise(function (ok, bad) { var r = db.transaction('q', 'readonly').objectStore('q').openCursor(); r.onsuccess = function () { var c = r.result; if (!c) return ok(null); if (!c.value.uid || c.value.uid === who) return ok(c.value); c.continue(); }; r.onerror = function () { bad(r.error); }; }); })]).then(function (x) {
       api.uploading = x[0] || 0; setStatus(api.status);
       var it = x[1]; if (!it) { upBusy = false; return; }
-      return fetch(api.base + '/api/files/' + encodeURIComponent(it.id), { method: 'PUT', headers: { Authorization: 'Bearer ' + api.token, 'Content-Type': it.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(it.name || '') }, body: it.blob })
+      return (it.blob.size > CHUNK_MIN ? upChunked(it) : fetch(api.base + '/api/files/' + encodeURIComponent(it.id), { method: 'PUT', headers: { Authorization: 'Bearer ' + api.token, 'Content-Type': it.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(it.name || '') }, body: it.blob }))
         .then(function (r) {
           if (r.status === 401) { upBusy = false; return expired(); }
           if (r.status === 403) { upBusy = false; return; } // 还没改初始密码：先留着，改完再传

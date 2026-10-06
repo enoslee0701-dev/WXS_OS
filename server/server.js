@@ -456,6 +456,38 @@ function putFile(req, res, id, me) {
   });
   out.on('error', () => abort(500, '保存文件失败'));
 }
+const partPath = (id, uid) => path.join(FILES, id + '.upload-' + crypto.createHash('sha256').update(uid).digest('hex').slice(0, 12));
+function uploadStatus(res, id, me) {
+  if (!FILE_ID.test(id)) return send(res, 400, { error: '文件 ID 不对' });
+  const f = q('SELECT uid,size FROM files WHERE id=?').get(id);
+  if (f) return f.uid === me.uid ? send(res, 200, { done: true, size: f.size }) : send(res, 409, { error: '文件 ID 已被占用' });
+  let size = 0; try { size = fs.statSync(partPath(id, me.uid)).size; } catch (e) {}
+  send(res, 200, { done: false, size });
+}
+function putChunk(req, res, url, id, me) {
+  if (!FILE_ID.test(id)) return send(res, 400, { error: '文件 ID 不对' });
+  const old = q('SELECT * FROM files WHERE id=?').get(id);
+  if (old && old.uid !== me.uid) return send(res, 409, { error: '文件 ID 已被占用' });
+  const offset = +url.searchParams.get('offset'), total = +url.searchParams.get('total'), len = +req.headers['content-length'] || 0;
+  if (!(offset >= 0) || !(total > 0) || !len || len > 8 * 1048576 || offset + len > total) return send(res, 400, { error: '分段参数不对' });
+  if (total > MAX_FILE) return send(res, 413, { error: '文件太大（上限 ' + Math.round(MAX_FILE / 1048576) + 'MB）' });
+  const used = q('SELECT COALESCE(SUM(size),0) AS n FROM files WHERE uid=? AND id<>?').get(me.uid, id).n;
+  if (used + total > QUOTA) return send(res, 413, { error: '你的附件空间已用完（' + Math.round(QUOTA / 1048576) + 'MB），请联系老板' });
+  const pp = partPath(id, me.uid); let have = 0; try { have = fs.statSync(pp).size; } catch (e) {}
+  if (offset !== have) { req.resume(); return send(res, 409, { error: '位置不对', size: have }); } // 告诉手机从哪里接着传
+  const chunks = []; let n = 0, bad = false;
+  req.on('data', d => { n += d.length; if (n > len || n > 8 * 1048576) { bad = true; req.destroy(); } else chunks.push(d); });
+  req.on('end', () => {
+    if (bad || n !== len) return send(res, 400, { error: '这一段不完整' });
+    try { fs.appendFileSync(pp, Buffer.concat(chunks)); } catch (e) { return send(res, 500, { error: '保存失败' }); }
+    const size = have + n; if (size < total) return send(res, 200, { done: false, size });
+    try { fs.renameSync(pp, path.join(FILES, id)); } catch (e) { return send(res, 500, { error: '保存失败' }); }
+    let name = ''; try { name = decodeURIComponent(req.headers['x-file-name'] || ''); } catch (e) {}
+    q(`INSERT INTO files(id,uid,name,type,size,created) VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,type=excluded.type,size=excluded.size`).run(id, me.uid, name.slice(0, 200), safeType(req.headers['content-type']), size, Date.now());
+    send(res, 200, { done: true, id, size }); setTimeout(trScan, 50);
+  });
+  req.on('error', () => {});
+}
 function getFile(req, res, id, me) {
   const f = FILE_ID.test(id) && q('SELECT * FROM files WHERE id=?').get(id);
   const p = f && path.join(FILES, id);
@@ -614,6 +646,13 @@ const server = http.createServer(async (req, res) => {
       out.on('error', () => { if (!bad) { bad = true; done(500, { error: '保存失败' }); } });
       return;
     }
+    // 断点续传（大视频弱网时不用从头传）：GET .../upload 查已收到多少；PUT .../chunk?offset=&total= 追加一段
+    const cm = /^\/api\/files\/([^/]+)\/(upload|chunk)$/.exec(url.pathname);
+    if (cm && ((cm[2] === 'upload' && req.method === 'GET') || (cm[2] === 'chunk' && req.method === 'PUT'))) {
+      const me = auth(req, url); if (!me) return send(res, 401, { error: '请重新登录' });
+      if (me.mustChange) return send(res, 403, { error: '请先修改初始密码' });
+      return cm[2] === 'upload' ? uploadStatus(res, cm[1], me) : putChunk(req, res, url, cm[1], me);
+    }
     const fm = /^\/api\/files\/([^/]+)$/.exec(url.pathname);
     if (fm && (req.method === 'PUT' || req.method === 'GET')) {
       const me = auth(req, url, req.method === 'GET' ? 'file' : null); if (!me) return send(res, 401, { error: '请重新登录' });
@@ -722,6 +761,8 @@ function scheduleBrief() {
 
 /* 每天清理一次（启动 1 分钟后先跑一次） */
 function housekeep() { if (!S) return;
+  // 7 天前没传完的分段文件清掉
+  try { const cut = Date.now() - 7 * 864e5; fs.readdirSync(FILES).filter(f => /\.upload-[0-9a-f]+$|\.part-[0-9a-f]+$/.test(f)).forEach(f => { const fp = path.join(FILES, f); if (fs.statSync(fp).mtimeMs < cut) fs.rmSync(fp, { force: true }); }); } catch (e) {}
   // 操作日志只留 180 天（每条最多 20KB，不清会一直长）
   try { const n = q('DELETE FROM ops WHERE at<?').run(Date.now() - 180 * 864e5).changes; if (n) console.log('日常清理：删掉 ' + n + ' 条半年前的操作日志'); } catch (e) {}
   try { const r = TM.act(S, 'agent', 'system.housekeep', {}); if (r.ok && r.removed) { changed(); console.log('日常清理：删掉 ' + r.removed + ' 条旧通知'); } } catch (e) { console.error('日常清理出错', e); } }

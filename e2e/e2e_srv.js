@@ -37,6 +37,12 @@ let srv = null;
   ok(await A.evaluate(() => { const a = document.querySelector('.hm-me .av'); return !!a && !a.querySelector('img') && a.textContent.trim().length === 1; }), '头像取不到时显示名字的字，不显示裂图');
   await api('POST', '/api/act', { name: 'member.update', payload: { id: 'u_owner', avatar: '' } }, bossTok);
 
+  // ---- 大文件断点续传：5MB 视频分段上传，第二段网络中断一次，之后从断点接着传，内容完整
+  { let aborted = 0; await A.route(/\/api\/files\/f_bigvid01\/chunk\?offset=2097152/, r => { if (!aborted++) return r.abort(); return r.fallback(); });
+    await A.evaluate(() => { const b = new Uint8Array(5 * 1048576); for (let i = 0; i < b.length; i++) b[i] = i % 253; TMS.upload('f_bigvid01', new Blob([b], { type: 'video/mp4' }), '长视频.mp4'); });
+    let st = null; for (let i = 0; i < 60 && !(st && st.done); i++) { await A.waitForTimeout(500); st = await (await fetch(URL.slice(0, -1) + '/api/files/f_bigvid01/upload', { headers: { Authorization: 'Bearer ' + bossTok } })).json(); }
+    const got = Buffer.from(await (await fetch(URL.slice(0, -1) + '/api/files/f_bigvid01', { headers: { Authorization: 'Bearer ' + bossTok } })).arrayBuffer());
+    ok(st && st.done && aborted >= 1 && got.length === 5 * 1048576 && got[3000000] === 3000000 % 253, '大文件分段上传，中断后从断点接着传完，内容完整'); await A.unroute(/\/api\/files\/f_bigvid01\/chunk/); }
   // ---- 正式模式下界面不出现「演示」字样
   const demoWords = [];
   for (const r of ['home', 'ideas', 'tasks', 'work', 'me', 'settings', 'team', 'kb', 'new', 'new/voice', 'new/video', 'new/text', 'new/file', 'project', 'todo/new', 'inbox']) {
