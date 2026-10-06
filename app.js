@@ -90,7 +90,8 @@
     if (uid === 'agent') return '<span class="av agent' + (sm ? ' sm' : '') + '" aria-hidden="true">AI</span>';
     if (uid === 'system') return '<span class="av agent' + (sm ? ' sm' : '') + '" aria-hidden="true">系</span>';
     var n = TM.name(S, uid), uu = TM.user(S, uid), au = uu && uu.avatar && blobUrl(uu.avatar);
-    if (au) return '<span class="av ph' + (sm ? ' sm' : '') + '" aria-hidden="true"><img src="' + esc(au) + '" alt="" loading="lazy"></span>';
+    // 头像文件取不到（没同步到服务器、被删）时：去掉图片，显示名字的字
+    if (au) return '<span class="av ph' + (sm ? ' sm' : '') + '" aria-hidden="true" data-ch="' + esc(/^[A-Za-z]/.test(n) ? n.charAt(0) : n.slice(-1)) + '"><img src="' + esc(au) + '" alt="" loading="lazy" onerror="var p=this.parentNode;p.classList.remove(\'ph\');p.textContent=p.dataset.ch"></span>';
     if (PHOTOS[uid] && !S.real && n === 'Enos') return '<span class="av ph' + (sm ? ' sm' : '') + '" aria-hidden="true"><img src="' + PHOTOS[uid] + '" alt=""></span>'; return '<span class="av' + (sm ? ' sm' : '') + '" style="background:' + color(uid) + '" aria-hidden="true">' + esc(/^[A-Za-z]/.test(n) ? n.charAt(0) : n.slice(-1)) + '</span>';
   }
   function nm(uid) { var u = TM.user(S, uid); var n = TM.name(S, uid); return u && S.settings.showTiers && u.tier ? n + '（' + u.tier + '）' : n; }

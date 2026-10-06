@@ -31,6 +31,11 @@ let srv = null;
   await A.goto(URL + '#/me'); await A.waitForTimeout(120); ok(await A.locator('[data-do=srvDeactivate]').count() === 0, '老板没有注销入口'); await A.goto(URL + '#/home'); await A.waitForTimeout(100);
   const bossTok = await A.evaluate(() => localStorage.getItem('tm_token'));
   ok((await api('GET', '/api/state', null, bossTok)).state.users.length === 1, '新团队只有老板');
+  // 头像文件在服务器上取不到：不显示裂图，退回名字的字
+  await api('POST', '/api/act', { name: 'member.update', payload: { id: 'u_owner', avatar: 'f_missing01' } }, bossTok);
+  await A.reload(); await A.waitForTimeout(1200);
+  ok(await A.evaluate(() => { const a = document.querySelector('.hm-me .av'); return !!a && !a.querySelector('img') && a.textContent.trim().length === 1; }), '头像取不到时显示名字的字，不显示裂图');
+  await api('POST', '/api/act', { name: 'member.update', payload: { id: 'u_owner', avatar: '' } }, bossTok);
 
   // ---- 正式模式下界面不出现「演示」字样
   const demoWords = [];

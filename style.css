@@ -3077,3 +3077,13 @@ html[data-nav=fade]::view-transition-new(root){animation:navFadeIn .24s cubic-be
 .demo-tip{margin:10px 16px 0;padding:12px 14px;border-radius:16px;background:#FFF7E6;border:1px solid #F5D9A8;display:flex;flex-direction:column;gap:6px;position:relative;z-index:3}
 .demo-tip b{font-size:14.5px;color:#7A4A00}.demo-tip span{font-size:13.5px;color:#6B5320;line-height:1.55}
 .demo-tip .btn{align-self:flex-start;min-height:36px;padding:0 16px;font-size:14px}
+/* 首页背景铺满整屏（长屏手机上以前图只按宽度铺，卡片下面露出白底断层）；底部压暗一点，让白字看得清 */
+.hm{background:var(--homebg) 50% 0/cover no-repeat,#3B4A3A}
+.hm::before{background:linear-gradient(180deg,rgba(30,44,70,.35) 0%,rgba(30,44,70,.08) 30%,rgba(30,44,70,0) 45%,rgba(20,30,40,0) 62%,rgba(20,30,40,.38) 82%,rgba(20,30,40,.55) 100%)}
+.hm-foot,.hm-foot p{color:rgba(255,255,255,.92);text-shadow:0 1px 8px rgba(10,20,30,.45)}
+.hm-foot small{color:rgba(255,255,255,.72)}
+.hm-foot i{background:rgba(255,255,255,.55)}
+body.is-home .dock{background:none}
+.hm-card.c1{background:linear-gradient(160deg,rgba(244,248,255,.95),rgba(232,239,252,.92))}
+.hm-card.c2{background:linear-gradient(160deg,rgba(255,250,242,.96),rgba(251,240,226,.93))}
+.hm-card small{color:#5B6475}
