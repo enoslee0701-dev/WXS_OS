@@ -93,6 +93,12 @@ var TM = (function () {
       actorType: o.actor === 'agent' ? 'agent' : o.actor === 'system' ? 'system' : 'human', actorId: o.actor, action: o.action,
       from: o.from || null, to: o.to || null, reason: o.reason || null, text: o.text || '' });
   }
+  // 文字里 @姓名 提到的在职成员（姓名长的先匹配，避免「王小明」被当成「王小」）
+  function mentioned(s, text) {
+    var t = String(text || ''), out = [];
+    activeUsers(s).slice().sort(function (a, b) { return b.name.length - a.name.length; }).forEach(function (u) { if (u.name && t.indexOf('@' + u.name) >= 0) { out.push(u.id); t = t.split('@' + u.name).join(''); } });
+    return out;
+  }
   function notify(s, uids, actor, title, body, link) {
     var seen = {};
     (uids || []).forEach(function (u) {
@@ -439,7 +445,11 @@ var TM = (function () {
     var sg = { id: nid(s, 's'), ideaId: d.id, authorId: uid, replyTo: p.replyTo || null, body: body, at: now(s) };
     s.suggestions.push(sg); touchIdea(s, d);
     ev(s, { ideaId: d.id, actor: uid, action: 'idea.suggest', text: p.replyTo ? '回复了一条建议' : '提了一条建议' });
-    notify(s, [d.creatorId], uid, name(s, uid) + ' 提了建议', d.title, '#/idea/' + d.id);
+    var rp = p.replyTo && s.suggestions.find(function (x) { return x.id === p.replyTo; });
+    if (rp && rp.authorId !== d.creatorId) notify(s, [rp.authorId], uid, name(s, uid) + ' 回复了你的建议', body.slice(0, 60), '#/idea/' + d.id);
+    var at = mentioned(s, body).filter(function (x) { return canViewIdea(s, x, d); });
+    if (at.length) notify(s, at, uid, name(s, uid) + ' 提到了你', body.slice(0, 60), '#/idea/' + d.id);
+    notify(s, [d.creatorId], uid, name(s, uid) + (rp ? ' 回复了建议' : ' 提了建议'), d.title, '#/idea/' + d.id);
     return { id: sg.id };
   };
   A['idea.close'] = function (s, uid, p) {
@@ -648,7 +658,10 @@ var TM = (function () {
   A['todo.delete'] = function (s, uid, p) { var td = myTodo(s, uid, p.id); s.todos.splice(s.todos.indexOf(td), 1); return {}; };
   A['todo.comment'] = function (s, uid, p) {
     ensureTodos(s); var td = get(s.todos, p.id, '待办'); need(td.ownerId === uid || td.people.indexOf(uid) >= 0, '无权评论'); var b = txt(p.body); need(b, '内容不能为空');
-    td.comments.push({ by: uid, body: b, at: now(s) }); notify(s, [td.ownerId].concat(td.people), uid, name(s, uid) + ' 评论了待办', td.title, '#/tasks'); return {};
+    need(b.length <= 2000, '评论不超过 2000 字'); td.comments.push({ by: uid, body: b, at: now(s) });
+    var at = mentioned(s, b).filter(function (x) { return x === td.ownerId || td.people.indexOf(x) >= 0; });
+    if (at.length) notify(s, at, uid, name(s, uid) + ' 提到了你', b.slice(0, 60), '#/tasks');
+    notify(s, [td.ownerId].concat(td.people).filter(function (x) { return at.indexOf(x) < 0; }), uid, name(s, uid) + ' 评论了待办', td.title, '#/tasks'); return {};
   };
   A['todo.clearRecent'] = function (s, uid) { ensureTodos(s); s.todoRecent = s.todoRecent.filter(function (r) { return r.userId !== uid; }); return {}; };
   function seedTodos(s, T0) {
@@ -858,10 +871,10 @@ var TM = (function () {
     return {};
   };
   A['work.close'] = function (s, uid, p) {
-    var w = work(s, p.id); need(w.reviewerId === uid, '只有事项验收人可以确认完成'); need(w.status === 'acceptance', '事项下任务全部完成后才能确认');
+    var w = work(s, p.id), proxy = w.reviewerId !== uid && hasRole(s, uid, 'owner'); need(w.reviewerId === uid || proxy, '只有事项验收人或老板可以确认完成'); need(w.status === 'acceptance', '事项下任务全部完成后才能确认');
     w.status = 'done'; if (w.kind === 'admin') w.stage = 'done';
     s.reviews.push({ id: nid(s, 'R'), taskId: null, workId: w.id, reviewerId: uid, verdict: 'pass', note: txt(p.note), at: now(s) });
-    ev(s, { workId: w.id, ideaId: w.ideaId, actor: uid, action: 'work.done', from: 'acceptance', to: 'done', text: '事项验收完成' + (txt(p.note) ? '：' + txt(p.note) : '') });
+    ev(s, { workId: w.id, ideaId: w.ideaId, actor: uid, action: 'work.done', from: 'acceptance', to: 'done', text: (proxy ? '老板代验收：' : '') + '事项验收完成' + (txt(p.note) ? '：' + txt(p.note) : '') });
     var d = w.ideaId && s.ideas.find(function (x) { return x.id === w.ideaId; });
     notify(s, usersWith(s, 'owner').concat([w.operatorId, w.leadId, d && d.creatorId]), uid, '事项完成', w.title, '#/work/' + w.id);
     touchWork(s, w); return {};
@@ -924,7 +937,7 @@ var TM = (function () {
     need(tr.from.indexOf(t.status) >= 0, '当前状态为「' + L.task[t.status] + '」，不能' + tr.label);
     var note = txt(p.note);
     if (p.action === 'cancel') need(w.operatorId === uid || w.leadId === uid || hasRole(s, uid, 'owner'), '只有跟进人、负责人或老板可以取消任务');
-    else if (p.action === 'unblock') need(t.ownerId === uid || w.operatorId === uid || w.leadId === uid, '只有主负责人或跟进人可以解除阻碍');
+    else if (p.action === 'unblock') need(t.ownerId === uid || w.operatorId === uid || w.leadId === uid || hasRole(s, uid, 'owner'), '只有主负责人、跟进人或老板可以解除阻碍');
     else need(t.ownerId === uid, '只有主负责人可以' + tr.label);
     if (p.action === 'block' || p.action === 'cancel') need(note, '请写原因');
     if (p.action === 'submit') {
@@ -982,7 +995,9 @@ var TM = (function () {
     var t = task(s, p.id); need(canViewTask(s, uid, t), '无权评论该任务'); var b = txt(p.body); need(b, '内容不能为空'); need(b.length <= 2000, '留言不超过 2000 字');
     s.comments.push({ id: nid(s, 'M'), taskId: t.id, authorId: uid, body: b, at: now(s) });
     ev(s, { taskId: t.id, workId: t.workId, actor: uid, action: 'task.comment', text: '留言：' + b });
-    var w = work(s, t.workId); notify(s, [t.ownerId, t.reviewerId, w.operatorId, w.leadId].concat(t.collabs), uid, name(s, uid) + ' 在任务里留言', b, '#/task/' + t.id);
+    var w = work(s, t.workId), at = mentioned(s, b).filter(function (x) { return canViewTask(s, x, t); });
+    if (at.length) notify(s, at, uid, name(s, uid) + ' 提到了你', b.slice(0, 60), '#/task/' + t.id); // 被 @ 的人收到「提到了你」，不再重复收普通留言通知
+    notify(s, [t.ownerId, t.reviewerId, w.operatorId, w.leadId].concat(t.collabs).filter(function (x) { return at.indexOf(x) < 0; }), uid, name(s, uid) + ' 在任务里留言', b, '#/task/' + t.id);
     touchTask(s, t); return {};
   };
   A['owner.override'] = function (s, uid, p) {
@@ -1082,7 +1097,10 @@ var TM = (function () {
     v.todos = (v.todos || []).filter(function (x) { return x.ownerId === uid || (x.people || []).indexOf(uid) >= 0; });
     v.todoRecent = (v.todoRecent || []).filter(function (x) { return x.userId === uid; });
     v.knowledge = (v.knowledge || []).filter(function (k) { return kb[k.id]; });
-    v.users.forEach(function (u) { if (u.id !== uid) delete u.prefs; });
+    // 隐私：别人的联系方式只给老板和管理员；公司方向、预算阈值只给老板、管理员和运营者（他们要据此整理和派发）
+    var seeContact = hasRole(s, uid, 'owner') || hasRole(s, uid, 'admin'), seePolicy = seeContact || hasRole(s, uid, 'operator');
+    v.users.forEach(function (u) { if (u.id !== uid) { delete u.prefs; if (!seeContact) { delete u.email; delete u.phone; delete u.contact; } } });
+    if (!seePolicy && v.settings) { delete v.settings.direction; delete v.settings.budgetThreshold; }
     return v;
   }
 
@@ -1185,6 +1203,10 @@ var TM = (function () {
       notify(s, [t.ownerId], null, late ? '任务已逾期' : '任务明天截止', t.title + (late ? '（截止 ' + t.due + '）' : ''), '#/task/' + t.id);
       t.remindedOn = today; n++;
     });
+    // 待验收积压：提交超过 2 天还没验收，每天提醒验收人一次（汇总成一条）
+    var back = {};
+    s.tasks.forEach(function (t) { if (t.status === 'submitted' && t.reviewerId && t.lastActivity < now(s) - 2 * DAY && t.reviewRemindedOn !== today) { (back[t.reviewerId] = back[t.reviewerId] || []).push(t); t.reviewRemindedOn = today; } });
+    Object.keys(back).forEach(function (r) { var ts = back[r]; notify(s, [r], null, ts.length + ' 个任务等你验收', ts.slice(0, 3).map(function (t) { return t.title; }).join('、') + (ts.length > 3 ? ' 等' : ''), ts.length === 1 ? '#/task/' + ts[0].id : '#/tasks'); n++; });
     return { sent: n };
   };
   /* 日常清理（服务器每天以系统身份执行）：已读且超过 60 天的通知删掉，未读的保留 */
@@ -1273,7 +1295,8 @@ var TM = (function () {
   function restore(s, snap) { Object.keys(snap).forEach(function (k) { s[k] = snap[k]; }); }
 
   /* ---------- 指标（文档 13.2） ---------- */
-  function isStale(s, t) { return (t.status === 'accepted' || t.status === 'in_progress') && t.lastActivity < now(s) - s.settings.staleDays * DAY; }
+  // 无动静：派出去没人接收的、接收了 / 进行中但很久没更新的
+  function isStale(s, t) { return (t.status === 'assigned' || t.status === 'accepted' || t.status === 'in_progress') && t.lastActivity < now(s) - s.settings.staleDays * DAY; }
   function isOverdue(s, t) { if (!t.due || t.status === 'done' || t.status === 'cancelled') return false; return t.due < todayStr(s); }
   function todayStr(s) { var d = new Date(now(s)); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
   function pad(n) { return n < 10 ? '0' + n : '' + n; }

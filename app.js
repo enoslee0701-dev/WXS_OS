@@ -2715,7 +2715,7 @@
   function memRole(w, u) { return u === w.leadId ? '项目负责人' : u === w.operatorId ? '跟进运营' : u === w.reviewerId ? '验收人' : pRole(u); }
   function moreOps(w) {
     var a = [], ow = isOwner();
-    if (w.status === 'acceptance' && w.reviewerId === me) a.push(['确认事项完成', 'closeWork']);
+    if (w.status === 'acceptance' && (w.reviewerId === me || ow)) a.push([w.reviewerId === me ? '确认事项完成' : '老板代验收（确认完成）', 'closeWork']);
     if ((w.leadId === me || (w.kind !== 'product' && w.operatorId === me) || ow) && TM.STAGES[w.kind].length > 1 && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['推进阶段', 'stage']);
     if (ow && ['planning', 'active', 'acceptance', 'blocked'].indexOf(w.status) >= 0) a.push(['暂停', 'pause']);
     if (ow && w.status === 'paused') a.push(['恢复', 'resume']);
@@ -2824,7 +2824,7 @@
     if (o && t.status === 'assigned') { a.push(['报阻碍', 'block']); a.push(['接收任务', 'tt', 'pri', 'accept']); }
     if (o && t.status === 'accepted') { a.push(['报阻碍', 'block']); a.push(['开始执行', 'tt', 'pri', 'start']); }
     if (o && t.status === 'in_progress') { a.push(['报阻碍', 'block']); a.push(['提交成果', 'submit', 'pri']); }
-    if (t.status === 'blocked' && (o || w.operatorId === me || w.leadId === me)) a.push(['解除阻碍', 'tt', 'pri', 'unblock']);
+    if (t.status === 'blocked' && (o || w.operatorId === me || w.leadId === me || ow)) a.push(['解除阻碍', 'tt', 'pri', 'unblock']);
     if (t.status === 'submitted' && t.reviewerId === me) { a.push(['退回', 'review', 'danger', 'return']); a.push(['验收通过', 'review', 'pri', 'pass']); }
     if (t.status === 'owner_review' && ow) { a.push(['退回', 'ownerReview', 'danger', 'owner_return']); a.push(['终验通过', 'ownerReview', 'pri', 'owner_pass']); }
     if (ow && t.status !== 'cancelled') a.push(['纠偏', 'override', 'danger']);

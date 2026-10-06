@@ -737,5 +737,37 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   const ci2 = f2.ideas.find(d => d.status === 'triage' && d.followerId);
   if (ci2) { const r2 = TM.act(f2, O, 'idea.claim', { id: ci2.id }); ok(!r2.ok && !(r2.error || '').includes(TM.name(f2, ci2.followerId)), '认领失败不泄露跟进人姓名'); } }
 
+// ===== @提及、回复通知；老板解除阻碍和代验收；没人接收算无动静；验收积压提醒 =====
+{ let tt = Date.UTC(2026, 9, 1, 3); const ck = () => tt; const n = TM.seed(ck);
+  const mt = n.tasks.find(t => t.ownerId === DV && !['done', 'cancelled'].includes(t.status));
+  const n0 = n.notifications.length;
+  must(TM.act(n, DV, 'task.comment', { id: mt.id, body: '@Enos 这个要不要加预算？' }), '留言里 @老板');
+  ok(n.notifications.slice(n0).some(x => x.userId === O && /提到了你/.test(x.title)), '被 @ 的人收到「提到了你」');
+  // 共创讨论里回复别人的建议
+  const ci = must(TM.act(n, O, 'idea.create', { note: '年会怎么办' }), '建想法'); must(TM.act(n, O, 'idea.submit', { id: ci.id, path: 'cocreate', shareAll: true }), '全体共创');
+  const s1 = must(TM.act(n, DV, 'idea.suggest', { id: ci.id, body: '去海边' }), '刘洋提建议');
+  const n1 = n.notifications.length; must(TM.act(n, DS, 'idea.suggest', { id: ci.id, body: '太远了', replyTo: s1.id }), '何静回复刘洋');
+  ok(n.notifications.slice(n1).some(x => x.userId === DV && /回复了你的建议/.test(x.title)), '被回复的人收到通知');
+  // 老板解除阻碍
+  const bt = n.tasks.find(t => ['accepted', 'in_progress'].includes(t.status) && n.workItems.find(w => w.id === t.workId).status !== 'paused');
+  must(TM.act(n, bt.ownerId, 'task.transition', { id: bt.id, action: 'block', note: '缺钱' }), '执行人报阻碍');
+  must(TM.act(n, O, 'task.transition', { id: bt.id, action: 'unblock', note: '已批预算' }), '老板可以解除阻碍');
+  // 没人接收算无动静
+  tt += 30 * 864e5; const at = n.tasks.find(t => t.status === 'assigned'); if (at) ok(TM.isStale(n, at), '派出去很久没人接收算无动静');
+  // 验收积压提醒
+  const sb = n.tasks.find(t => t.status === 'submitted'); if (sb) { const n2 = n.notifications.length; must(TM.act(n, 'agent', 'system.dueReminders', {}), '系统提醒');
+    ok(n.notifications.slice(n2).some(x => x.userId === sb.reviewerId && /等你验收/.test(x.title)), '待验收积压提醒验收人 ' + JSON.stringify({ id: sb.id, la: sb.lastActivity, now: tt, r: sb.reviewRemindedOn, ns: n.notifications.slice(n2).map(x => x.userId + x.title) })); }
+  // 老板代验收
+  const aw = n.workItems.find(w => w.status === 'acceptance'); if (aw && aw.reviewerId !== O) { must(TM.act(n, O, 'work.close', { id: aw.id }), '老板代验收'); ok(n.events.some(e => e.workId === aw.id && /老板代验收/.test(e.text)), '动态写明老板代验收'); } }
+
+// ===== 隐私：联系方式和公司策略按角色下发 =====
+{ const pv = fresh(); pv.users.find(u => u.id === OP).email = 'lin@x.cn'; pv.users.find(u => u.id === OP).phone = '13800000000';
+  const vd = TM.viewFor(pv, DV), vo = TM.viewFor(pv, O), vop = TM.viewFor(pv, OP);
+  ok(!vd.users.find(u => u.id === OP).email && !vd.users.find(u => u.id === OP).phone, '执行者看不到别人的邮箱手机');
+  ok(vo.users.find(u => u.id === OP).email === 'lin@x.cn', '老板能看到成员联系方式');
+  ok(vop.users.find(u => u.id === OP).email === 'lin@x.cn', '自己能看到自己的联系方式');
+  ok(vd.settings.direction === undefined && vd.settings.budgetThreshold === undefined && vd.settings.staleDays === pv.settings.staleDays, '执行者拿不到公司方向和预算阈值，界面需要的设置照常');
+  ok(vop.settings.budgetThreshold === pv.settings.budgetThreshold, '运营者能拿到预算阈值（整理派发要用）'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);
