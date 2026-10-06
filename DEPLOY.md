@@ -124,6 +124,7 @@ scripts/server-mac.sh install   # 重启服务器
 
 - 数据目录下 `backups/` 每天自动存一份完整快照（JSON）。
 - 整体备份：停服务后复制整个数据目录（`team.db`、`files/`、`backups/`）。
+- **每月异地备份**（建议）：`scripts/backup-mac.sh install <文件夹>`，每月 1 日凌晨 3 点把数据库快照和全部附件打包到这个文件夹（选 iCloud 云盘、外接硬盘或网盘同步文件夹），保留最近 12 份；`scripts/backup-mac.sh run <文件夹>` 立刻备份一次。
 - **恢复**：先停服务器（`scripts/server-mac.sh uninstall` 或停 Docker），再运行 `node server/restore.js server/data/backups/state-2026-10-03.json --yes`，然后重新启动。也可以用「只导出团队数据」的 .json，或「完整备份」下载的 .tar.gz 来恢复（.tar.gz 会把附件一起放回 data/files，已有的不覆盖）。恢复前会自动把当前数据另存一份；账号和密码不受影响。
 
 ## 安全提示
