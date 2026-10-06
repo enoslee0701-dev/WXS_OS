@@ -243,6 +243,27 @@ async function digestDiscussion(S, ideaId) {
   return { payload: o, usage: r.usage };
 }
 
+/* 共创汇总（文档 8.4）：共识 / 分歧 / 风险 / 待解问题 + 建议方向，每条结论都要带来源建议的编号，给发起人确认方向用 */
+const SRC = { type: 'array', items: { type: 'string' }, description: '依据的建议编号，例如 s12' };
+const CO_PT = { type: 'object', additionalProperties: false, required: ['point', 'src'], properties: { point: { type: 'string' }, src: SRC } };
+const COCREATE_SCHEMA = {
+  type: 'object', additionalProperties: false, required: ['consensus', 'divergences', 'risks', 'open_questions', 'proposed_direction'],
+  properties: {
+    consensus: { type: 'array', items: CO_PT }, risks: { type: 'array', items: CO_PT }, open_questions: { type: 'array', items: CO_PT },
+    divergences: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['point', 'positions'], properties: { point: { type: 'string' }, positions: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['view', 'src'], properties: { view: { type: 'string' }, src: SRC } } } } } },
+    proposed_direction: { type: 'string', description: '建议的方向，一两句话；只是建议，由发起人确认' }
+  }
+};
+async function cocreateSummary(S, ideaId) {
+  const d = S.ideas.find(x => x.id === ideaId); if (!d) throw { status: 404, error: '想法不存在' };
+  const sug = S.suggestions.filter(x => x.ideaId === d.id).sort((a, b) => a.at - b.at);
+  const lines = sug.map(x => `[${x.id}]${x.replyTo ? '（回复 ' + x.replyTo + '）' : ''} ${TM.name(S, x.authorId)}：${String(x.body).slice(0, 500)}`).join('\n');
+  const system = [{ type: 'text', text: `你把团队对一个想法的共创讨论整理成汇总，交给发起人确认方向。用简体中文。规则：每条共识、分歧立场、风险都必须在 src 里写出依据的建议编号（方括号里的编号）；没有来源的内容只能放进 open_questions；不替任何人加观点；不要把建议说成团队已经决定。` }];
+  const r = await call({ system, messages: [{ role: 'user', content: `想法：${d.title || ''}\n原文：${String(d.note || '').slice(0, 3000)}\n\n建议（按时间）：\n${lines || '（没有人提建议）'}` }], schema: COCREATE_SCHEMA, effort: 'medium', maxTokens: 6000 });
+  let o; try { o = JSON.parse(r.text); } catch (e) { throw { status: 502, error: 'AI 返回的格式不对' }; }
+  return { payload: o, usage: r.usage };
+}
+
 /* 新建项目：把一段口述 / 文字解析成项目草稿（老板核对后再建） */
 async function parseProject(S, uid, text) {
   const L = TM.L, PT = TM.PTYPE;
@@ -318,6 +339,6 @@ async function pdfToMarkdown(base64, name) {
   return { text: r.text, truncated: r.truncated, usage: r.usage };
 }
 
-module.exports = { enabled, provider, claudeOn, allowed, readImage, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, parseProject, parseTodos, writeHelper, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };
+module.exports = { enabled, provider, claudeOn, allowed, readImage, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, cocreateSummary, parseProject, parseTodos, writeHelper, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };
 // 模型名：Claude 或本机模型（界面和用量统计里显示）
 Object.defineProperty(module.exports, 'MODEL', { get: () => claudeOn() ? MODEL : '本机 ' + LLM.NAME, enumerable: true });

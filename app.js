@@ -3487,7 +3487,7 @@
   DO.srvUsage = function () {
     TMS.usage().then(function (u) {
       var mb = function (n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB'; };
-      var K = { ask: 'AI 助手提问', kb: '口述整理', analyze: '想法整理稿', digest: '讨论总结', advice: '决策建议', project: '新建项目解析', image: '拍照识别', doc: '读 PDF', todos: '拆待办', write: '写描述 / 目标', brief: '老板早报' };
+      var K = { ask: 'AI 助手提问', kb: '口述整理', analyze: '想法整理稿', digest: '讨论总结', cocreate: '共创汇总', advice: '决策建议', project: '新建项目解析', image: '拍照识别', doc: '读 PDF', todos: '拆待办', write: '写描述 / 目标', brief: '老板早报' };
       var row = function (a, b) { return '<div class="cred-r"><span>' + a + '</span><b class="plain">' + b + '</b></div>'; };
       openSheet('使用情况', '<div class="cred">' +
         row('AI', u.ai.enabled ? '已启用（' + esc(u.ai.model) + '）' : '未启用（规则模拟）') +

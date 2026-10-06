@@ -477,20 +477,36 @@ function getFile(req, res, id, me) {
 
 /* 后台：新生成的规则版整理稿交给 Claude 升级（AI_AUTO_ANALYZE=0 关闭）；写回时整理稿已被人工改过就放弃 */
 const analyzing = new Set(), lastAuto = new Map();
-function autoAnalyze(added) {
+// AI 失败重试（文档 8.1）：1 分钟、5 分钟、15 分钟后各重试一次；三次都失败就告诉相关的人「先用规则版」
+const aiTries = new Map(), RETRY_MS = (process.env.AI_RETRY_MS || '60000,300000,900000').split(',').map(Number);
+function aiGiveUp(sm) {
+  const d = S && S.ideas.find(x => x.id === sm.ideaId); if (!d) return;
+  const n0 = S.notifications.length, r = TM.act(S, 'agent', 'ai.failed', { id: d.id, kind: sm.kind });
+  if (r.ok) changed(n0);
+}
+function autoAnalyze(added, retry) {
   if (!AI.enabled() || process.env.AI_AUTO_ANALYZE === '0') return;
-  added.filter(x => (x.kind === 'analysis' || x.kind === 'digest') && x.authorType === 'agent' && x.payload && x.payload.simulated).forEach(sm => {
+  added.filter(x => (x.kind === 'analysis' || x.kind === 'digest' || x.kind === 'cocreate') && x.authorType === 'agent' && x.payload && x.payload.simulated).forEach(sm => {
     if (analyzing.has(sm.id)) return;
     // 同一个想法 10 分钟内只自动跑一次（防止反复「重新整理」刷掉全队的 AI 额度）
-    const k = sm.kind + '|' + sm.ideaId; if (lastAuto.get(k) > Date.now() - 10 * 60e3) return; lastAuto.set(k, Date.now());
+    const k = sm.kind + '|' + sm.ideaId; if (!retry && lastAuto.get(k) > Date.now() - 10 * 60e3) return; lastAuto.set(k, Date.now());
     analyzing.add(sm.id); q('INSERT OR REPLACE INTO ai_jobs VALUES(?,?)').run(sm.id, Date.now());
-    const dig = sm.kind === 'digest';
-    aiRun({ uid: 'agent' }, dig ? 'digest' : 'analyze', () => dig ? AI.digestDiscussion(S, sm.ideaId) : AI.analyzeIdea(S, sm.ideaId), true).then(([code, out]) => {
+    const dig = sm.kind === 'digest', co = sm.kind === 'cocreate';
+    aiRun({ uid: 'agent' }, dig ? 'digest' : co ? 'cocreate' : 'analyze', () => dig ? AI.digestDiscussion(S, sm.ideaId) : co ? AI.cocreateSummary(S, sm.ideaId) : AI.analyzeIdea(S, sm.ideaId), true).then(([code, out]) => {
       analyzing.delete(sm.id); q('DELETE FROM ai_jobs WHERE summary_id=?').run(sm.id);
-      if (code !== 200 || !S) return;
+      if (!S) return;
+      if (code !== 200) {
+        // 配置问题（没开 AI、没权限、额度用完）不重试；网络 / 服务出错才重试
+        if ([403, 404, 429, 503].includes(code)) return;
+        const n = (aiTries.get(sm.id) || 0) + 1; aiTries.set(sm.id, n);
+        const cur = S.summaries.find(x => x.id === sm.id); if (!cur || !cur.payload.simulated) return;
+        if (n <= RETRY_MS.length) setTimeout(() => autoAnalyze([cur], true), RETRY_MS[n - 1]).unref(); else { aiTries.delete(sm.id); aiGiveUp(cur); }
+        return;
+      }
+      aiTries.delete(sm.id);
       const snap = JSON.stringify(S), n0 = S.notifications.length;
       try {
-        const r = TM.act(S, 'agent', dig ? 'idea.digestResult' : 'idea.aiResult', { id: sm.ideaId, summaryId: sm.id, model: AI.MODEL, payload: out.payload });
+        const r = TM.act(S, 'agent', dig ? 'idea.digestResult' : co ? 'idea.cocreateResult' : 'idea.aiResult', { id: sm.ideaId, summaryId: sm.id, model: AI.MODEL, payload: out.payload });
         if (r.ok) changed(n0);
       } catch (e) { S = JSON.parse(snap); console.error('写回 AI 结果出错，已回滚', e); }
     }).catch(e => { analyzing.delete(sm.id); console.error('后台 AI 出错', e); });

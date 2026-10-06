@@ -1343,6 +1343,28 @@ var TM = (function () {
     return { removed: n0 - s.notifications.length };
   };
   /* Claude 讨论总结：服务器后台以系统身份替换规则版（期间老板又让总结了一版就不覆盖） */
+  /* 写回 AI 共创汇总：只在发起人还没确认方向时替换规则版；来源编号必须是这个想法里的建议，没有来源的结论丢弃（文档 8.4） */
+  A['idea.cocreateResult'] = function (s, uid, p) {
+    need(uid === 'agent', '只有系统可以写入 AI 汇总');
+    var d = s.ideas.find(function (x) { return x.id === p.id; }); need(d && !d.deleted, '想法不存在'); need(d.status === 'summary_ready', '方向已经确认，不再替换汇总');
+    var sm = latestSummary(s, d.id, 'cocreate'); need(sm && sm.id === p.summaryId && sm.payload.simulated, '汇总已经更新过，不覆盖');
+    var ids = s.suggestions.filter(function (x) { return x.ideaId === d.id; }).map(function (x) { return x.id; });
+    var a = p.payload || {}, str = function (v, n) { return txt(v).slice(0, n); }, src = function (v) { return (Array.isArray(v) ? v : []).map(String).filter(function (x, i, l) { return ids.indexOf(x) >= 0 && l.indexOf(x) === i; }).slice(0, 10); };
+    var pts = function (v, needSrc) { return (Array.isArray(v) ? v : []).slice(0, 8).map(function (x) { return { point: str(x && x.point, 120), src: src(x && x.src) }; }).filter(function (x) { return x.point && (!needSrc || x.src.length); }); };
+    var np = { simulated: false, model: str(p.model, 40), consensus: pts(a.consensus, true), risks: pts(a.risks, true), open_questions: pts(a.open_questions, false),
+      divergences: (Array.isArray(a.divergences) ? a.divergences : []).slice(0, 5).map(function (v) { return { point: str(v && v.point, 120), positions: (Array.isArray(v && v.positions) ? v.positions : []).slice(0, 4).map(function (q) { return { view: str(q && q.view, 120), src: src(q && q.src) }; }).filter(function (q) { return q.view && q.src.length; }) }; }).filter(function (v) { return v.point && v.positions.length; }),
+      proposed_direction: str(a.proposed_direction, 300) || sm.payload.proposed_direction };
+    sm.payload = np;
+    ev(s, { ideaId: d.id, actor: 'agent', action: 'ai.cocreate.ready', text: 'AI 重新整理了共创汇总' }); touchIdea(s, d); return {};
+  };
+  /* AI 重试三次都失败：记一条动态，告诉相关的人「先用规则版」，可以手动修改或稍后点「重新整理」 */
+  A['ai.failed'] = function (s, uid, p) {
+    need(uid === 'agent', '只有系统可以记录'); var d = s.ideas.find(function (x) { return x.id === p.id; }); need(d && !d.deleted, '想法不存在');
+    var what = p.kind === 'cocreate' ? '共创汇总' : p.kind === 'digest' ? '讨论总结' : '整理稿';
+    var who = p.kind === 'cocreate' ? [d.creatorId] : p.kind === 'digest' ? usersWith(s, 'owner') : (d.followerId ? [d.followerId] : followUsers(s));
+    ev(s, { ideaId: d.id, actor: 'agent', action: 'ai.failed', text: 'AI 生成' + what + '没有成功（已重试 3 次），先用规则版' });
+    notify(s, who, null, 'AI ' + what + '没有成功', (d.title || '想法') + '：先用规则版，可以手动修改', '#/idea/' + d.id); return {};
+  };
   A['idea.digestResult'] = function (s, uid, p) {
     need(uid === 'agent', '只有系统可以写入 AI 总结');
     var d = s.ideas.find(function (x) { return x.id === p.id; }); need(d && !d.deleted, '想法不存在');

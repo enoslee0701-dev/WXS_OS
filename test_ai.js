@@ -9,6 +9,9 @@ const mock = http.createServer((req, res) => {
   let b = ''; req.on('data', d => b += d); req.on('end', () => {
     const body = JSON.parse(b || '{}'); seen.push({ url: req.url, headers: req.headers, body });
     const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+    if (mode === '500') return reply(500, { type: 'error', error: { type: 'api_error', message: 'boom' } });
+    { const f0 = body.output_config && body.output_config.format; if (f0 && f0.schema.properties.proposed_direction) { const txt0 = JSON.stringify(body.messages || []); const id = (txt0.match(/\[(s\d+)\]/) || [])[1] || 'none';
+      return reply(200, { id: 'msg_c', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ consensus: [{ point: 'Claude：大家同意先试点', src: [id] }, { point: '没有来源的结论', src: ['s_fake'] }], divergences: [], risks: [], open_questions: [{ point: '预算多少？', src: [] }], proposed_direction: 'Claude 建议：先做两周试点' }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 } }); } }
     if (mode === '429') return reply(429, { type: 'error', error: { type: 'rate_limit_error', message: 'slow down' } });
     const fmt0 = body.output_config && body.output_config.format;
     if (fmt0 && fmt0.schema.properties.items) return reply(200, { id: 'msg_t', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ items: [{ title: '和林晓开会', date: '2026-10-04', time: '15:00', priority: 'mid', people: ['林晓', '外人', 'Enos'], tag: '会议' }, { title: '发报价', date: 'next friday', time: '25:00', priority: 'urgent', people: [], tag: '其他' }] }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 100, output_tokens: 50 } });
@@ -170,6 +173,15 @@ async function team(api) {
   ok(seen.slice(c0).length === 1, '只补做没做完的那一个（不会去整理其他规则版内容）');
   s3.kill();
   // 在想法 / 项目页面里问（新起一个实例，不受前面用掉的每日额度影响）
+  // AI 失败重试 3 次后通知跟进人（文档 8.1）：重试间隔测试里缩短到 0.2 秒
+  { const s6 = await start({ ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: MOCK, AI_RETRY_MS: '200,200,200' }); const api6 = mkApi(s6.B), t6 = await team(api6);
+    const n0 = seen.length; mode = '500';
+    const id6 = await api6('POST', '/api/act', { name: 'idea.create', payload: { note: '换一批办公椅' } }, t6.boss); await api6('POST', '/api/act', { name: 'idea.submit', payload: { id: id6.r.id, path: 'direct' } }, t6.boss);
+    let fail6 = null; for (let i = 0; i < 60 && !fail6; i++) { await new Promise(r => setTimeout(r, 100)); const st = (await api6('GET', '/api/state', null, t6.boss)).state; fail6 = st.events.find(e => e.ideaId === id6.r.id && e.action === 'ai.failed'); }
+    mode = 'ok';
+    const calls = seen.slice(n0).filter(x => x.body.output_config && x.body.output_config.format && x.body.output_config.format.schema.properties.suggested_route).length;
+    ok(fail6 && calls >= 4, 'AI 失败后重试 3 次（共调用 ' + calls + ' 次），然后记录失败并通知');
+    s6.kill(); }
   const s5 = await start({ ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: MOCK }); const api5 = mkApi(s5.B), t5 = await team(api5);
   { let r; const st = (await api5('GET', '/api/state', null, t5.boss)).state, d = st.ideas.find(x => x.status !== 'draft' && x.note), w = st.workItems[0];
     r = await api5('POST', '/api/ai/ask', { q: '这个想法有什么风险？', focus: { type: 'idea', id: d.id } }, t5.boss);
@@ -181,6 +193,13 @@ async function team(api) {
     r = await api5('POST', '/api/ai/ask', { q: 'x', focus: { type: 'idea', id: 'I_nope' } }, t5.boss);
     fs = seen[seen.length - 1].body.system.map(x => x.text).join('\n');
     ok(r.status === 200 && !fs.includes('# 当前讨论的想法'), '看不到 / 不存在的想法：不带详情'); }
+  // 共创汇总交给 Claude（文档 8.4）：每条结论带真实来源，没有来源的被丢掉；发起人确认前替换规则版
+  { const ci = await api5('POST', '/api/act', { name: 'idea.create', payload: { note: '年会要不要改成户外' } }, t5.boss);
+    await api5('POST', '/api/act', { name: 'idea.submit', payload: { id: ci.r.id, path: 'cocreate', shareAll: true } }, t5.boss);
+    await api5('POST', '/api/act', { name: 'idea.suggest', payload: { id: ci.r.id, body: '同意，先试点一次户外' } }, t5.dev);
+    await api5('POST', '/api/act', { name: 'idea.close', payload: { id: ci.r.id } }, t5.boss);
+    let co = null; for (let i = 0; i < 40 && !co; i++) { const st = (await api5('GET', '/api/state', null, t5.boss)).state; const x = st.summaries.filter(y => y.ideaId === ci.r.id && y.kind === 'cocreate').pop(); if (x && !x.payload.simulated) co = x; else await new Promise(r => setTimeout(r, 100)); }
+    ok(co && co.payload.consensus.length === 1 && /^s\d+$/.test(co.payload.consensus[0].src[0]) && /Claude/.test(co.payload.proposed_direction) && co.payload.open_questions.length === 1, '共创汇总换成 Claude 版，来源可追溯、无来源结论被丢掉 ' + JSON.stringify(co && co.payload.consensus)); }
   // 拍照识别：只收图片；图片作为 image 块交给 Claude
   ok((await api5('POST', '/api/ai/image', { data: 'aGVsbG8gd29ybGQgaGVsbG8=', type: 'application/pdf' }, t5.boss)).status === 400, '拍照识别：不是图片被拒');
   { const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
