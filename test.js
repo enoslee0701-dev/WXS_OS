@@ -782,5 +782,15 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   rej(TM.act(m, ad.id, 'member.role', { id: ex.id, role: 'lead' }), '管理员不能调整角色');
   rej(TM.act(m, bo, 'member.role', { id: bo, role: 'executor' }), '老板的角色不能改'); }
 
+// ===== 项目讨论 =====
+{ const wc = fresh(), w = wc.workItems.find(x => x.status !== 'cancelled' && x.leadId);
+  const outsider = wc.users.map(u => u.id).find(u => !TM.canViewWork(wc, u, w));
+  if (outsider) rej(TM.act(wc, outsider, 'work.comment', { id: w.id, body: '我也说一句' }), '不是项目成员不能发言');
+  const n0 = wc.notifications.length;
+  must(TM.act(wc, w.leadId, 'work.comment', { id: w.id, body: '下周一前把方案定下来 @Enos' }), '负责人在项目里发言');
+  ok(wc.notifications.slice(n0).some(n => n.userId === O && /提到了你/.test(n.title)), '@老板 收到提到通知');
+  ok(TM.viewFor(wc, w.leadId).comments.some(c => c.workId === w.id), '项目成员能看到讨论');
+  if (outsider) ok(!TM.viewFor(wc, outsider).comments.some(c => c.workId === w.id), '非项目成员拿不到讨论'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

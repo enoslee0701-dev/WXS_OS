@@ -3116,3 +3116,9 @@ body.has-actions .toast{bottom:calc(96px + var(--sab))}
 .q-r mark{background:#FFF1B8;color:inherit;border-radius:3px;padding:0 1px}.q-more{font-size:12.5px;margin:6px 2px}
 .ses-r .t{align-items:center}.ses-r .t > span{display:flex;flex-direction:column;gap:2px}.ses-r small{font-size:12.5px}.ses-r .tag{align-self:flex-start;margin-top:2px}
 .ses-r .btn{min-height:34px;padding:0 12px;font-size:14px;flex:none}
+/* 项目讨论 */
+.wx-cm{display:flex;flex-direction:column;gap:12px;margin:6px 0 12px}
+.wx-c{display:flex;gap:10px}.wx-c > div{flex:1;min-width:0}.wx-ch{display:flex;gap:8px;align-items:baseline}.wx-ch b{font-size:14px}.wx-ch span{font-size:12px;color:#8A93A3}
+.wx-c p{margin:3px 0 0;font-size:14.5px;line-height:1.6;color:#2A3242;overflow-wrap:anywhere;white-space:pre-wrap}
+.wx-cf{display:flex;gap:8px;align-items:flex-end}.wx-cf textarea{flex:1;min-height:46px;border-radius:14px;border:1px solid #E1E6EF;background:#F8F9FC;padding:10px 12px;font:inherit;font-size:15px}
+.wx-cf .btn{min-height:44px;padding:0 16px;flex:none}

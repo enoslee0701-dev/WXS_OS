@@ -470,7 +470,8 @@
     vWork().forEach(function (w) { var full = [w.title, w.goal, w.keyResults, (w.tags || []).join(' ')].join(' '); if (hit(full)) add('项目', w.title, full, '#/work/' + w.id);
       (w.files || []).forEach(function (f) { if (hit(f.name)) add('文件', f.name, '项目「' + w.title + '」的文件', '#/work/' + w.id); }); });
     vTasks().forEach(function (t) { var full = [t.title, t.description, t.expected, t.criteria].join(' '); if (hit(full)) add('任务', t.title, full, '#/task/' + t.id); });
-    S.comments.forEach(function (c) { var t = vt[c.taskId]; if (t && hit(c.body)) add('留言', t.title, nm(c.authorId) + '：' + c.body, '#/task/' + t.id); });
+    var vw = {}; vWork().forEach(function (w) { vw[w.id] = w; });
+    S.comments.forEach(function (c) { if (!hit(c.body)) return; var t = c.taskId && vt[c.taskId], w = !c.taskId && c.workId && vw[c.workId]; if (t) add('留言', t.title, nm(c.authorId) + '：' + c.body, '#/task/' + t.id); else if (w) add('留言', w.title, nm(c.authorId) + '：' + c.body, '#/work/' + w.id); });
     (S.deliverables || []).forEach(function (f) { var t = vt[f.taskId]; if (!t) return; var full = [f.note, f.url, (f.media || []).map(function (m) { return m.name; }).join(' ')].join(' '); if (hit(full)) add('交付物', t.title, full, '#/task/' + t.id); });
     TM.ensureTodos(S); S.todos.forEach(function (x) { if ((x.ownerId === me || x.people.indexOf(me) >= 0) && hit(x.title + ' ' + (x.note || ''))) add('待办', x.title, x.note || '', '#/tasks'); });
     TM.activeUsers(S).forEach(function (u) { var full = [u.name, u.title, (u.skills || []).join(' '), u.group].join(' '); if (hit(full)) add('成员', u.name, [u.title, (u.skills || []).join('、')].filter(Boolean).join(' · '), '#/team'); });
@@ -2640,6 +2641,11 @@
       var evs = S.events.filter(function (e) { return e.workId === w.id && (!e.taskId || (T(e.taskId) && TM.canViewTask(S, me, T(e.taskId)))); }).sort(function (x, y) { return y.at - x.at; }).slice(0, 3);
       h += '<section class="wx-card"><div class="wx-sh"><b>' + IC('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>') + '最新动态</b><button class="wx-link gray" data-do="wTab" data-t="log">查看全部' + hi('chev', 2) + '</button></div>' +
         (evs.length ? '<ol class="wx-tl">' + evs.map(function (e, i) { var t = e.taskId ? T(e.taskId) : null; return '<li class="' + (i ? '' : 'on') + '"><b>' + esc(wEvText(e, t)) + '</b><small>' + esc(e.actorType === 'human' ? nm(e.actorId) : e.actorType === 'agent' ? 'AI 助理' : '系统') + ' · ' + ago(e.at) + '</small></li>'; }).join('') + '</ol>' : '<p class="wx-empty">还没有动态。</p>') + '</section>';
+      // 项目讨论：最近 20 条，成员可以发言（@姓名 会通知对方）
+      var wcs = S.comments.filter(function (c) { return c.workId === w.id && !c.taskId; }).sort(function (x, y) { return x.at - y.at; }).slice(-20);
+      h += '<section class="wx-card wx-disc"><div class="wx-sh"><b>' + IC('<path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H10l-4 3v-3H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z"/>') + '项目讨论</b><small class="muted">' + wcs.length + ' 条</small></div>' +
+        (wcs.length ? '<div class="wx-cm">' + wcs.map(function (c) { return '<div class="wx-c">' + av(c.authorId, true) + '<div><div class="wx-ch"><b>' + esc(nm(c.authorId)) + '</b><span>' + ago(c.at) + '</span></div><p>' + esc(c.body) + '</p></div></div>'; }).join('') + '</div>' : '<p class="muted" style="font-size:14px;margin:4px 2px 10px">还没有人发言。有问题、想法、进展，都可以在这里说，@姓名 会通知对方。</p>') +
+        (w.status !== 'cancelled' ? '<form data-form="wComment" class="wx-cf"><textarea name="body" rows="2" maxlength="2000" placeholder="说点什么…（@姓名 提醒同事）" required></textarea><button class="btn pri" type="submit">发送</button></form>' : '') + '</section>';
     } else if (wd.tab === 'tasks') {
       h += wTasksTab(w);
     } else if (wd.tab === 'mem') {
@@ -3821,6 +3827,7 @@
     } else if (name === 'suggest') act('idea.suggest', { id: c.id, body: o.body, replyTo: o.replyTo || null }, '建议已发送');
     else if (name === 'addCheck') act('task.addCheck', { id: c.id, title: o.title });
     else if (name === 'comment') act('task.comment', { id: c.id, body: o.body }, '已发送');
+    else if (name === 'wComment') { var rr = act('work.comment', { id: c.id, body: o.body }, '已发送'); if (rr.ok) { var ta = document.querySelector('form[data-form=wComment] textarea'); if (ta) ta.value = ''; } }
   });
   /* 页面切换动画（像原生 App）：进入下一级从右滑入，返回反向滑出，切换底部标签淡入淡出。
      有 View Transitions（iOS 18+、Android WebView 111+）时新旧两页一起动；没有时只给新页一个进入动画。

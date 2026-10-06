@@ -1015,6 +1015,17 @@ var TM = (function () {
     notify(s, [t.ownerId, t.reviewerId, w.operatorId, w.leadId].concat(t.collabs).filter(function (x) { return at.indexOf(x) < 0; }), uid, name(s, uid) + ' 在任务里留言', b, '#/task/' + t.id);
     touchTask(s, t); return {};
   };
+  /* 项目讨论：项目成员都能发言；通知项目相关的人，@ 到的人收到「提到了你」 */
+  A['work.comment'] = function (s, uid, p) {
+    var w = work(s, p.id); need(canViewWork(s, uid, w), '只有项目成员可以参与讨论'); need(w.status !== 'cancelled', '项目已取消');
+    var b = txt(p.body); need(b, '内容不能为空'); need(b.length <= 2000, '留言不超过 2000 字');
+    var c = { id: nid(s, 'M'), workId: w.id, taskId: null, authorId: uid, body: b, at: now(s) }; s.comments.push(c);
+    ev(s, { workId: w.id, ideaId: w.ideaId, actor: uid, action: 'work.comment', text: '讨论：' + b.slice(0, 60) });
+    var at = mentioned(s, b).filter(function (x) { return canViewWork(s, x, w); });
+    if (at.length) notify(s, at, uid, name(s, uid) + ' 提到了你', b.slice(0, 60), '#/work/' + w.id);
+    notify(s, relatedOfWork(s, w).filter(function (x) { return at.indexOf(x) < 0; }), uid, name(s, uid) + ' 在项目里发言', w.title + '：' + b.slice(0, 40), '#/work/' + w.id);
+    touchWork(s, w); return { id: c.id };
+  };
   A['owner.override'] = function (s, uid, p) {
     need(hasRole(s, uid, 'owner'), '只有老板可以纠偏'); var r = txt(p.reason); need(r, '纠偏必须填写原因');
     var t = task(s, p.id); var w = work(s, t.workId); need(w.status !== 'paused', '项目已暂停，请先恢复再纠偏'); var from = t.status;
@@ -1106,7 +1117,7 @@ var TM = (function () {
     if (!own) v.decisions.forEach(function (x) { delete x.ai; });
     v.workItems = v.workItems.filter(function (w) { return W[w.id]; });
     v.tasks = v.tasks.filter(function (t) { return T[t.id]; });
-    ['checklist', 'deliverables', 'comments'].forEach(function (k) { v[k] = (v[k] || []).filter(function (x) { return !x.taskId || T[x.taskId]; }); });
+    ['checklist', 'deliverables', 'comments'].forEach(function (k) { v[k] = (v[k] || []).filter(function (x) { return (!x.taskId || T[x.taskId]) && (!x.workId || W[x.workId]); }); }); // 项目讨论（只有 workId）按项目可见性过滤
     v.reviews = v.reviews.filter(function (x) { return x.taskId ? T[x.taskId] : W[x.workId]; });
     v.notifications = v.notifications.filter(function (n) { return n.userId === uid; });
     v.todos = (v.todos || []).filter(function (x) { return x.ownerId === uid || (x.people || []).indexOf(uid) >= 0; });

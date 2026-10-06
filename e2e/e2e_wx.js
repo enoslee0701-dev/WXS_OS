@@ -56,5 +56,9 @@ const URL=(require('./_env').URL);
   await p.evaluate(()=>{}); await p.click('[data-do=wTab][data-t=files]'); await p.waitForTimeout(80);
   ok(await p.locator('.wf-up').count()===1, '执行者能上传');
   await p.click('[data-do=wTab][data-t=ov]'); await p.click('.wx-ask'); await p.click('[data-do=wcAsk][data-q="下一步做什么"]'); await p.waitForTimeout(80); ok((await p.textContent('#wc-list')).length>10, '执行者也能问 AI');
+  // 项目讨论：概览底部发言
+  await p.click('[data-do=wTab][data-t=ov]'); await p.waitForTimeout(80);
+  if (await p.locator('form[data-form=wComment]').count()) { await p.fill('form[data-form=wComment] textarea','这周五前给初稿'); await p.click('form[data-form=wComment] button[type=submit]'); await p.waitForTimeout(150);
+    ok((await p.textContent('.wx-disc')).includes('这周五前给初稿'),'项目讨论发言后显示'); } else ok(false,'项目概览里没有讨论区');
   ok(!errs.length,'无脚本错误 '+errs.join(';')); console.log('项目详情 E2E 通过',pass,'失败',fail); await b.close();
 })();
