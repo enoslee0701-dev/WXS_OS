@@ -2886,7 +2886,7 @@
       sw('showTiers', '显示一级、二级标签', '只是界面分组标签，不影响权限：运营者、负责人为一级，执行者为二级。') + '</div>';
     h += sec('公司与提醒') + '<div class="card"><label class="fld"><span>公司方向与长期目标</span><textarea data-set="direction" rows="3"' + (isOwner() ? '' : ' disabled') + '>' + esc(cs.direction) + '</textarea><small>AI 整理时用来判断新想法是否与现有业务形成闭环。由老板填写。</small></label>' +
       '<div class="row2"><label class="fld"><span>无动态提醒（天）</span><input type="number" min="1" max="30" data-set="staleDays" value="' + cs.staleDays + '"' + dis + '></label><label class="fld"><span>超预算阈值（元）</span><input type="number" min="0" step="1000" data-set="budgetThreshold" value="' + (cs.budgetThreshold || '') + '"' + dis + '></label></div></div>';
-    h += SRV ? sec('数据') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">服务器：' + esc(TMS.serverUrl()) + '</p><button class="btn block" data-do="srvUsage">使用情况（AI 费用、设备、空间）</button>' + (isOwner() ? '<button class="btn block mt" data-do="srvExport">导出全部数据（备份）</button>' : '') + '<div class="mt"></div>' + (isOwner() && !S.real ? '<button class="btn danger block" data-do="clearDemo">清理演示数据</button>' : '<p class="muted" style="margin:0;font-size:13.5px">数据每天自动备份在服务器的 backups 目录。</p>') + '</div>' :
+    h += SRV ? sec('数据') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">服务器：' + esc(TMS.serverUrl()) + '</p><button class="btn block" data-do="srvUsage">使用情况（AI 费用、设备、空间）</button><button class="btn block mt" data-do="srvOps">操作日志（谁做了什么）</button>' + (isOwner() ? '<button class="btn block mt" data-do="srvExportFull">完整备份（含全部附件，压缩包）</button><button class="btn block mt" data-do="srvExport">只导出团队数据（JSON）</button>' : '') + '<div class="mt"></div>' + (isOwner() && !S.real ? '<button class="btn danger block" data-do="clearDemo">清理演示数据</button>' : '<p class="muted" style="margin:0;font-size:13.5px">数据每天自动备份在服务器的 backups 目录。</p>') + '</div>' :
       sec('演示工具') + '<div class="card">' + sw('demoAiFail', '模拟 AI 失败', '用来演示「AI 失败后运营者手写整理稿继续推进」。') +
       '<div class="callout">演示版里：账号是预设的；AI 整理和共创汇总由规则模拟生成，界面都标了「AI 模拟输出」；录音只在本机，不上传、不转写；通知只在 App 内。</div>' +
       (isOwner() ? '<button class="btn block" data-do="clearDemo">清理演示数据（保留成员）</button>' : '') + '<button class="btn danger block mt" data-do="reset">重置全部演示数据</button></div>';
@@ -3297,6 +3297,26 @@
       TMS.deactivate(o.password || '').then(function () { closeSheet(); toast('账号已注销'); setTimeout(function () { location.hash = '#/login'; location.reload(); }, 800); }, function (e) { toast(e.error || '注销失败', true); });
     }, true);
   };
+  /* 操作日志：最近 50 条，可按人筛选、只看失败、加载更早的 */
+  var OPN = { 'idea.create': '记录想法', 'idea.submit': '提交想法', 'idea.claim': '认领想法', 'idea.route': '派发', 'idea.delete': '删除想法', 'idea.suggest': '提建议', 'idea.saveSummary': '保存整理稿', 'decision.request': '上报决策', 'decision.decide': '老板决策',
+    'project.create': '新建项目', 'work.plan': '安排任务', 'work.update': '修改项目', 'work.close': '确认项目完成', 'work.pause': '暂停项目', 'work.resume': '恢复项目', 'work.cancel': '取消项目', 'work.reassign': '更换项目人员', 'work.attach': '上传项目文件',
+    'task.transition': '任务状态', 'task.submit': '提交成果', 'task.review': '验收', 'task.update': '修改任务', 'task.comment': '任务留言', 'owner.override': '老板纠偏',
+    'member.add': '添加成员', 'member.update': '修改资料', 'member.role': '调整角色', 'member.handover': '交接工作', 'settings.update': '修改设置', 'todo.create': '新建待办', 'todo.update': '修改待办', 'notif.read': '已读通知' };
+  var opsS = { uid: '', fail: false, rows: [], more: false };
+  function opsHTML() {
+    var ppl = S.users.map(function (u) { return '<option value="' + u.id + '"' + (opsS.uid === u.id ? ' selected' : '') + '>' + esc(u.name) + '</option>'; }).join('');
+    return '<div class="ops-f"><select data-ops="uid"><option value="">全部成员</option>' + ppl + '</select><label class="ops-c"><input type="checkbox" data-ops="fail"' + (opsS.fail ? ' checked' : '') + '> 只看失败</label></div>' +
+      (opsS.rows.length ? '<div class="ops-l">' + opsS.rows.map(function (r) { return '<div class="ops-r' + (r.ok ? '' : ' bad') + '"><b>' + esc(TM.name(S, r.uid)) + '</b><span>' + esc(OPN[r.action] || r.action) + (r.ok ? '' : '（失败：' + esc(r.error) + '）') + '</span><small>' + new Date(r.at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) + '</small></div>'; }).join('') + '</div>' : '<p class="muted">没有记录。</p>') +
+      (opsS.more ? '<button type="button" class="btn block mt" data-do="opsMore">加载更早的</button>' : '');
+  }
+  function opsLoad(more) {
+    TMS.ops({ uid: opsS.uid, fail: opsS.fail, before: more && opsS.rows.length ? opsS.rows[opsS.rows.length - 1].seq : '' }).then(function (r) {
+      opsS.rows = more ? opsS.rows.concat(r.ops) : r.ops; opsS.more = r.more; var b = document.querySelector('#layer .sheet .body'); if (b && document.querySelector('#layer .sheet .ops-f')) b.innerHTML = opsHTML(); else openSheet('操作日志', opsHTML(), '关闭', function () { closeSheet(); });
+    }, function (e) { toast(e.error || '读取失败', true); });
+  }
+  DO.srvOps = function () { opsS = { uid: '', fail: false, rows: [], more: false }; opsLoad(false); };
+  DO.opsMore = function () { opsLoad(true); };
+  document.addEventListener('change', function (e) { var k = e.target && e.target.dataset && e.target.dataset.ops; if (!k) return; if (k === 'uid') opsS.uid = e.target.value; else opsS.fail = e.target.checked; opsLoad(false); });
   DO.srvUsage = function () {
     TMS.usage().then(function (u) {
       var mb = function (n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB'; };
@@ -3309,6 +3329,8 @@
         '</div><p class="muted" style="font-size:13px;margin:10px 0 0">费用按模型标价估算（不含缓存折扣），以 Anthropic 账单为准。</p>', '关闭', function () { closeSheet(); });
     }, function (e) { toast(e.error || '读取失败', true); });
   };
+  // 完整备份：服务器边打包边下载，交给系统浏览器下载（附件可能很大，不经过 App 内存）
+  DO.srvExportFull = function () { var u = TMS.exportTgzUrl(); if (!u) return toast('请先登录', true); if (typeof TMN !== 'undefined' && TMN.native && TMN.openUrl) { TMN.openUrl(u); toast('已在浏览器里开始下载完整备份'); return; } var a = document.createElement('a'); a.href = u; a.download = ''; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 1000); toast('开始下载完整备份'); };
   DO.srvExport = function () {
     TMS.exportAll().then(function (d) {
       var blob = new Blob([JSON.stringify(d, null, 1)], { type: 'application/json' }), name = '团队协同备份-' + new Date().toISOString().slice(0, 10) + '.json';

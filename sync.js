@@ -231,6 +231,7 @@ var TMS = (function () {
   api.registerDevice = function (t) { if (api.loggedIn() && t) req('POST', '/api/devices', { token: t, platform: 'ios' }).catch(function () {}); };
   api.deactivate = function (pw) { return req('POST', '/api/account/deactivate', { password: pw }).then(function (r) { clearBig(); ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_outbox_srv', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); return r; }); };
   api.usage = function () { return req('GET', '/api/usage'); };
+  api.ops = function (o) { o = o || {}; return req('GET', '/api/ops?before=' + (o.before || '') + '&uid=' + encodeURIComponent(o.uid || '') + (o.fail ? '&fail=1' : '')); };
   api.exportAll = function () { return req('GET', '/api/export'); };
   api.accounts = function () { return req('GET', '/api/accounts'); };
   api.setAccount = function (o) { return req('POST', '/api/accounts', o); };
@@ -273,6 +274,7 @@ var TMS = (function () {
     });
   };
   // 网址里只放「只能读附件」的文件令牌，不放会话令牌（链接被转发也拿不到账号）
+  api.exportTgzUrl = function () { var ft = g('tm_ft'); return api.loggedIn() && ft ? api.base + '/api/export.tgz?ft=' + encodeURIComponent(ft) : null; };
   api.fileUrl = function (id) { var ft = g('tm_ft'); return api.loggedIn() && id && ft ? api.base + '/api/files/' + encodeURIComponent(id) + '?ft=' + encodeURIComponent(ft) : null; };
   if (api.loggedIn()) { window.addEventListener('load', pump); window.addEventListener('online', function () { upDelay = 3000; pump(); }); }
 

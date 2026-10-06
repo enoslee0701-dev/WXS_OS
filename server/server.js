@@ -148,6 +148,33 @@ function body(req, limit) {
   const max = limit || MAX_BODY;
   return new Promise((ok, bad) => { let n = 0; const ch = []; req.on('data', d => { n += d.length; if (n > max) { bad(new Error('too large')); req.destroy(); } else ch.push(d); }); req.on('end', () => { try { const v = ch.length ? JSON.parse(Buffer.concat(ch).toString('utf8')) : {}; ok(v && typeof v === 'object' ? v : {}); } catch (e) { e.badRequest = true; bad(e); } }); req.on('error', bad); });
 }
+/* ---------- 完整备份：手写 tar（ustar）+ gzip，零依赖 ---------- */
+function tarHeader(name, size, mtime) {
+  const h = Buffer.alloc(512), w = (str, off, len) => h.write(str, off, len, 'utf8'), oct = (n, len) => n.toString(8).padStart(len - 1, '0') + '\0';
+  w(name, 0, 100); w(oct(0o644, 8), 100, 8); w(oct(0, 8), 108, 8); w(oct(0, 8), 116, 8); w(oct(size, 12), 124, 12); w(oct(Math.floor(mtime / 1000), 12), 136, 12);
+  h.fill(0x20, 148, 156); w('0', 156, 1); w('ustar\0', 257, 6); w('00', 263, 2);
+  let sum = 0; for (let i = 0; i < 512; i++) sum += h[i]; w(sum.toString(8).padStart(6, '0') + '\0 ', 148, 8); return h;
+}
+async function exportTgz(res) {
+  const day = new Date().toISOString().slice(0, 10), gz = zlib.createGzip();
+  res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent('团队协同完整备份-' + day + '.tar.gz'), 'Cache-Control': 'no-store' });
+  gz.pipe(res);
+  const put = (b) => new Promise(ok => { if (gz.write(b)) ok(); else gz.once('drain', ok); });
+  const pad = (n) => n % 512 ? put(Buffer.alloc(512 - n % 512)) : Promise.resolve();
+  const files = q('SELECT id,uid,name,type,size,created FROM files').all();
+  const json = Buffer.from(JSON.stringify({ exportedAt: new Date().toISOString(), version, state: S, accounts: q('SELECT uid,login,disabled,created,last_login FROM creds').all(), files }));
+  try {
+    await put(tarHeader('team-export.json', json.length, Date.now())); await put(json); await pad(json.length);
+    for (const f of files) {
+      const fp = path.join(FILES, f.id); let st; try { st = fs.statSync(fp); } catch (e) { continue; }
+      await put(tarHeader('files/' + f.id, st.size, st.mtimeMs));
+      for await (const ch of fs.createReadStream(fp)) await put(ch);
+      await pad(st.size);
+    }
+    await put(Buffer.alloc(1024));
+  } catch (e) { console.error('导出备份出错', e); }
+  gz.end();
+}
 const stateFor = (uid) => ({ version, state: TM.viewFor(S, uid) });
 // 操作结果只回传简单字段（新建记录的 ID 等），绝不回传对象
 const pickR = (r) => { const o = {}; Object.keys(r || {}).forEach(k => { const v = r[k]; if (k !== 'ok' && (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean')) o[k] = v; }); return o; };
@@ -293,6 +320,13 @@ const routes = {
     return [200, { ok: true, ...stateFor(me.uid) }];
   },
   /* 使用情况：AI 调用与估算费用、账号、设备、附件空间（老板 / 管理员） */
+  // 操作日志（老板 / 管理员）：谁、什么时候、做了什么、成功没有；不回传操作内容本身。可按人、只看失败筛选，before 翻页
+  'GET /api/ops': async (req, url, b, me) => {
+    if (!isMgr(me.uid)) return [403, { error: '只有老板或管理员可以看操作日志' }];
+    const before = +url.searchParams.get('before') || 9e15, who = url.searchParams.get('uid') || '', fail = url.searchParams.get('fail') === '1';
+    const rows = q('SELECT seq,at,uid,action,ok,error FROM ops WHERE seq<? AND (?=\'\' OR uid=?) AND (?=0 OR ok=0) ORDER BY seq DESC LIMIT 50').all(before, who, who, fail ? 1 : 0);
+    return [200, { ops: rows.map(r => ({ seq: r.seq, at: r.at, uid: r.uid, action: r.action, ok: !!r.ok, error: r.error || '' })), more: rows.length === 50 }];
+  },
   'GET /api/usage': async (req, url, b, me) => {
     if (!isMgr(me.uid)) return [403, { error: '只有老板或管理员可以查看' }];
     const day0 = new Date(); day0.setHours(0, 0, 0, 0);
@@ -517,6 +551,12 @@ const server = http.createServer(async (req, res) => {
       const c = { res, uid: me.uid, token: me.token }; clients.add(c); req.on('close', () => clients.delete(c)); return;
     }
     // 录音 / 视频直接转文字（AI 建项目、AI 拆待办、手机识别不了时的语音输入）：请求体是音视频本身，返回 {text}
+    // 完整备份（老板）：团队数据 + 全部附件，打成 .tar.gz 边打包边下载（附件可能很大，不进内存）。用文件令牌认证，方便手机直接在浏览器里下载
+    if (url.pathname === '/api/export.tgz' && req.method === 'GET') {
+      const me = auth(req, url, 'file'); if (!me) return send(res, 401, { error: '请重新登录' });
+      if (!isOwner(me.uid)) return send(res, 403, { error: '只有老板可以导出全部数据' });
+      return exportTgz(res);
+    }
     if (url.pathname === '/api/transcribe' && req.method === 'POST') {
       const me = auth(req, url); if (!me) return send(res, 401, { error: '请重新登录' });
       if (me.mustChange) return send(res, 403, { error: '请先修改初始密码', mustChange: true });

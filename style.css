@@ -3096,3 +3096,10 @@ body.is-home .dock{background:none}
 .np-types{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 30px),transparent)}
 .tk-days{-webkit-mask-image:linear-gradient(90deg,transparent 0,transparent 13px,#000 16px,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,transparent 0,transparent 13px,#000 16px,#000 calc(100% - 30px),transparent)}
 .tx-edit{min-height:34px;padding:0 14px;font-size:14px;margin:2px 0 8px}
+/* 操作日志 */
+.ops-f{display:flex;gap:10px;align-items:center;margin-bottom:10px}.ops-f select{flex:1;min-width:0}
+.ops-c{display:flex;align-items:center;gap:6px;font-size:14px;white-space:nowrap}
+.ops-l{display:flex;flex-direction:column}
+.ops-r{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:baseline;padding:10px 2px;border-bottom:1px solid #EEF0F3;font-size:14px}
+.ops-r b{font-weight:600}.ops-r span{color:#3E4A63;min-width:0;overflow-wrap:anywhere}.ops-r small{color:#8A93A3;font-size:12.5px}
+.ops-r.bad span{color:#C0392B}

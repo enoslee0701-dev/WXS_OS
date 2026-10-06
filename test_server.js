@@ -121,6 +121,11 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
     ok(a1.ok && a2.ok && a2.dup && a2.r.id === a1.r.id && n === 1, '同一操作 ID 重发只执行一次 ' + n);
     const a3 = await post('/api/act', { name: 'idea.create', payload: { note: '重发测试' }, op: 'op_abcdef999999' }, boss);
     ok(a3.ok && !a3.dup, '不同操作 ID 正常执行'); }
+  // 8.46 操作日志
+  { ok((await get('/api/ops', wTok)).status === 403, '普通成员看不到操作日志');
+    const o1 = await get('/api/ops', boss); ok(o1.status === 200 && o1.ops.length > 0 && o1.ops[0].action && o1.ops[0].payload === undefined, '老板看操作日志（不含操作内容）');
+    const o2 = await get('/api/ops?fail=1', boss); ok(o2.ops.length > 0 && o2.ops.every(x => !x.ok), '只看失败的操作');
+    const o3 = await get('/api/ops?uid=u_owner', boss); ok(o3.ops.every(x => x.uid === 'u_owner'), '按人筛选'); }
   // 8.5 附件
   const up = (id, body, tok, type) => fetch(B + '/api/files/' + id, { method: 'PUT', headers: { 'Content-Type': type || 'text/plain', 'X-File-Name': encodeURIComponent('会议记录.txt'), ...(tok ? { Authorization: 'Bearer ' + tok } : {}) }, body });
   const liTok2 = (await post('/api/login', { login: 'xiaoli', password: 'li123456' })).token;
@@ -227,6 +232,13 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   ok(r.status === 200 && r.state.users.length === 4 && r.state.ideas.some(d => d.note === '改过的草稿'), '重启后数据和会话都在');
   ok((await (await fetch(B + '/api/files/f_abc123', { headers: { Authorization: 'Bearer ' + boss } })).text()).endsWith('v2'), '重启后附件还在');
   ok(fs.readdirSync(path.join(DIR, 'backups')).length === 1, '每天一份备份');
+  // 9.4 完整备份（含附件）：只有老板能下，压缩包里有团队数据和附件
+  const tgz = path.join(DIR, 'full.tar.gz');
+  { const bft = (await get('/api/state', boss)).fileToken;
+    ok((await fetch(B + '/api/export.tgz?ft=' + liFt)).status === 403, '非老板不能下载完整备份');
+    const rr = await fetch(B + '/api/export.tgz?ft=' + bft); fs.writeFileSync(tgz, Buffer.from(await rr.arrayBuffer()));
+    const ls = require('child_process').spawnSync('tar', ['-tzf', tgz], { encoding: 'utf8' }).stdout;
+    ok(rr.status === 200 && ls.includes('team-export.json') && ls.includes('files/f_abc123'), '完整备份是标准 tar.gz，含团队数据和附件 ' + ls.split('\n').length); }
   // 9.5 从备份恢复（先停服务器）
   srv.kill(); await new Promise(z => setTimeout(z, 300));
   const bk = path.join(DIR, 'backups', fs.readdirSync(path.join(DIR, 'backups')).find(f => f.startsWith('state-')));
@@ -236,8 +248,13 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   ok(spawnSync(process.execPath, [path.join(__dirname, 'server', 'restore.js'), path.join(__dirname, 'package.json'), '--yes'], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', DATA_DIR: DIR }, encoding: 'utf8' }).status === 1, '无效文件被拒');
   rs1 = spawnSync(process.execPath, [path.join(__dirname, 'server', 'restore.js'), bk, '--yes'], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', DATA_DIR: DIR }, encoding: 'utf8' });
   ok(rs1.status === 0 && /已恢复/.test(rs1.stdout) && fs.readdirSync(path.join(DIR, 'backups')).some(f => f.startsWith('before-restore-')), '从每日备份恢复，恢复前另存当前数据');
+  // 从完整备份恢复：附件丢了也能放回
+  fs.rmSync(path.join(DIR, 'files', 'f_abc123'));
+  rs1 = spawnSync(process.execPath, [path.join(__dirname, 'server', 'restore.js'), tgz, '--yes'], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', DATA_DIR: DIR }, encoding: 'utf8' });
+  ok(rs1.status === 0 && /附件已放回：[1-9]/.test(rs1.stdout) && fs.existsSync(path.join(DIR, 'files', 'f_abc123')), '从完整备份恢复，附件放回 ' + rs1.stdout.slice(-80) + rs1.stderr.slice(0, 200));
   srv = await start();
   ok((await get('/api/state', boss)).status === 200, '恢复后账号仍能登录');
+  ok((await (await fetch(B + '/api/files/f_abc123', { headers: { Authorization: 'Bearer ' + boss } })).text()).endsWith('v2'), '恢复后附件内容正确');
   // 10. 演示团队
   srv.kill(); fs.rmSync(DIR, { recursive: true, force: true }); fs.mkdirSync(DIR);
   srv = await start();

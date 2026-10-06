@@ -124,7 +124,7 @@ scripts/server-mac.sh install   # 重启服务器
 
 - 数据目录下 `backups/` 每天自动存一份完整快照（JSON）。
 - 整体备份：停服务后复制整个数据目录（`team.db`、`files/`、`backups/`）。
-- **恢复**：先停服务器（`scripts/server-mac.sh uninstall` 或停 Docker），再运行 `node server/restore.js server/data/backups/state-2026-10-03.json --yes`，然后重新启动。也可以用「导出全部数据」下载的文件来恢复。恢复前会自动把当前数据另存一份；账号和密码不受影响。
+- **恢复**：先停服务器（`scripts/server-mac.sh uninstall` 或停 Docker），再运行 `node server/restore.js server/data/backups/state-2026-10-03.json --yes`，然后重新启动。也可以用「只导出团队数据」的 .json，或「完整备份」下载的 .tar.gz 来恢复（.tar.gz 会把附件一起放回 data/files，已有的不覆盖）。恢复前会自动把当前数据另存一份；账号和密码不受影响。
 
 ## 安全提示
 

@@ -71,6 +71,11 @@ let srv = null;
   await A.click('.sheet footer button[type=submit]'); await A.waitForTimeout(100);
   const [dl] = await Promise.all([A.waitForEvent('download'), A.click('[data-do=srvExport]')]);
   ok(/团队协同备份-.*\.json$/.test(dl.suggestedFilename()), '老板导出全部数据 ' + dl.suggestedFilename());
+  await A.click('[data-do=srvOps]'); await A.waitForSelector('.sheet .ops-r', { timeout: 5000 }).catch(() => {});
+  ok(await A.locator('.sheet .ops-r').count() > 0, '老板打开操作日志看到记录');
+  await A.click('.sheet footer button[type=submit]'); await A.waitForTimeout(100);
+  const [dl2] = await Promise.all([A.waitForEvent('download'), A.click('[data-do=srvExportFull]')]);
+  ok(/团队协同完整备份-.*\.tar\.gz$/.test(dl2.suggestedFilename()), '老板下载完整备份（含附件） ' + dl2.suggestedFilename());
   await A.goto(URL + '#/me'); await A.waitForTimeout(150);
   ok((await A.textContent('[data-do=onboard]')).includes('还有 2 步'), '加了成员后，「开始使用」还剩 2 步');
   // 还没有运营者：老板记的想法提交后，老板能在界面上认领跟进
