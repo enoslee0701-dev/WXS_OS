@@ -57,6 +57,20 @@ await p.goto(URL+'#/home');await p.waitForTimeout(80);await p.click('[data-do=sw
 ok(await p.locator('[data-do=wAddMs]').count()===0 && await p.locator('.actions').count()===0,'执行者只读，无操作按钮');
 ok(errs.length===0,'无报错 '+errs.join('|'));
 // 取消项目：更多操作 → 取消项目 → 写原因 → 项目已取消、任务一并取消
+// 项目里上报老板决策（负责人）→ 老板在「需要你决策」里批准 → 老板对已提交的任务写复核意见
+{ await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("陈立")');await p.waitForTimeout(150);
+  const wid=await p.evaluate(()=>{const S=window.__tm.S;const w=S.workItems.find(x=>x.leadId==='u_lead'&&!['done','cancelled'].includes(x.status));return w&&w.id;});
+  await p.goto(URL+'#/work/'+wid);await p.waitForTimeout(200);await p.click('.actions .btn:has-text("更多操作")');await p.click('.sheet [data-do=wEscalate]');
+  await p.selectOption('.sheet select[name=kind]','over_budget');await p.fill('.sheet textarea[name=question]','场地费超出预算 3000 元，是否同意？');await sub();await p.waitForTimeout(150);
+  ok(await p.evaluate((w)=>window.__tm.S.decisions.some(d=>d.workId===w&&d.status==='pending'),wid),'负责人在项目里上报老板决策');
+  await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Enos")');await p.goto(URL+'#/stat/decide');await p.waitForTimeout(200);
+  ok((await p.textContent('main')).includes('场地费超出预算'),'老板在「需要你决策」里看到项目上报');
+  const did=await p.evaluate((w)=>window.__tm.S.decisions.find(d=>d.workId===w&&d.status==='pending').id,wid);
+  await p.evaluate((id)=>{const b=document.querySelector('[data-do=decide][data-arg="'+id+'"]');if(b)b.click();},did);await p.waitForSelector('.sheet input[name=status]');await sub();await p.waitForTimeout(150);
+  ok(await p.evaluate((id)=>window.__tm.S.decisions.find(d=>d.id===id).status==='approved',did),'老板批准项目上报');
+  const tid=await p.evaluate(()=>{const t=window.__tm.S.tasks.find(x=>['submitted','done'].includes(x.status));return t&&t.id;});
+  await p.goto(URL+'#/task/'+tid);await p.waitForTimeout(200);await p.click('.actions [data-do=reviewNote]');await p.fill('.sheet textarea[name=note]','再补一份预算表');await sub();await p.waitForTimeout(150);
+  ok(await p.evaluate((id)=>window.__tm.S.reviews.some(r=>r.taskId===id&&r.verdict==='comment'),tid),'老板写复核意见'); }
 await p.goto(URL+'#/home');await p.waitForTimeout(80);await p.click('[data-do=switch]');await p.click('.acct:has-text("Enos")');
 await p.goto(URL+'#/work/W1');await p.waitForTimeout(200);await p.click('.actions .btn:has-text("更多操作")');ok(await p.locator('.sheet [data-do=cancelWork]').count()===1,'更多操作含取消项目');
 await p.click('.sheet [data-do=cancelWork]');await p.fill('.sheet textarea[name=reason]','方向调整');await sub();await p.waitForTimeout(150);

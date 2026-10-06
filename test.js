@@ -852,5 +852,46 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   ok(tg.nextDate >= TM.todayStr(g2), '下一次不早于今天 ' + tg.nextDate);
   rej(TM.act(g2, O, 'work.plan', { id: g2.workItems.find(w => w.status === 'active').id, tasks: [{ title: 'x', ownerId: DV, reviewerId: DV, expected: 'a', criteria: 'b' }] }), '派任务时验收人不能是执行人'); }
 
+// ===== 对照开发者文档补齐：共创截止、事项级上报、老板复核、事项受阻、定时提醒 =====
+{ let tt = Date.UTC(2026, 9, 1, 3); const ck = () => tt; const z = TM.seed(ck), day = 864e5;
+  // 共创截止：截止当天提醒，过了自动结束（没有建议也能结束）
+  const ci = must(TM.act(z, LD, 'idea.create', { note: '年会节目' }), '负责人建想法');
+  rej(TM.act(z, LD, 'idea.submit', { id: ci.id, path: 'cocreate', shareAll: true, deadline: '2020-01-01' }), '截止日期不能早于今天');
+  must(TM.act(z, LD, 'idea.submit', { id: ci.id, path: 'cocreate', shareAll: true, deadline: TM.todayStr(z) }), '共创，今天截止');
+  must(TM.act(z, 'agent', 'system.discussionDue', {}), '系统检查');
+  ok(z.notifications.some(n => n.userId === LD && /今天截止/.test(n.title)), '截止当天提醒发起人');
+  tt += 2 * day; const dd = must(TM.act(z, 'agent', 'system.discussionDue', {}), '过了截止日');
+  ok(dd.closed === 1 && z.ideas.find(d => d.id === ci.id).status === 'summary_ready' && z.notifications.some(n => n.userId === LD && /共创汇总完成/.test(n.title)), '过了截止日自动结束并通知发起人');
+  // 事项级上报
+  const w = z.workItems.find(x => x.status === 'active' && x.leadId);
+  rej(TM.act(z, DV, 'work.requestDecision', { id: w.id, kind: 'over_budget', question: '要加钱' }), '执行者不能上报');
+  const rd = must(TM.act(z, w.leadId, 'work.requestDecision', { id: w.id, kind: 'over_budget', question: '采购超预算 3000，是否同意？' }), '负责人在项目里上报老板');
+  rej(TM.act(z, w.leadId, 'work.requestDecision', { id: w.id, kind: 'other', question: '再报一次' }), '同一项目已有待决策时不能重复上报');
+  must(TM.act(z, O, 'decision.decide', { id: rd.id, status: 'approved' }), '老板批准');
+  ok(z.notifications.some(n => n.userId === w.leadId && /老板批准|老板同意|老板/.test(n.title) && n.link === '#/work/' + w.id), '负责人收到决定');
+  // 老板复核意见
+  const st = z.tasks.find(t => ['submitted', 'done'].includes(t.status));
+  must(TM.act(z, O, 'task.reviewComment', { id: st.id, note: '方案再补一份预算表' }), '老板写复核意见');
+  ok(z.reviews.some(r => r.taskId === st.id && r.verdict === 'comment') && z.tasks.find(t => t.id === st.id).status === st.status, '复核意见只追加记录、不改状态');
+  rej(TM.act(z, OP, 'task.reviewComment', { id: st.id, note: 'x' }), '非老板不能写复核意见');
+  // 事项受阻
+  const at = z.tasks.find(t => ['accepted', 'in_progress'].includes(t.status) && z.workItems.find(x => x.id === t.workId).status === 'active');
+  must(TM.act(z, at.ownerId, 'task.transition', { id: at.id, action: 'block', note: '等报价' }), '报阻碍');
+  ok(z.workItems.find(x => x.id === at.workId).status === 'blocked', '任务受阻时事项标为受阻');
+  must(TM.act(z, at.ownerId, 'task.transition', { id: at.id, action: 'unblock', note: '报价到了' }), '解除');
+  ok(z.workItems.find(x => x.id === at.workId).status === 'active', '解除后事项回到进行中');
+  // 产品项目：运营者不能安排执行人
+  const pw = z.workItems.find(x => x.kind === 'product' && x.operatorId && x.status !== 'done');
+  if (pw) rej(TM.act(z, pw.operatorId, 'work.plan', { id: pw.id, tasks: [{ title: 'x', ownerId: DV, expected: 'a', criteria: 'b' }] }), '产品项目由负责人安排执行人');
+  // 30 分钟没人认领
+  const ni = must(TM.act(z, O, 'idea.create', { note: '换饮水机' }), '建想法'); must(TM.act(z, O, 'idea.submit', { id: ni.id, path: 'direct' }), '提交');
+  z.ideas.find(d => d.id === ni.id).followerId = null; tt += 31 * 60e3;
+  const nn = must(TM.act(z, 'agent', 'system.triageNudge', {}), '系统检查认领');
+  ok(nn.sent >= 1 && z.notifications.some(n => n.userId === OP && /30 分钟没人认领/.test(n.title)), '30 分钟没人认领提醒运营者');
+  ok(TM.act(z, 'agent', 'system.triageNudge', {}).sent === 0, '只提醒一次');
+  // 任务默认有截止
+  const pl = must(TM.act(z, O, 'work.plan', { id: w.id, tasks: [{ title: '无截止的任务', ownerId: DV, expected: 'a', criteria: 'b' }] }), '派没写截止的任务');
+  ok(!!z.tasks.find(t => t.title === '无截止的任务').due, '没写截止时自动补上'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

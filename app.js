@@ -369,7 +369,7 @@
       else if (t.status === 'done' && isToday(t.lastActivity) && (t.ownerId === me || t.reviewerId === me)) out.push({ done: true, title: t.title, tag: [L.kind[w.kind], w.kind === 'product' ? 'tg-blue' : 'tg-green'], prio: 'lo', who: t.ownerId, due: { t: '今天', bad: false }, href: '#/task/' + t.id, at: t.createdAt, date: TM.todayStr(S), doneAt: t.lastActivity, comments: 0, mine: t.ownerId === me, people: t.ownerId === me ? [] : [t.ownerId] });
     });
     if (isOwner()) S.decisions.filter(function (d) { return d.status === 'pending'; }).forEach(function (d) {
-      out.push({ title: '决策：' + d.question, tag: ['决策', 'tg-purple'], prio: 'hi', who: d.requestedBy, due: { t: isToday(d.at) ? '今天' : ago(d.at), bad: false }, href: '#/idea/' + d.ideaId, at: d.at, date: TM.todayStr(S), comments: 0, mine: false, people: [d.requestedBy] });
+      out.push({ title: '决策：' + d.question, tag: ['决策', 'tg-purple'], prio: 'hi', who: d.requestedBy, due: { t: isToday(d.at) ? '今天' : ago(d.at), bad: false }, href: d.workId ? '#/work/' + d.workId : '#/idea/' + d.ideaId, at: d.at, date: TM.todayStr(S), comments: 0, mine: false, people: [d.requestedBy] });
     });
     vIdeas().forEach(function (d) {
       var nx = TM.nextForIdea(S, d);
@@ -1757,12 +1757,12 @@
     return h;
   }
   function decCard(dc, open) {
-    var d = dc.ideaId ? I(dc.ideaId) : null, sm = d && TM.latestSummary(S, d.id, 'analysis'), u = TM.user(S, dc.requestedBy);
+    var d = dc.ideaId ? I(dc.ideaId) : null, sm = d && TM.latestSummary(S, d.id, 'analysis'), u = TM.user(S, dc.requestedBy), wk = dc.workId ? W(dc.workId) : null;
     var ctx = (sm && sm.payload.background) || (d && d.note) || '';
     var rel = []; if (d) rel.push(['doc2', '想法：' + (d.title || '未命名'), '#/idea/' + d.id]); if (sm) rel.push(['spark', '整理稿 v' + sm.version + (sm.authorType === 'agent' ? '（AI 模拟）' : ''), '#/idea/' + d.id]);
     if (d) d.media.forEach(function (m) { rel.push([m.kind === 'audio' ? 'mic' : 'clip', m.name, '#/idea/' + d.id]); });
-    S.workItems.filter(function (w) { return d && w.ideaId === d.id; }).forEach(function (w) { rel.push(['proj', '项目：' + w.title, '#/work/' + w.id]); });
-    return '<article class="s-dec"><a class="s-dec-h" href="' + (d ? '#/idea/' + d.id : '#/stat/decide') + '"><b>' + esc(dc.question) + '</b>' + hi('chev', 2) + '</a><div class="t-tags"><i class="k-blue">' + esc(L.decision[dc.kind]) + '</i><i class="k-red">高优先级</i></div>' +
+    S.workItems.filter(function (w) { return (d && w.ideaId === d.id) || (wk && w.id === wk.id); }).forEach(function (w) { rel.push(['proj', '项目：' + w.title, '#/work/' + w.id]); });
+    return '<article class="s-dec"><a class="s-dec-h" href="' + (wk ? '#/work/' + wk.id : d ? '#/idea/' + d.id : '#/stat/decide') + '"><b>' + esc(dc.question) + '</b>' + hi('chev', 2) + '</a><div class="t-tags"><i class="k-blue">' + esc(L.decision[dc.kind]) + '</i><i class="k-red">高优先级</i></div>' +
       (open ? (ctx ? '<p class="s-ctx">' + esc(ctx) + '</p>' : '') + (rel.length ? '<h4>相关信息</h4><ul class="s-rel">' + rel.slice(0, 4).map(function (r) { return '<li><a href="' + r[2] + '">' + ai2(r[0], 1.7) + esc(r[1]) + '</a></li>'; }).join('') + '</ul>' : '') +
         '<h4>发起人</h4><div class="s-by">' + av(dc.requestedBy === 'agent' ? 'agent' : dc.requestedBy) + '<span><b>' + esc(TM.name(S, dc.requestedBy)) + '</b><small>' + esc(u ? u.title : 'AI 助理') + '</small></span><time>' + whenTxt(dc.at) + '</time></div>' +
         '<div class="s-btns"><a class="s-b2" href="' + (d ? '#/idea/' + d.id : '#/stat/decide') + '">更多信息</a><button class="s-b1" data-do="decide" data-arg="' + dc.id + '">去决策</button></div>' : '') + '</article>';
@@ -2806,6 +2806,7 @@
     if ((w.leadId === me || (w.kind !== 'product' && w.operatorId === me) || ow) && TM.STAGES[w.kind].length > 1 && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['推进阶段', 'stage']);
     if (ow && ['planning', 'active', 'acceptance', 'blocked'].indexOf(w.status) >= 0) a.push(['暂停', 'pause']);
     if (ow && w.status === 'paused') a.push(['恢复', 'resume']);
+    if (!ow && (w.leadId === me || w.operatorId === me) && ['done', 'cancelled'].indexOf(w.status) < 0 && !S.decisions.some(function (x) { return x.workId === w.id && x.status === 'pending'; })) a.push(['上报老板决策', 'wEscalate']);
     if ((ow || w.leadId === me) && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['更换人员', 'wReassign']);
     if ((ow || w.leadId === me || w.operatorId === me) && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['取消项目', 'cancelWork']);
     return a;
@@ -2909,6 +2910,7 @@
     if (t.status === 'blocked' && (o || w.operatorId === me || w.leadId === me || ow)) a.push(['解除阻碍', 'tt', 'pri', 'unblock']);
     if (t.status === 'submitted' && t.reviewerId === me) { a.push(['退回', 'review', 'danger', 'return']); a.push(['验收通过', 'review', 'pri', 'pass']); }
     if (t.status === 'owner_review' && ow) { a.push(['退回', 'ownerReview', 'danger', 'owner_return']); a.push(['终验通过', 'ownerReview', 'pri', 'owner_pass']); }
+    if (ow && ['submitted', 'owner_review', 'done'].indexOf(t.status) >= 0) a.push(['复核意见', 'reviewNote']);
     if (ow && t.status !== 'cancelled') a.push(['纠偏', 'override', 'danger']);
     if ((w.operatorId === me || w.leadId === me || ow) && ['done', 'cancelled', 'owner_review'].indexOf(t.status) < 0 && !(ow && a.length > 2)) a.push(['取消任务', 'cancelTask']);
     return a;
@@ -3071,7 +3073,7 @@
       var dc = S.decisions.find(function (x) { return x.id === el.dataset.arg; });
       var adv = TM.decisionAdvice(S, dc);
       openSheet('老板决策', '<div class="lead" style="font-size:17px">' + esc(dc.question) + '</div><p class="muted" style="font-size:14px">' + esc(L.decision[dc.kind]) + '，' + esc(TM.name(S, dc.requestedBy)) + ' 上报</p>' + advHTML(dc, false) + '<button type="button" class="ix2-adopt" data-do="advAdopt" data-v="' + adv.verdict + '" data-n="' + esc(adv.note) + '">' + hi('spark', 1.6) + '采用 AI 建议（' + esc(adv.label) + '）</button><div class="opts">' +
-        opt('status', 'approved', '批准', '回到运营者继续派发', true) + opt('status', 'needs_info', '要求补充', '回到运营者补充后再推进') + opt('status', 'rejected', '否决', '想法标记为不做') + '</div>' + field('意见', '<textarea name="note" rows="3" placeholder="否决或要求补充时必填"></textarea>'), '提交决定',
+        (dc.workId ? opt('status', 'approved', '批准', '按上报的方案继续推进项目', true) + opt('status', 'needs_info', '要求补充', '请上报人补充说明后再报') + opt('status', 'rejected', '否决', '不同意，项目按原计划进行') : opt('status', 'approved', '批准', '回到运营者继续派发', true) + opt('status', 'needs_info', '要求补充', '回到运营者补充后再推进') + opt('status', 'rejected', '否决', '想法标记为不做')) + '</div>' + field('意见', '<textarea name="note" rows="3" placeholder="否决或要求补充时必填"></textarea>'), '提交决定',
         function (o) { act('decision.decide', { id: dc.id, status: o.status, note: o.note }, '决定已记录，相关人已收到通知'); });
     },
     plan: function () {
@@ -3085,6 +3087,9 @@
         function (o) { act('work.stage', { id: w.id, stage: o.stage, note: o.note }, '阶段已更新'); });
     },
     closeWork: function () { var w = W(cur().id); openSheet('确认事项完成', '<p>事项下的任务已全部验收通过。确认后事项完成，老板和发起人会收到通知。</p>' + field('验收意见（可选）', '<textarea name="note" rows="2"></textarea>'), '确认完成', function (o) { act('work.close', { id: w.id, note: o.note }, '事项已完成'); }); },
+    wEscalate: function () { var w = W(cur().id);
+      openSheet('上报老板决策', '<p class="muted" style="margin:0 0 8px;font-size:14px">项目里遇到超预算、人事、战略调整、重要对外发布这类事，交老板拍板。</p>' + field('例外类型', '<select name="kind">' + ['over_budget', 'personnel', 'strategy_change', 'major_release', 'other'].map(function (k) { return '<option value="' + k + '">' + L.decision[k] + '</option>'; }).join('') + '</select>') +
+        field('要老板决定什么', '<textarea name="question" rows="3" maxlength="500" placeholder="例如：场地费超出预算 3000 元，是否同意？" required></textarea>'), '上报', function (o) { act('work.requestDecision', { id: w.id, kind: o.kind, question: o.question }, '已上报老板'); }); },
     taskEdit: function () {
       var t = T(cur().id), w = W(t.workId), revs = TM.activeUsers(S).filter(function (u) { return u.id !== t.ownerId && !u.roles.every(function (a) { return a.role === 'admin'; }); }).map(function (u) { return u.id; });
       openSheet('编辑任务', field('任务', '<input type="text" name="title" maxlength="50" value="' + esc(t.title) + '" required>') +
@@ -3135,6 +3140,7 @@
         (!done ? opt('action', 'reassign', '改派', '换一个主负责人，任务回到待接收', true) : '') + '</div>' + (!done ? field('改派给', userSelect('ownerId', people)) : '') + field('原因', '<textarea name="reason" rows="3"></textarea>'), '执行纠偏',
         function (o) { act('owner.override', { id: t.id, action: o.action, ownerId: o.ownerId, reason: o.reason }, '纠偏已执行，相关人已收到通知'); }, true);
     },
+    reviewNote: function () { openSheet('复核意见', '<p class="muted" style="margin:0 0 8px;font-size:14px">只给执行人和验收人提意见，不改变任务状态；要推翻验收请用「纠偏」。</p>' + field('意见', '<textarea name="note" rows="3" maxlength="1000" required></textarea>'), '发送', function (o) { act('task.reviewComment', { id: cur().id, note: o.note }, '复核意见已发送'); }); },
     cancelTask: function () { openSheet('取消任务', field('原因', '<textarea name="reason" rows="3"></textarea>'), '确认取消任务', function (o) { act('task.transition', { id: cur().id, action: 'cancel', note: o.reason }, '任务已取消'); }, true); }
   };
   function escalateFields(d) {

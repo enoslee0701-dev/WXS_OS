@@ -693,6 +693,11 @@ async function dailyBrief() {
     if ((r.ok && r.sent) || (r2.ok && r2.sent)) changed(n0);
   } catch (e) { console.error('早报出错', e); }
 }
+/* 每 10 分钟：共创到截止日自动结束、截止当天提醒发起人；提交 30 分钟没人认领再提醒运营者 */
+function tick10() { if (!S) return;
+  ['system.discussionDue', 'system.triageNudge'].forEach(name => { const snap = JSON.stringify(S), n0 = S.notifications.length, ns = S.summaries.length;
+    try { const r = TM.act(S, 'agent', name, {}); if (r.ok && (r.closed || r.warned || r.sent)) { changed(n0); autoAnalyze(S.summaries.slice(ns)); } } catch (e) { S = JSON.parse(snap); console.error('定时任务出错，已回滚', name, e); } });
+}
 function scheduleBrief() {
   const [h, m] = String(process.env.BRIEF_AT || '08:00').split(':').map(Number), t = new Date();
   t.setHours(h || 0, m || 0, 0, 0); if (t <= new Date()) t.setDate(t.getDate() + 1);
@@ -714,6 +719,7 @@ if (require.main === module) server.listen(PORT, HOST, () => {
   if (!AI.claudeOn()) { LLM.start(); if (!LLM.configured()) console.log('AI：没有 Claude 密钥，也没有安装本机 AI（运行 scripts/llm-mac.sh 安装），先用规则版'); }
   console.log(TR.enabled() ? '语音转写：已启用（' + TR.status().model + '）' : '语音转写：未安装（运行 scripts/whisper-mac.sh 安装后，录音和视频会自动转成文字）');
   setTimeout(housekeep, 60e3).unref(); setInterval(housekeep, 864e5).unref();
+  setTimeout(tick10, 30e3).unref(); setInterval(tick10, 10 * 60e3).unref();
   scheduleBrief(); if (process.env.BRIEF_NOW === '1') setTimeout(dailyBrief, 800);
   console.log(`团队协同服务器已启动：http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  数据目录：${DATA}`);
   if (SETUP_CODE) console.log(`还没有创建团队。创建团队时需要初始化码：${SETUP_CODE}`);
