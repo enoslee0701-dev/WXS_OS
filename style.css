@@ -3136,3 +3136,6 @@ body.has-actions .toast{bottom:calc(96px + var(--sab))}
 .wt-col{background:#E8ECF2}
 .wt-board{-webkit-mask-image:linear-gradient(90deg,transparent 0,transparent 13px,#000 16px,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,transparent 0,transparent 13px,#000 16px,#000 calc(100% - 30px),transparent)}
 .wt-board{margin:0 -16px 0 0;padding:0 16px 8px 0;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 30px),transparent)}
+/* 使用帮助 */
+.hp-h{margin:14px 0 6px;font-size:15px}.hp-h:first-child{margin-top:0}.hp-p{margin:4px 0;font-size:14px;line-height:1.7;color:#3E4A63}
+.hp-l{margin:4px 0;padding-left:18px;font-size:14px;line-height:1.7;color:#3E4A63}.hp-l li{margin:4px 0}

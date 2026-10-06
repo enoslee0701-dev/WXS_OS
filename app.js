@@ -1958,6 +1958,7 @@
       '<button class="me-info" data-do="quickAI">' + hi('spark', 1.7) + '<span>AI 助手</span><b>整理、分析、建议、创作</b>' + hi('chev', 2) + '</button>' +
       '<a class="me-info" href="#/inbox">' + hi('bell', 1.7) + '<span>通知中心</span><b>' + (nU ? nU + ' 条未读' : '全部已读') + '</b>' + hi('chev', 2) + '</a>' +
       (can ? '<a class="me-info" href="#/settings">' + ai2('ctx', 1.7) + '<span>更多设置</span><b>终验、标签、提醒、演示工具</b>' + hi('chev', 2) + '</a>' : '') +
+      '<button class="me-info" data-do="meHelp">' + ti('help', 1.7) + '<span>使用帮助</span><b></b>' + hi('chev', 2) + '</button>' +
       '<button class="me-info" data-do="meAbout">' + ai2('info', 1.7) + '<span>关于</span><b>' + esc(SRV ? (APPV ? '版本 ' + APPV : '正式版') : '演示模式') + '</b>' + hi('chev', 2) + '</button></section>';
   }
   var ME = {
@@ -3403,6 +3404,15 @@
         var m2 = Object.keys(TM.NCATS).filter(function (k) { return !o['c_' + k]; });
         act('member.update', { id: me, prefs: { mute: m2, notifyImportant: !!o.push, quietOn: !!o.quietOn, quietFrom: o.quietFrom || '22:00', quietTo: o.quietTo || '08:00' } }, '通知设置已保存');
       });
+  };
+  /* 使用帮助：按自己的角色讲能做什么、一件事怎么走完、常用功能和常见问题 */
+  var HELP_ROLE = { owner: '记想法、拍板决策、看全局、最终验收、纠偏（暂停 / 取消项目、改派、撤销验收），管理成员和设置。', operator: '认领想法、改整理稿、派发或送老板决策、跟进项目、验收行政任务。', lead: '规划产品项目、拆任务派人、推进阶段、验收；有发起权时也可以记想法。', executor: '在「任务」里接收任务、开始执行、遇到问题报阻碍、做完提交成果。', admin: '管理成员和登录账号、流程设置、维护 AI 知识库（看不到想法内容）。' };
+  DO.meHelp = function () {
+    var u = TM.user(S, me), sec2 = function (t, body) { return '<h3 class="hp-h">' + t + '</h3>' + body; }, li = function (xs) { return '<ul class="hp-l">' + xs.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>'; };
+    openSheet('使用帮助', sec2('你的角色', u.roles.map(function (a) { return '<p class="hp-p"><b>' + L.role[a.role] + '</b>：' + HELP_ROLE[a.role] + '</p>'; }).join('')) +
+      sec2('一件事怎么走完', '<p class="hp-p">想法 → 整理 → 派发 → 执行 → 验收。老板或有发起权的负责人记想法；AI 先整理成整理稿；运营者认领后派发，例外情况（超预算、人事、战略、重要发布）送老板决策；执行者接收、执行、提交成果；验收人确认通过或退回。</p>') +
+      sec2('常用功能', li(['<b>搜索</b>：想法页、项目页右上角的放大镜，能搜想法、项目、任务、留言、文件和同事，多个词用空格分开。', '<b>@同事</b>：在留言、讨论里写「@姓名」，对方会收到「提到了你」。', '<b>项目讨论</b>：项目概览最下面，有问题、进展都可以在这里说。', '<b>看板</b>：项目的「任务」页签可以切换列表和看板。', '<b>重复待办</b>：打开一条自己的待办，设置「重复」，做完会自动生成下一次。', '<b>通知设置</b>：我的 → 通知设置，按类别关掉、设置免打扰时段。'])) +
+      sec2('常见问题', li(['<b>没网能用吗？</b>能查看；没网时的改动先存在手机上，联网后自动同步。', '<b>换手机、手机丢了？</b>我的 → 登录设备，退出那台手机；或请老板重置密码。', '<b>同事离职？</b>老板在成员资料里停用账号，再点「交接 TA 手上的工作」，一次转给别人。', '<b>录音没转成文字？</b>连上团队服务器后，录音和视频会由服务器转成文字；手机自带的识别用不了时也没关系。'].concat(isOwner() ? ['<b>数据怎么备份？</b>服务器每天自动备份；更多设置 → 完整备份，可以随时下载含全部附件的压缩包。'] : []))), '知道了', function () { closeSheet(); });
   };
   DO.srvUsage = function () {
     TMS.usage().then(function (u) {

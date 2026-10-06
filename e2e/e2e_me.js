@@ -24,6 +24,9 @@ ok((await p.textContent('.me-badge')).includes('执行者') && await p.locator('
 ok(await p.locator('a[href="#/settings"]').count()===0,'执行者没有更多设置入口');
 await p.goto(URL+'#/settings');await p.waitForTimeout(100);ok(p.url().endsWith('#/me'),'执行者打开设置被送回我的');
 ok(await p.locator('[data-do=meEdit][data-k=name]').count()===0,'执行者不能改姓名');
+// 使用帮助：按角色说明
+await p.goto(URL+'#/me');await p.waitForTimeout(100);await p.click('[data-do=meHelp]');await p.waitForSelector('.sheet .hp-h');
+ok((await p.textContent('.sheet')).includes('你的角色')&&(await p.textContent('.sheet')).includes('常见问题'),'我的 → 使用帮助');await p.click('.sheet footer button[type=submit]');await p.waitForTimeout(100);
 // 报表导出（老板）：任务表、项目表是 CSV，带 BOM，有表头和数据
 await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Enos")');await p.goto(URL+'#/settings');await p.waitForTimeout(150);
 { const fs=require('fs');const [d1]=await Promise.all([p.waitForEvent('download'),p.click('[data-do=csvTasks]')]);const t1=fs.readFileSync(await d1.path(),'utf8');
