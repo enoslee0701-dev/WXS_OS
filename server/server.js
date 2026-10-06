@@ -204,7 +204,7 @@ const routes = {
     const name = String(b.name || '').trim(), login = String(b.login || '').trim(), pw = String(b.password || '');
     if (!name) return [400, { error: '请填写你的姓名' }];
     if (!LOGIN_RE.test(login)) return [400, { error: '账号 3–32 位，只能用字母、数字和 _ . @ -' }];
-    if (pw.length < 6) return [400, { error: '密码至少 6 位' }];
+    if (pw.length < 8) return [400, { error: '密码至少 8 位' }];
     if (b.demo) { S = TM.migrate(TM.seed()); const o = TM.user(S, 'u_owner'); o.name = name.slice(0, 20); if (b.title) o.title = String(b.title).slice(0, 16); }
     else S = TM.blank({ name: name.slice(0, 20), title: String(b.title || '').slice(0, 16) });
     version = 1; persist(); setCred('u_owner', login, pw, false);
@@ -225,6 +225,18 @@ const routes = {
     return [200, { token: ss.token, fileToken: ss.ft, uid: c.uid, mustChange: !!c.must_change, ...stateFor(c.uid) }];
   },
   'POST /api/logout': async (req, url, b, me) => { dropSessions('token=?', me.token); return [200, { ok: true }]; },
+  // 我的登录设备：列出自己所有登录中的会话（不回传令牌，只给一个短编号），可以单独退出或退出其他全部
+  'GET /api/sessions': async (req, url, b, me) => {
+    const sid = (t) => crypto.createHash('sha256').update(t).digest('hex').slice(0, 12);
+    const rows = q('SELECT token,agent,created,seen FROM sessions WHERE uid=? ORDER BY seen DESC').all(me.uid);
+    return [200, { sessions: rows.map(r => ({ id: sid(r.token), agent: String(r.agent || '').slice(0, 200), created: r.created, seen: r.seen, current: r.token === me.token })) }];
+  },
+  'POST /api/sessions/revoke': async (req, url, b, me) => {
+    const sid = (t) => crypto.createHash('sha256').update(t).digest('hex').slice(0, 12);
+    const rows = q('SELECT token FROM sessions WHERE uid=?').all(me.uid).filter(r => r.token !== me.token && (b.all || sid(r.token) === String(b.id || '')));
+    rows.forEach(r => dropSessions('token=?', r.token));
+    return [200, { ok: true, n: rows.length }];
+  },
   'GET /api/me': async (req, url, b, me) => [200, { uid: me.uid, login: me.login, mustChange: me.mustChange }],
   'GET /api/state': async (req, url, b, me) => [200, { ...stateFor(me.uid), fileToken: me.ft, mustChange: me.mustChange }],
   /* 执行业务操作：权限全部由 engine.js 按登录身份判断 */
@@ -248,7 +260,7 @@ const routes = {
     const c = q('SELECT * FROM creds WHERE uid=?').get(me.uid), pk = 'pw|' + me.uid;
     if (limited(pk, 10)) return [429, { error: '尝试次数太多，请 15 分钟后再试' }];
     if (!me.mustChange && !checkPw(c, b.old || '')) { failed(pk); return [400, { error: '原密码不对' }]; }
-    const pw = String(b.password || ''); if (pw.length < 6) return [400, { error: '新密码至少 6 位' }];
+    const pw = String(b.password || ''); if (pw.length < 8) return [400, { error: '新密码至少 8 位' }]; if (/^(\d)\1+$|^(12345678|123456789|87654321|password|11111111)$/i.test(pw)) return [400, { error: '密码太简单，换一个吧' }];
     setCred(me.uid, c.login, pw, false);
     dropSessions('uid=? AND token<>?', me.uid, me.token);
     return [200, { ok: true }];
@@ -367,7 +379,7 @@ const routes = {
     if (!LOGIN_RE.test(login)) return [400, { error: '账号 3–32 位，只能用字母、数字和 _ . @ -' }];
     const dup = q('SELECT uid FROM creds WHERE login=?').get(login); if (dup && dup.uid !== uid) return [409, { error: '这个账号名已经有人用了' }];
     let pw = b.password ? String(b.password) : null;
-    if (pw && pw.length < 6) return [400, { error: '密码至少 6 位' }];
+    if (pw && pw.length < 8) return [400, { error: '密码至少 8 位' }];
     if (!pw && (!old || b.reset)) pw = genPw();
     if (pw) { setCred(uid, login, pw, uid !== me.uid); dropSessions('uid=?', uid); }
     else q('UPDATE creds SET login=? WHERE uid=?').run(login, uid);

@@ -33,7 +33,7 @@ function start(env, dir) {
 }
 const mkApi = (B) => async (method, u, body, tok) => { const r = await fetch(B + u, { method, headers: { 'Content-Type': 'application/json', ...(tok ? { Authorization: 'Bearer ' + tok } : {}) }, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, ...(await r.json()) }; };
 async function team(api) {
-  const st = await api('POST', '/api/setup', { name: 'Enos', login: 'enos', password: 'enos123', demo: true, code: 'code-1234' });
+  const st = await api('POST', '/api/setup', { name: 'Enos', login: 'enos', password: 'enos1234', demo: true, code: 'code-1234' });
   const boss = st.token;
   await api('POST', '/api/act', { name: 'idea.create', payload: { note: '老板私人草稿：考虑明年换办公室' } }, boss);
   await api('POST', '/api/accounts', { uid: 'u_sys', login: 'sun', password: 'sun12345' }, boss);

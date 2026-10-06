@@ -19,14 +19,14 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', d => b
   srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'code-1234', ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: 'http://127.0.0.1:' + mock.address().port }, stdio: ['ignore', 'pipe', 'inherit'] });
   await new Promise(r => srv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }));
   const api = async (m, u, body, tok) => (await fetch(URL.slice(0, -1) + u, { method: m, headers: { 'Content-Type': 'application/json', ...(tok ? { Authorization: 'Bearer ' + tok } : {}) }, body: body ? JSON.stringify(body) : undefined })).json();
-  const boss = (await api('POST', '/api/setup', { name: 'Enos', login: 'enos', password: 'enos123', demo: true, code: 'code-1234' })).token;
+  const boss = (await api('POST', '/api/setup', { name: 'Enos', login: 'enos', password: 'enos1234', demo: true, code: 'code-1234' })).token;
   await api('POST', '/api/accounts', { uid: 'u_dev', login: 'liu', password: 'liu12345' }, boss);
 
   const b = await chromium.launch(); const c = await b.newContext({ ...devices['iPhone 13'] }); const p = await c.newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   const login = async (l, pw) => { if (!(await p.locator('form[data-form=srvLogin]').count())) await p.goto(URL); await p.waitForSelector('form[data-form=srvLogin]'); await p.fill('input[name=login]', l); await p.fill('input[name=password]', pw); await p.click('form[data-form=srvLogin] button[type=submit]'); await p.waitForSelector('.hm-card'); await p.waitForTimeout(300); };
   const send = async (t) => { await p.fill('.ai-input input[name=q]', t); await p.click('.ai-send'); };
-  await login('enos', 'enos123');
+  await login('enos', 'enos1234');
 
   // ---- AI 助手：自由提问交给 Claude
   await p.goto(URL + '#/me'); await p.waitForTimeout(150); await p.click('.me-info[data-do=quickAI]'); await p.waitForSelector('.ai-panel');

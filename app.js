@@ -194,7 +194,7 @@
         field('初始化码', '<input type="text" name="code" inputmode="numeric" autocomplete="off" required>', '开启团队服务器时显示的 6 位数字（只在第一次建团队时需要）') +
         field('你的姓名', '<input type="text" name="name" maxlength="20" required>') + field('职位（可选）', '<input type="text" name="title" maxlength="20" placeholder="例如：创始人">') +
         field('登录账号', '<input type="text" name="login" autocapitalize="off" autocorrect="off" autocomplete="username" required>', '3–32 位字母、数字或 _ . @ -') +
-        field('密码', '<input type="password" name="password" minlength="6" autocomplete="new-password" required>', '至少 6 位') +
+        field('密码', '<input type="password" name="password" minlength="8" autocomplete="new-password" required>', '至少 8 位') +
         '<label class="sw"><span><b>带上演示数据</b><small>先看看完整的样子；以后可以在设置里一键清理</small></span><input type="checkbox" name="demo" value="1"></label>' +
         '<button class="btn pri block" type="submit"' + (srvL.busy ? ' disabled' : '') + '>' + (srvL.busy ? '正在创建…' : '创建团队') + '</button></form>';
     } else {
@@ -1946,6 +1946,7 @@
       info('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8a1.5 1.5 0 0 1-1.5 1.5H10l-4 3v-3H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z"/></svg>', '个人签名', u.bio, 'bio', true) + '</section>' +
       (SRV && TMS.loggedIn() ? '<section class="me-sec me-acct"><div class="me-sh">' + ic(ti('person', 1.8)).replace('me-ic', 'me-ic blue') + '<b>账号与安全</b></div>' +
         '<button class="me-info" data-do="srvPassword">' + hi('flag', 1.7) + '<span>修改密码</span><b>' + (TMS.mustChange ? '请修改初始密码' : '') + '</b>' + hi('chev', 2) + '</button>' +
+        '<button class="me-info" data-do="srvSessions">' + ti('lock', 1.7) + '<span>登录设备</span><b></b>' + hi('chev', 2) + '</button>' +
         '<div class="me-info">' + hi('pie', 1.7) + '<span>服务器</span><b>' + esc(TMS.serverUrl()) + '</b><i></i></div>' +
         (isAndroidApp() ? '<button class="me-info" data-do="appUpdate">' + hi('spark', 1.7) + '<span>App 版本</span><b>' + esc(appUpd.info ? appUpd.info.version : '') + (appUpd.newer ? ' · 有新版本' : ' · 检查更新') + '</b>' + hi('chev', 2) + '</button>' : '') +
         (isOwner() || TM.hasRole(S, me, 'admin') ? '<button class="me-info" data-do="appShare">' + hi('flag', 1.7) + '<span>给同事安装 App</span><b>扫码下载安卓版</b>' + hi('chev', 2) + '</button>' : '') +
@@ -3266,7 +3267,7 @@
   DO.srvLogout = function () { var n = TMS.outbox.length; openSheet('退出登录', '<p style="margin:0">' + (n ? '还有 <b>' + n + '</b> 项改动没同步到服务器，退出后会丢失。建议联网同步完再退出。' : '退出后需要重新输入账号密码。') + '</p>', '退出登录', function () { TMS.logout(); }, true); };
   DO.srvPassword = function (el) { var must = TMS.mustChange;
     openSheet(must ? '请先修改初始密码' : '修改密码', (must ? '<p class="muted" style="margin:0 0 10px;font-size:14px">你正在使用别人帮你设置的初始密码，改成只有你知道的密码。</p>' : field('原密码', '<input type="password" name="old" autocomplete="current-password" required>')) +
-      field('新密码', '<input type="password" name="password" minlength="6" autocomplete="new-password" required>', '至少 6 位') + field('再输一次', '<input type="password" name="again" minlength="6" autocomplete="new-password" required>'), '保存', function (o) {
+      field('新密码', '<input type="password" name="password" minlength="8" autocomplete="new-password" required>', '至少 8 位，别用生日、连续数字') + field('再输一次', '<input type="password" name="again" minlength="6" autocomplete="new-password" required>'), '保存', function (o) {
       if (o.password !== o.again) return toast('两次输入的新密码不一样', true);
       TMS.changePassword(o.old || '', o.password).then(function () { closeSheet(); toast('密码已修改'); }, function (e) { toast(e.error || '修改失败', true); });
     }); };
@@ -3345,6 +3346,17 @@
   DO.srvOps = function () { opsS = { uid: '', fail: false, rows: [], more: false }; opsLoad(false); };
   DO.opsMore = function () { opsLoad(true); };
   document.addEventListener('change', function (e) { var k = e.target && e.target.dataset && e.target.dataset.ops; if (!k) return; if (k === 'uid') opsS.uid = e.target.value; else opsS.fail = e.target.checked; opsLoad(false); });
+  // 登录设备：看自己在哪些设备上登录着，可以退出某一台或其他全部（手机丢了、换了手机时用）
+  function uaName(a) { a = String(a || ''); return /iPhone|iPad/.test(a) ? 'iPhone / iPad' : /Android/.test(a) ? '安卓手机' : /Macintosh/.test(a) ? 'Mac 电脑浏览器' : /Windows/.test(a) ? 'Windows 电脑浏览器' : '其他设备'; }
+  DO.srvSessions = function () {
+    TMS.sessions().then(function (r) {
+      var xs = r.sessions || [], others = xs.filter(function (x) { return !x.current; }).length;
+      openSheet('登录设备', '<div class="list">' + xs.map(function (x) { return '<div class="row ses-r"><div class="t"><span><b>' + uaName(x.agent) + '</b>' + (x.current ? '<span class="tag soft">这台</span>' : '') + '<small class="muted">最近使用 ' + ago(x.seen) + ' · 登录于 ' + ixDate(x.created) + '</small></span>' + (x.current ? '' : '<button type="button" class="btn ghost" data-do="sesOut" data-id="' + x.id + '">退出</button>') + '</div></div>'; }).join('') + '</div>' +
+        (others ? '<button type="button" class="btn danger block mt" data-do="sesOutAll">退出其他 ' + others + ' 台设备</button>' : '<p class="muted" style="font-size:13.5px">只有这一台设备登录着。</p>'), '关闭', function () { closeSheet(); });
+    }, function (e) { toast(e.error || '读取失败', true); });
+  };
+  DO.sesOut = function (el) { TMS.revokeSession(el.dataset.id).then(function () { toast('已让那台设备退出登录'); DO.srvSessions(); }, function (e) { toast(e.error || '操作失败', true); }); };
+  DO.sesOutAll = function () { TMS.revokeSession(null, true).then(function (r) { toast('已退出其他 ' + (r.n || 0) + ' 台设备'); DO.srvSessions(); }, function (e) { toast(e.error || '操作失败', true); }); };
   DO.srvUsage = function () {
     TMS.usage().then(function (u) {
       var mb = function (n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB'; };

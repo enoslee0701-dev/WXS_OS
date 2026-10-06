@@ -8,13 +8,13 @@ let srv = null;
 (async () => {
   srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'c' }, stdio: ['ignore', 'pipe', 'inherit'] });
   await new Promise(r => srv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }));
-  await (await fetch(URL + 'api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '王老板', login: 'enos', password: 'enos123', demo: true, code: 'c' }) })).json();
+  await (await fetch(URL + 'api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '王老板', login: 'enos', password: 'enos1234', demo: true, code: 'c' }) })).json();
   const b = await chromium.launch(); const c = await b.newContext({ ...devices['iPhone 13'] });
   // 模拟容量很小的 localStorage：完整数据写不进去
   await c.addInitScript(() => { const set = Storage.prototype.setItem; Storage.prototype.setItem = function (k, v) { if (k === 'tm_demo_v3' && String(v).length > 5000) { const e = new Error('quota'); e.name = 'QuotaExceededError'; throw e; } return set.call(this, k, v); }; });
   const p = await c.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto(URL); await p.waitForSelector('form[data-form=srvLogin]');
-  await p.fill('input[name=login]', 'enos'); await p.fill('input[name=password]', 'enos123'); await p.click('form[data-form=srvLogin] button[type=submit]');
+  await p.fill('input[name=login]', 'enos'); await p.fill('input[name=password]', 'enos1234'); await p.click('form[data-form=srvLogin] button[type=submit]');
   await p.waitForSelector('.hm-card', { timeout: 10000 }); await p.waitForTimeout(1500); await p.waitForSelector('.hm-card');
   const st0 = await p.evaluate(() => ({ k: (localStorage.getItem('tm_demo_v3') || '').length, idb: localStorage.getItem('tm_cache_idb'), boot: (localStorage.getItem('tm_boot') || '').length, loading: !!window.__tm.S.loading }));
   ok(!st0.k && st0.idb === '1' && st0.boot > 0, '完整数据写不进 localStorage：改存 IndexedDB，另存启动骨架 ' + JSON.stringify(st0));

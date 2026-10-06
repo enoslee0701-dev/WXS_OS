@@ -21,7 +21,7 @@ const wait = (ms) => new Promise(z => setTimeout(z, ms));
   await new Promise(r => apns.listen(0, '127.0.0.1', r));
   const srv = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'c', APNS_KEY_FILE: KEY, APNS_KEY_ID: 'KEY123', APNS_TEAM_ID: 'TEAM99', APNS_BUNDLE_ID: 'com.teamops.app', APNS_HOST: 'http://127.0.0.1:' + apns.address().port }, stdio: ['ignore', 'pipe', 'inherit'] });
   await new Promise(r => srv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }));
-  const boss = (await post('/api/setup', { name: '王老板', login: 'boss', password: 'boss123', code: 'c' })).token;
+  const boss = (await post('/api/setup', { name: '王老板', login: 'boss', password: 'boss1234', code: 'c' })).token;
   let r = await post('/api/act', { name: 'member.add', payload: { name: '小李', title: '设计', role: 'executor', group: '设计创意' } }, boss);
   const li = r.state.users.find(u => u.name === '小李').id;
   r = await post('/api/act', { name: 'member.add', payload: { name: '小王', title: '运营', role: 'operator', group: '行政运营' } }, boss);

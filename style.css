@@ -3114,3 +3114,5 @@ body.has-actions .toast{bottom:calc(96px + var(--sab))}
 .q-g{display:flex;align-items:center;gap:6px;margin:14px 2px 6px;font-size:14px;color:#3E4A63}.q-g span{font:600 12px "Figtree",var(--font);color:#8A93A3;background:#F2F4F7;border-radius:999px;padding:1px 7px}
 .q-r{display:flex!important;flex-direction:column;align-items:flex-start!important;gap:3px}.q-r b{font-size:15px;font-weight:600}.q-r small{font-size:13px;color:#6B7586;line-height:1.5}
 .q-r mark{background:#FFF1B8;color:inherit;border-radius:3px;padding:0 1px}.q-more{font-size:12.5px;margin:6px 2px}
+.ses-r .t{align-items:center}.ses-r .t > span{display:flex;flex-direction:column;gap:2px}.ses-r small{font-size:12.5px}.ses-r .tag{align-self:flex-start;margin-top:2px}
+.ses-r .btn{min-height:34px;padding:0 12px;font-size:14px;flex:none}

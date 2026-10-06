@@ -231,6 +231,8 @@ var TMS = (function () {
   api.registerDevice = function (t) { if (api.loggedIn() && t) req('POST', '/api/devices', { token: t, platform: 'ios' }).catch(function () {}); };
   api.deactivate = function (pw) { return req('POST', '/api/account/deactivate', { password: pw }).then(function (r) { clearBig(); ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_outbox_srv', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); return r; }); };
   api.usage = function () { return req('GET', '/api/usage'); };
+  api.sessions = function () { return req('GET', '/api/sessions'); };
+  api.revokeSession = function (id, all) { return req('POST', '/api/sessions/revoke', all ? { all: true } : { id: id }); };
   api.ops = function (o) { o = o || {}; return req('GET', '/api/ops?before=' + (o.before || '') + '&uid=' + encodeURIComponent(o.uid || '') + (o.fail ? '&fail=1' : '')); };
   api.exportAll = function () { return req('GET', '/api/export'); };
   api.accounts = function () { return req('GET', '/api/accounts'); };
