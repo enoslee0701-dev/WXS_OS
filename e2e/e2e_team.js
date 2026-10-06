@@ -30,6 +30,10 @@ await p.evaluate(()=>{const S=window.__tm.S;S.users.find(u=>u.id==='u_design').i
 ok(await p.evaluate(()=>{const c=[...document.querySelectorAll('.tm-card')];const last=c[c.length-1];return last.textContent.includes('何静')&&last.classList.contains('off')&&last.textContent.includes('已停用');}),'停用的成员排在最后并标「已停用」');
 await p.goto(URL+'#/assign');await p.waitForTimeout(150);ok(!(await p.evaluate(()=>document.body.innerText.includes('何静'))),'分配任务的选人列表不含停用的人');
 await p.evaluate(()=>{window.__tm.S.users.find(u=>u.id==='u_design').inactive=false;});
+// 老板调整成员角色
+await p.goto(URL+'#/team');await p.waitForTimeout(100);await p.locator('.tm-card',{hasText:'王五'}).locator('[data-do=tmMember]').click();await p.click('.sheet [data-do=tmRole]');await p.waitForSelector('.sheet h2:has-text("调整 王五")');
+await p.check('.sheet input[name=role][value=lead]');await sub();await p.waitForTimeout(150);
+ok(await p.evaluate(()=>{const u=window.__tm.S.users.find(x=>x.name==='王五');return u.roles[0].role==='lead';}),'老板把王五调整为负责人');
 await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("周敏")');await p.goto(URL+'#/team');await p.waitForTimeout(100);
 ok(await p.locator('.tm-invite').count()===0 && await p.locator('[data-do=tmInvite]').count()===0,'执行者看不到邀请入口');
 ok(errs.length===0,'无报错 '+errs.join('|'));

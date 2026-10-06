@@ -1839,10 +1839,20 @@
         (mg ? field('一句话', '<input type="text" name="motto" maxlength="30" value="' + esc(u.motto || '') + '">') + field('擅长领域（最多 3 个，用顿号分隔）', '<input type="text" name="skills" value="' + esc((u.skills || []).join('、')) + '">') +
           '<div class="fld"><span>状态</span><div class="opts tdpr">' + Object.keys(PRES).map(function (k) { return opt('presence', k, PRES[k][0], '', (u.presence || 'offline') === k); }).join('') + '</div></div>' : '<p class="tm-motto">“' + esc(u.motto || '') + '”</p>') +
         '<div class="fld"><span>手上的任务（' + c.prog + ' 项进行中，你能看到 ' + ts.length + ' 项）</span>' + (ts.length ? '<div class="list">' + ts.map(function (t) { return taskRow(t); }).join('') + '</div>' : '<p class="muted" style="font-size:13.5px">没有你能看到的进行中任务。</p>') + '</div>' +
+        (isOwner() && !TM.hasRole(S, u.id, 'owner') && !u.inactive ? '<button type="button" class="btn block mt" data-do="tmRole" data-u="' + u.id + '">调整角色</button>' : '') +
         ((isOwner() || TM.hasRole(S, me, 'admin')) && u.id !== me && hoCount(u.id) ? '<button type="button" class="btn block mt' + (u.inactive ? ' pri' : '') + '" data-do="tmHandover" data-u="' + u.id + '">交接 TA 手上的工作（' + hoCount(u.id) + ' 项）</button>' : '') +
         (!u.inactive && canAssign() && !TM.user(S, u.id).roles.every(function (a) { return a.role === 'admin' || a.role === 'owner'; }) ? '<button type="button" class="btn block mt" data-do="tmAssignTo" data-u="' + u.id + '">给 ' + esc(u.name) + ' 分配任务</button>' : '') +
         (SRV && TMS.loggedIn() && (isOwner() || TM.hasRole(S, me, 'admin')) && (!TM.hasRole(S, u.id, 'owner') || u.id === me) ? '<button type="button" class="btn block mt" data-do="srvAccount" data-u="' + u.id + '">登录账号与密码</button>' : ''),
         mg ? '保存' : '关闭', function (o) { if (!mg) return closeSheet(); act('member.update', { id: u.id, motto: o.motto, skills: (o.skills || '').split(/[、,，\s]+/), presence: o.presence }, '资料已更新'); });
+    },
+    tmRole: function (el) {
+      var u = TM.user(S, el.dataset.u), cur0 = u.roles[0] || {};
+      var R = [['executor', '执行者', '接收并完成任务'], ['lead', '负责人', '可发起想法、规划项目、验收'], ['operator', '运营者', '认领想法、派发、跟进'], ['admin', '管理员', '管理账号、流程设置、知识库，看不到想法内容']];
+      openSheet('调整 ' + u.name + ' 的角色', '<div class="fld"><span>角色</span><div class="opts">' + R.map(function (r) { return opt('role', r[0], r[1], r[2], cur0.role === r[0]); }).join('') + '</div></div>' +
+        '<label class="sw"><span><b>负责人可发起想法</b><small>只对负责人有效</small></span><input type="checkbox" name="canInitiate" value="1"' + (cur0.role !== 'lead' || cur0.canInitiate ? ' checked' : '') + '></label>', '保存', function (o) {
+          var r = act('member.role', { id: u.id, role: o.role, canInitiate: !!o.canInitiate }); if (!r.ok) return;
+          toast('已调整为' + L.role[o.role] + (r.keep ? '。TA 还担任 ' + r.keep + ' 个项目的负责人或跟进人，需要时在项目「更换人员」里改' : ''), !!r.keep);
+        });
     },
     tmHandover: function (el) {
       var u = TM.user(S, el.dataset.u), ow = TM.openWorkOf(S, u.id), to = TM.activeUsers(S).filter(function (x) { return x.id !== u.id && !x.roles.every(function (a) { return a.role === 'admin'; }); });
@@ -1856,7 +1866,7 @@
     tmInvite: function () {
       if (!(isOwner() || TM.hasRole(S, me, 'admin'))) return toast('只有老板或管理员可以添加成员', true);
       openSheet('邀请新成员', field('姓名', '<input type="text" name="name" maxlength="20" placeholder="例如：王五">') + field('职位', '<input type="text" name="title" maxlength="12" placeholder="例如：摄影师">') +
-        '<div class="fld"><span>角色</span><div class="opts">' + opt('role', 'executor', '执行者', '接收并完成任务', true) + opt('role', 'lead', '负责人', '可发起想法、规划项目、验收') + opt('role', 'operator', '运营者', '认领想法、派发、跟进') + '</div></div>' +
+        '<div class="fld"><span>角色</span><div class="opts">' + opt('role', 'executor', '执行者', '接收并完成任务', true) + opt('role', 'lead', '负责人', '可发起想法、规划项目、验收') + opt('role', 'operator', '运营者', '认领想法、派发、跟进') + (isOwner() ? opt('role', 'admin', '管理员', '管理账号、流程设置、知识库，看不到想法内容') : '') + '</div></div>' +
         field('分组', '<select name="group">' + TM.GROUPS.map(function (g) { return '<option' + (g === '行政运营' ? ' selected' : '') + '>' + g + '</option>'; }).join('') + '</select>') +
         field('擅长领域（可选）', '<input type="text" name="skills" placeholder="用顿号分隔，例如：摄影、剪辑">') + field('联系方式（可选）', '<input type="text" name="contact" placeholder="手机号或邮箱">', (SRV ? '添加后为 TA 分派登录账号和初始密码。' : '演示版不会真的发送邀请。正式版会通过短信或邮件邀请对方登录。')), '添加成员',
         function (o) { var n0 = S.users.length, r = act('member.add', { name: o.name, title: o.title, role: o.role, group: o.group, skills: (o.skills || '').split(/[、,，\s]+/), contact: o.contact }, '已添加成员'); if (r.ok && SRV && S.users.length > n0) setTimeout(function () { DO.srvAccount(S.users[S.users.length - 1].id); }, 400); });

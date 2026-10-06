@@ -769,5 +769,18 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   ok(vd.settings.direction === undefined && vd.settings.budgetThreshold === undefined && vd.settings.staleDays === pv.settings.staleDays, '执行者拿不到公司方向和预算阈值，界面需要的设置照常');
   ok(vop.settings.budgetThreshold === pv.settings.budgetThreshold, '运营者能拿到预算阈值（整理派发要用）'); }
 
+// ===== 添加管理员、调整角色 =====
+{ const m = TM.blank({ name: '王老板' }, clock), bo = m.users[0].id;
+  const ad = must(TM.act(m, bo, 'member.add', { name: '小管', role: 'admin', group: '管理层' }), '老板添加管理员');
+  ok(TM.hasRole(m, ad.id, 'admin'), '新成员是管理员');
+  rej(TM.act(m, ad.id, 'member.add', { name: '小管2', role: 'admin', group: '管理层' }), '管理员不能再加管理员');
+  const ex = must(TM.act(m, bo, 'member.add', { name: '小李', role: 'executor', group: '行政运营' }), '添加执行者');
+  must(TM.act(m, bo, 'member.role', { id: ex.id, role: 'operator' }), '老板把执行者调整为运营者');
+  ok(TM.hasRole(m, ex.id, 'operator') && TM.followUsers(m).includes(ex.id), '调整后成为跟进人候选');
+  ok(m.notifications.some(n => n.userId === ex.id && /角色调整/.test(n.title)), '本人收到角色调整通知');
+  rej(TM.act(m, bo, 'member.role', { id: ex.id, role: 'operator' }), '角色没变化时提示');
+  rej(TM.act(m, ad.id, 'member.role', { id: ex.id, role: 'lead' }), '管理员不能调整角色');
+  rej(TM.act(m, bo, 'member.role', { id: bo, role: 'executor' }), '老板的角色不能改'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

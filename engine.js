@@ -750,14 +750,29 @@ var TM = (function () {
   };
   /* 团队成员 */
   var GROUPS = ['管理层', '行政运营', '产品研发', '设计创意'];
+  var ROLE_TITLE = { executor: '执行者', lead: '负责人', operator: '运营者', admin: '管理员' };
+  function roleDept(role, group) { return role === 'admin' ? null : group === '行政运营' ? (role === 'operator' ? 'd_ops' : 'd_admin') : group === '管理层' ? null : 'd_prod'; }
+  /* 换角色（老板）：执行者 / 负责人 / 运营者 / 管理员之间调整；老板自己的角色不能改。手上的项目角色保留，提示老板需要时去「更换人员」 */
+  A['member.role'] = function (s, uid, p) {
+    need(hasRole(s, uid, 'owner'), '只有老板可以调整角色'); var u = user(s, p.id); need(u, '找不到该成员'); need(!hasRole(s, u.id, 'owner'), '老板的角色不能修改');
+    need(['executor', 'lead', 'operator', 'admin'].indexOf(p.role) >= 0, '请选择角色');
+    var old = u.roles.map(function (a) { return L.role[a.role]; }).join('、'), ci = p.role === 'lead' && p.canInitiate !== false;
+    if (u.roles.length === 1 && u.roles[0].role === p.role && !!u.roles[0].canInitiate === ci) deny('角色没有变化');
+    u.roles = [{ role: p.role, dept: roleDept(p.role, u.group), canInitiate: ci }];
+    var ow = openWorkOf(s, u.id), keep = ow.works.filter(function (w) { return (w.leadId === u.id && p.role !== 'lead') || (w.operatorId === u.id && p.role !== 'operator'); }).length;
+    ev(s, { actor: uid, action: 'member.role', text: u.name + ' 的角色：' + old + ' → ' + L.role[p.role] });
+    notify(s, [u.id], uid, '你的角色调整为「' + L.role[p.role] + '」', '打开 App 看看新的功能入口', '#/home');
+    return { keep: keep };
+  };
   A['member.add'] = function (s, uid, p) {
     need(hasRole(s, uid, 'owner') || hasRole(s, uid, 'admin'), '只有老板或管理员可以添加成员');
     var nm2 = txt(p.name); need(nm2, '请填写姓名'); need(nm2.length <= 20, '姓名不超过 20 字');
     need(!s.users.some(function (u) { return u.name === nm2; }), '已有同名成员');
-    need(['executor', 'lead', 'operator'].indexOf(p.role) >= 0, '请选择角色');
+    need(['executor', 'lead', 'operator', 'admin'].indexOf(p.role) >= 0, '请选择角色');
+    need(p.role !== 'admin' || hasRole(s, uid, 'owner'), '只有老板可以添加管理员');
     need(GROUPS.indexOf(p.group) >= 0, '请选择分组');
-    var dept = p.group === '行政运营' ? (p.role === 'operator' ? 'd_ops' : 'd_admin') : p.group === '管理层' ? null : 'd_prod';
-    var u = { id: nid(s, 'u_'), name: nm2, title: txt(p.title) || ({ executor: '执行者', lead: '负责人', operator: '运营者' })[p.role], tier: '', roles: [{ role: p.role, dept: dept, canInitiate: p.role === 'lead' }],
+    var dept = roleDept(p.role, p.group);
+    var u = { id: nid(s, 'u_'), name: nm2, title: txt(p.title) || ROLE_TITLE[p.role], tier: '', roles: [{ role: p.role, dept: dept, canInitiate: p.role === 'lead' }],
       motto: '', skills: (p.skills || []).map(txt).filter(Boolean).slice(0, 3), presence: 'offline', group: p.group, contact: txt(p.contact), invited: true, joinedAt: now(s) };
     s.users.push(u);
     ev(s, { actor: uid, action: 'member.add', text: '添加成员 ' + nm2 + '（' + u.title + '）' });
