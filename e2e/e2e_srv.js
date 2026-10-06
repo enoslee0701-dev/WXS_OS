@@ -174,11 +174,15 @@ let srv = null;
   await B.waitForSelector('form[data-form=srvLogin]');
   ok(await B.evaluate(() => !localStorage.getItem('tm_token') && !localStorage.getItem('tm_demo_v3')), '退出后本机不留数据和令牌');
   ok((await api('GET', '/api/state', null, liTok)).error, '退出后旧令牌失效');
-  // ---- 老板停用员工账号
+  // ---- 老板停用员工账号：员工正在用 App 时，几秒内自动回到登录页
+  await B.fill('input[name=login]', 'xiaoli'); await B.fill('input[name=password]', 'li123456'); await B.click('form[data-form=srvLogin] button[type=submit]');
+  await B.waitForSelector('.hm-card, .tk2-hero, main', { timeout: 10000 }); await B.waitForTimeout(800);
   await A.goto(URL + '#/team'); await A.waitForTimeout(150);
   await A.locator('.tm-card', { hasText: '小李' }).locator('[data-do=tmMember]').click(); await A.click('.sheet [data-do=srvAccount]');
   await A.waitForSelector('.sheet [data-do=srvDisable]'); ok((await A.textContent('.sheet .callout')).includes('xiaoli'), '账号页显示当前账号');
   await A.click('.sheet [data-do=srvDisable]'); ok(await until(async () => (await toast(A)).includes('已停用')), '老板停用账号');
+  { let out = false; for (let i = 0; i < 40 && !out; i++) { await B.waitForTimeout(250); out = await B.evaluate(() => !!document.querySelector('form[data-form=srvLogin]') && !localStorage.getItem('tm_token')).catch(() => false); }
+    ok(out, '被停用的员工几秒内自动回到登录页'); }
   await B.fill('input[name=login]', 'xiaoli'); await B.fill('input[name=password]', 'li123456'); await B.click('form[data-form=srvLogin] button[type=submit]');
   ok(await until(async () => (await toast(B)).includes('已停用')), '停用后不能登录');
   await A.screenshot({ path: 'srv-boss.png' });

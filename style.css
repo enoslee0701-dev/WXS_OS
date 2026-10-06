@@ -3139,3 +3139,15 @@ body.has-actions .toast{bottom:calc(96px + var(--sab))}
 /* 使用帮助 */
 .hp-h{margin:14px 0 6px;font-size:15px}.hp-h:first-child{margin-top:0}.hp-p{margin:4px 0;font-size:14px;line-height:1.7;color:#3E4A63}
 .hp-l{margin:4px 0;padding-left:18px;font-size:14px;line-height:1.7;color:#3E4A63}.hp-l li{margin:4px 0}
+/* 第二轮界面复查 */
+.toast{width:max-content}
+input[type=search]{width:100%;min-height:50px;border:1px solid transparent;border-radius:14px;background:var(--sunken);padding:12px 14px;font:inherit;font-size:16px;color:inherit;-webkit-appearance:none;appearance:none;outline:none;box-sizing:border-box}
+input[type=search]:focus{border-color:#C9D5F2;background:#fff}
+input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none}
+.ses-id{font:500 12px "Figtree",var(--font);font-style:normal;color:#A3ABB8;margin-left:4px}
+.tm-card.off .tm-av > i{display:none}
+.cred .cred-r b.plain,.cred-u b{font-family:inherit}
+.s-purple.s-flat{padding-bottom:52px}.s-purple.s-flat .s-pbar{bottom:22px}
+.sw.off{opacity:.55}
+.tx-edit{float:right;margin:-2px 0 6px 8px;min-height:0}
+.wt-rep{display:inline-flex;align-items:center;gap:3px;font-size:12px;color:#6B7586;margin-left:6px}

@@ -467,11 +467,11 @@
     var add = function (g, title, text, href) { out.push({ g: g, title: title || '（未命名）', text: String(text || ''), href: href }); };
     vIdeas().forEach(function (d) { var sm = TM.latestSummary(S, d.id, 'analysis'), full = [d.title, TM.noteOf ? TM.noteOf(d) : d.note, (d.tags || []).join(' '), sm && sm.payload ? (sm.payload.summary || '') + ' ' + (sm.payload.goal || '') : ''].join(' '); if (hit(full)) add('想法', d.title, full, '#/idea/' + d.id); });
     S.suggestions.forEach(function (x) { var d = vi[x.ideaId]; if (d && hit(x.body)) add('讨论', d.title, nm(x.authorId) + '：' + x.body, '#/idea/' + d.id); });
-    vWork().forEach(function (w) { var full = [w.title, w.goal, w.keyResults, (w.tags || []).join(' ')].join(' '); if (hit(full)) add('项目', w.title, full, '#/work/' + w.id);
+    vWork().forEach(function (w) { var full = [w.title, w.goal, w.keyResults, (w.tags || []).join(' '), w.leadId ? nm(w.leadId) : '', nm(w.operatorId)].join(' '); if (hit(full)) add('项目', w.title, full, '#/work/' + w.id);
       (w.files || []).forEach(function (f) { if (hit(f.name)) add('文件', f.name, '项目「' + w.title + '」的文件', '#/work/' + w.id); }); });
-    vTasks().forEach(function (t) { var full = [t.title, t.description, t.expected, t.criteria].join(' '); if (hit(full)) add('任务', t.title, full, '#/task/' + t.id); });
+    vTasks().forEach(function (t) { var full = [t.title, t.description, t.expected, t.criteria, nm(t.ownerId), (t.collabs || []).map(nm).join(' ')].join(' '); /* 带上执行人姓名：可以搜「何静 原型」 */ if (hit(full)) add('任务', t.title, full, '#/task/' + t.id); });
     var vw = {}; vWork().forEach(function (w) { vw[w.id] = w; });
-    S.comments.forEach(function (c) { if (!hit(c.body)) return; var t = c.taskId && vt[c.taskId], w = !c.taskId && c.workId && vw[c.workId]; if (t) add('留言', t.title, nm(c.authorId) + '：' + c.body, '#/task/' + t.id); else if (w) add('留言', w.title, nm(c.authorId) + '：' + c.body, '#/work/' + w.id); });
+    S.comments.forEach(function (c) { if (!hit(c.body)) return; var t = c.taskId && vt[c.taskId], w = !c.taskId && c.workId && vw[c.workId]; if (t) add('留言', '任务「' + t.title + '」', nm(c.authorId) + '：' + c.body, '#/task/' + t.id); else if (w) add('留言', '项目讨论「' + w.title + '」', nm(c.authorId) + '：' + c.body, '#/work/' + w.id); });
     (S.deliverables || []).forEach(function (f) { var t = vt[f.taskId]; if (!t) return; var full = [f.note, f.url, (f.media || []).map(function (m) { return m.name; }).join(' ')].join(' '); if (hit(full)) add('交付物', t.title, full, '#/task/' + t.id); });
     TM.ensureTodos(S); S.todos.forEach(function (x) { if ((x.ownerId === me || x.people.indexOf(me) >= 0) && hit(x.title + ' ' + (x.note || ''))) add('待办', x.title, x.note || '', '#/tasks'); });
     TM.activeUsers(S).forEach(function (u) { var full = [u.name, u.title, (u.skills || []).join(' '), u.group].join(' '); if (hit(full)) add('成员', u.name, [u.title, (u.skills || []).join('、')].filter(Boolean).join(' · '), '#/team'); });
@@ -1275,7 +1275,7 @@
     TM.ensureTodos(S);
     var out = S.todos.filter(function (t) { return t.ownerId === me || t.people.indexOf(me) >= 0; }).map(function (t) {
       var mineT = t.ownerId === me, ppl = (mineT ? t.people : [t.ownerId].concat(t.people.filter(function (x) { return x !== me; })));
-      return { key: t.id, own: mineT, personal: true, id: t.id, title: t.title, tags: (t.priority === 'hi' ? ['高优先级'] : []).concat(t.tags), prio: t.priority, date: t.date, time: t.time, comments: t.comments.length, people: ppl, done: t.done, doneAt: t.doneAt,
+      return { key: t.id, own: mineT, personal: true, id: t.id, title: t.title, repeat: t.repeat || '', tags: (t.priority === 'hi' ? ['高优先级'] : []).concat(t.tags), prio: t.priority, date: t.date, time: t.time, comments: t.comments.length, people: ppl, done: t.done, doneAt: t.doneAt,
         group: t.priority === 'hi' ? 'hi' : !mineT || t.people.length || t.scope === 'team' ? 'team' : t.scope === 'other' ? 'other' : 'mine', mine: mineT && !t.people.length };
     });
     todoItems().forEach(function (x, i) {
@@ -1346,7 +1346,7 @@
     var circle = x.personal && x.own ? '<button class="t-chk' + (x.done ? ' on' : '') + '" data-do="tdToggle" data-id="' + x.id + '" aria-label="' + (x.done ? '标为未完成' : '标为完成') + '"></button>' : '<span class="t-chk' + (x.done ? ' on' : '') + (x.sys ? ' sys' : '') + '" aria-hidden="true"></span>';
     var red = x.prio === 'hi' && !x.done && (relDay(x.date) === '今天' || relDay(x.date) === '逾期');
     var main = x.tags.filter(function (g) { return g !== '高优先级'; })[0] || '待办', acc = x.prio === 'hi' ? TACC['高优先级'][0] : (TACC[main] || ['#C9D0DA'])[0];
-    return '<div class="t-card tk2-card' + (x.done ? ' done' : '') + (x.prio === 'hi' && !x.done ? ' hot' : '') + '">' + circle + '<span class="tk2-bar" style="background:' + acc + '"></span><' + (x.sys ? 'a href="' + x.href + '"' : 'button type="button" data-do="tdOpen" data-id="' + x.id + '"') + ' class="t-main"><span class="tk-l"><b>' + esc(x.title) + '</b><span class="t-tags">' + x.tags.slice(0, 3).map(tagChip).join('') +
+    return '<div class="t-card tk2-card' + (x.done ? ' done' : '') + (x.prio === 'hi' && !x.done ? ' hot' : '') + '">' + circle + '<span class="tk2-bar" style="background:' + acc + '"></span><' + (x.sys ? 'a href="' + x.href + '"' : 'button type="button" data-do="tdOpen" data-id="' + x.id + '"') + ' class="t-main"><span class="tk-l"><b>' + esc(x.title) + (x.repeat && TM.REPEATS[x.repeat] ? '<span class="wt-rep" title="重复待办">↻ ' + TM.REPEATS[x.repeat] + '</span>' : '') + '</b><span class="t-tags">' + x.tags.slice(0, 3).map(tagChip).join('') +
       (x.comments ? '<span class="t-cmt">' + ti('cmt', 1.6) + x.comments + '</span>' : '') + '</span></span>' +
       '<span class="tk-r"><span class="t-time' + (red ? ' red' : '') + '">' + esc(tdTime(x)) + '</span>' + hi('chev', 2) + '</span></' + (x.sys ? 'a' : 'button') + '></div>';
   }
@@ -1764,7 +1764,7 @@
     var items = dueItems(), tasks = items.filter(function (x) { return x.kind === 'task'; }), ms = items.filter(function (x) { return x.kind === 'ms'; });
     var open = scopeTasks().filter(function (t) { return t.status !== 'done' && t.status !== 'cancelled'; }).length;
     var rows = st.due === 'task' ? tasks : st.due === 'ms' ? ms : items;
-    return sHead('今天到期', '<button class="circle s-more" data-do="sDueMore" aria-label="更多">' + ti('more', 1.6) + '</button>') + sHero('s-green', ai2('cal', 1.8), items.length, '今天到期', '其中已逾期 ' + items.filter(function (x) { return x.time === '已逾期'; }).length + ' 项 · 进行中共 ' + open + ' 项', DECO.cal) +
+    return sHead('今天到期', '<button class="circle s-more" data-do="sDueMore" aria-label="更多">' + ti('more', 1.6) + '</button>') + sHero('s-green', ai2('cal', 1.8), items.length, '今天到期', (function () { var od = items.filter(function (x) { return x.time === '已逾期'; }).length, tk = items.filter(function (x) { return x.kind === 'task' && !/待办/.test((x.tags[0] || [])[0]); }).length; return '任务 ' + tk + (od ? '（已逾期 ' + od + '）' : '') + ' · 待办 ' + (tasks.length - tk) + ' · 里程碑 ' + ms.length; })(), DECO.cal) +
       '<div class="t-filters s-chips">' + [['all', '全部', items.length], ['task', '任务', tasks.length], ['ms', '项目里程碑', ms.length]].map(function (c) { return '<button class="' + (st.due === c[0] ? 'on' : '') + '" data-do="sDue" data-f="' + c[0] + '">' + c[1] + '（' + c[2] + '）</button>'; }).join('') + '</div>' +
       (rows.length ? '<section class="s-list">' + rows.map(function (x) { return '<div class="s-due">' + (x.todo ? '<button class="t-chk" data-do="tdToggle" data-id="' + x.todo + '" aria-label="标为完成"></button>' : '<span class="t-chk sys"></span>') + '<a href="' + x.href + '"><b>' + esc(x.title) + '</b><span class="t-tags">' + x.tags.map(function (g) { return '<i class="' + g[1] + '">' + g[0] + '</i>'; }).join('') + '</span><small>' + ai2(x.kind === 'ms' ? 'flagO' : 'doc2', 1.6) + esc(x.sub) + '</small></a><span class="s-dr">' + av(x.who, true) + '<time>' + esc(x.time) + '</time></span></div>'; }).join('') + '</section>' : emptyBox('今天没有到期的事。')) +
       '<button class="n-next s-fixed" data-do="sDueNew">' + ti('plus2', 2.4) + '新建任务</button>';
@@ -1802,7 +1802,7 @@
     var hiOpen = open.filter(function (t) { return t.priority === 'hi' || TM.isOverdue(S, t) || t.status === 'blocked'; }).length;
     var tip = (dlt > 0 ? '本周完成率较上周提升 ' + dlt + '%，继续保持！' : dlt < 0 ? '本周完成率较上周下降 ' + (-dlt) + '%，留意卡住的任务。' : '本周完成率与上周持平。') + (hiOpen ? '建议优先完成高优先级、逾期或受阻的 ' + hiOpen + ' 个任务。' : '目前没有高优先级积压。');
     return sHead('本周完成率', '<label class="s-period"><select data-speriod="1"><option value="0"' + (off === 0 ? ' selected' : '') + '>本周</option><option value="1"' + (off === 1 ? ' selected' : '') + '>上周</option></select>' + ai2('downc', 2) + '</label>') +
-      sHero('s-purple', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3.1A9 9 0 1 0 20.9 13H11z" fill="currentColor"/><path d="M13 2.1V11h8.9A9 9 0 0 0 13 2.1z" fill="currentColor" opacity=".55"/></svg>', rate + '%', off ? '上周完成率' : '本周完成率', deltaHTML(dlt, '%', false), '', '<span class="s-frac">' + doneW.length + ' / ' + total + '</span>').replace('</section>', chart + '</section>') +
+      sHero('s-purple', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3.1A9 9 0 1 0 20.9 13H11z" fill="currentColor"/><path d="M13 2.1V11h8.9A9 9 0 0 0 13 2.1z" fill="currentColor" opacity=".55"/></svg>', rate + '%', off ? '上周完成率' : '本周完成率', deltaHTML(dlt, '%', false), '', '<span class="s-frac">' + doneW.length + ' / ' + total + '</span>').replace('</section>', chart + '</section>').replace('s-hero s-purple', pts.length ? 's-hero s-purple' : 's-hero s-purple s-flat') +
       '<section class="wd-card"><div class="wd-ph"><b>任务完成情况</b><small class="muted" style="font-size:12.5px">按截止日</small></div><div class="s-legend"><span><i class="d-green"></i>已完成 <b>' + doneW.length + '</b></span><span><i class="d-blue"></i>进行中 <b>' + inprog.length + '</b></span><span><i class="d-gray"></i>未开始 <b>' + notyet.length + '</b></span></div>' +
       (perDay.every(function (x) { return !(x.d + x.p + x.n); }) ? '<p class="muted s-empty">这一周没有到截止日的任务。</p>' : '<div class="s-bars">' + perDay.map(function (x, i) { var h3 = function (v) { return Math.round(v / mx * 86); }; return '<div><span class="s-col"><i class="g" style="height:' + h3(x.d) + 'px"></i><i class="b" style="height:' + h3(x.p) + 'px"></i><i class="n" style="height:' + Math.max(x.d + x.p + x.n ? 0 : 6, h3(x.n)) + 'px"></i></span><small>' + days[i] + '</small></div>'; }).join('') + '</div>') + '</section>' +
       '<section class="wd-card"><div class="wd-ph"><b>按项目统计</b><a class="wd-link" href="#/work">查看全部</a></div>' + (projs.length ? '' : '<p class="muted s-empty">还没有项目。<a href="#/project">去新建一个</a></p>') + projs.map(function (x) { return '<a class="s-prow" href="#/work/' + x.w.id + '">' + wIcon(x.w) + '<span class="s-pn">' + esc(x.w.title) + '<i><em class="' + (x.pct >= 75 ? 'g' : '') + '" style="width:' + x.pct + '%"></em></i></span><span class="s-pp">' + x.pct + '%</span><span class="s-pf">' + x.p.done + '/' + x.p.total + '</span></a>'; }).join('') + '</section>' +
@@ -1863,7 +1863,7 @@
       q.addEventListener('input', function () { var k = q.value.trim(); var r = !k ? [] : S.users.filter(function (u) { return (u.name + u.title + (u.skills || []).join('') + (u.motto || '')).indexOf(k) >= 0; }); document.getElementById('tmr').innerHTML = !k ? '' : r.length ? r.map(memberCard).join('') : emptyBox('没有找到「' + k + '」'); });
     },
     tmMember: function (el) {
-      var u = TM.user(S, el.dataset.u), self = u.id === me, mg = self || isOwner() || TM.hasRole(S, me, 'admin'), c = tCounts(u.id), p = PRES[u.presence || 'offline'];
+      var u = TM.user(S, el.dataset.u), self = u.id === me, mg = !u.inactive && (self || isOwner() || TM.hasRole(S, me, 'admin')), c = tCounts(u.id), p = u.inactive ? ['已停用', '#B8BFCB'] : PRES[u.presence || 'offline']; // 停用的人：资料只读、状态显示「已停用」
       var ts = S.tasks.filter(function (t) { return t.ownerId === u.id && ['done', 'cancelled'].indexOf(t.status) < 0 && TM.canViewTask(S, me, t); });
       openSheet(u.name, '<div class="tm-prof">' + av(u.id) + '<div><b>' + esc(u.name) + '</b><small>' + esc(u.title) + '，' + u.roles.map(function (a) { return L.role[a.role]; }).join('、') + '</small><small><i style="background:' + p[1] + '"></i>' + p[0] + '　' + esc(u.group || '') + '</small></div></div>' +
         (mg ? field('一句话', '<input type="text" name="motto" maxlength="30" value="' + esc(u.motto || '') + '">') + field('擅长领域（最多 3 个，用顿号分隔）', '<input type="text" name="skills" value="' + esc((u.skills || []).join('、')) + '">') +
@@ -1892,7 +1892,7 @@
           var r = act('member.handover', { from: u.id, to: o.to }); if (!r.ok) return;
           var nn = (r.tasks || 0) + (r.reviews || 0) + (r.works || 0) + (r.ideas || 0);
           toast(nn ? '已交接给 ' + nm(o.to) + (r.skipped && r.skipped.length ? '；未转：' + r.skipped.join('；') : '') : SRV ? '已提交，服务器会把 TA 的工作转给 ' + nm(o.to) : 'TA 手上没有需要交接的工作', !!(r.skipped && r.skipped.length));
-        }, true);
+        });
     },
     tmAssignTo: function (el) { asg = freshAsg(); asg.ownerId = el.dataset.u; closeSheet(); location.hash = '#/assign'; },
     tmInvite: function () {
@@ -2819,7 +2819,7 @@
     wMore: function () {
       // 没有可执行的操作时也给可做的事：复制链接、看动态（以前是一个空面板）
       var w = W(cur().id), ops = moreOps(w).concat([['复制项目链接', 'wShare'], ['查看项目动态', 'wLog']]);
-      openSheet('更多操作', '<div class="wd-ops">' + ops.map(function (o) { return '<button type="button" class="btn block' + (o[1] === 'pause' || o[1] === 'cancelWork' ? ' danger' : '') + '" data-do="' + o[1] + '">' + o[0] + '</button>'; }).join('') + '</div>', '关闭', function () { closeSheet(); });
+      openSheet('更多操作', '<div class="wd-ops">' + ops.map(function (o) { return '<button type="button" class="btn block' + (o[1] === 'cancelWork' ? ' danger' : '') + '" data-do="' + o[1] + '">' + o[0] + '</button>'; }).join('') + '</div>', '关闭', function () { closeSheet(); });
     },
     wLog: function () { closeSheet(); var b = document.querySelector('[data-do=wTab][data-t=log]'); if (b) b.click(); },
     wCardMore: function (el) { var w = W(el.dataset.id); openSheet(w.title, '<div class="wd-ops"><a class="btn block" href="#/work/' + w.id + '">打开项目</a>' + (workActions(w).some(function (a) { return a[1] === 'goAssignWork'; }) ? '<button type="button" class="btn block" data-do="goAssignWork" data-arg="' + w.id + '">新建任务</button>' : '') + '</div>', '关闭', function () { closeSheet(); }); },
@@ -2845,7 +2845,7 @@
     var IC = function (path, c) { return '<svg viewBox="0 0 24 24" fill="none" stroke="' + (c || 'currentColor') + '" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + path + '</svg>'; };
     var h = ixHead('任务详情', '把事情做完、做好') + steps +
       '<section class="ix2-card ix2-main"><div class="tx-chips">' + pill('task', t.status) + '<i>' + esc(L.kind[w.kind]) + '</i>' + (t.priority === 'hi' ? '<i class="r">高优先级</i>' : '') + (od ? '<i class="r">已逾期</i>' : '') + (st ? '<i class="r">' + S.settings.staleDays + ' 天以上无动态</i>' : '') + '</div>' +
-      '<h2>' + esc(t.title) + '</h2>' + ((w.leadId === me || w.operatorId === me || isOwner()) && ['done', 'cancelled'].indexOf(t.status) < 0 && w.status !== 'paused' ? '<button type="button" class="btn ghost tx-edit" data-do="taskEdit">编辑任务</button>' : '') + '<a class="tx-work" href="#/work/' + w.id + '">' + IC('<path d="M3.8 8.2a2.7 2.7 0 0 1 2.7-2.7h3l2 2.2h6a2.7 2.7 0 0 1 2.7 2.7v6.9a2.7 2.7 0 0 1-2.7 2.7h-11a2.7 2.7 0 0 1-2.7-2.7z"/>') + '<span>属于项目</span><b>' + esc(w.title) + '</b>' + hi('chev', 2) + '</a>' +
+      '<h2>' + esc(t.title) + '</h2>' + ((w.leadId === me || w.operatorId === me || isOwner()) && ['done', 'cancelled'].indexOf(t.status) < 0 && w.status !== 'paused' ? '<button type="button" class="wx-edit tx-edit" data-do="taskEdit">' + ai2('edit', 1.8) + '编辑</button>' : '') + '<a class="tx-work" href="#/work/' + w.id + '">' + IC('<path d="M3.8 8.2a2.7 2.7 0 0 1 2.7-2.7h3l2 2.2h6a2.7 2.7 0 0 1 2.7 2.7v6.9a2.7 2.7 0 0 1-2.7 2.7h-11a2.7 2.7 0 0 1-2.7-2.7z"/>') + '<span>属于项目</span><b>' + esc(w.title) + '</b>' + hi('chev', 2) + '</a>' +
       (t.status === 'blocked' ? '<div class="callout bad" style="margin-top:10px">受阻：' + esc(t.blockedReason) + '</div>' : '') +
       (nx ? '<div class="ix-next ix2-next tx-next">' + av(nx.who, true) + '下一步：<b>' + esc(nx.who === me ? '你' : nm(nx.who)) + '</b> ' + esc(nx.what) + '</div>' : '') + '</section>';
     var row = function (icon, label, val, full) { return '<div class="wx-r' + (full ? ' full' : '') + '"><span class="wx-ri">' + icon + '</span><span class="wx-rl">' + label + '</span><span class="wx-rv">' + val + '</span></div>'; };
@@ -2934,10 +2934,10 @@
     h += sec('公司与提醒') + '<div class="card"><label class="fld"><span>公司方向与长期目标</span><textarea data-set="direction" rows="3"' + (isOwner() ? '' : ' disabled') + '>' + esc(cs.direction) + '</textarea><small>AI 整理时用来判断新想法是否与现有业务形成闭环。由老板填写。</small></label>' +
       '<div class="row2"><label class="fld"><span>无动态提醒（天）</span><input type="number" min="1" max="30" data-set="staleDays" value="' + cs.staleDays + '"' + dis + '></label><label class="fld"><span>超预算阈值（元）</span><input type="number" min="0" step="1000" data-set="budgetThreshold" value="' + (cs.budgetThreshold || '') + '"' + dis + '></label></div></div>';
     h += sec('报表') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">导出成表格，用 Excel、WPS 或 Numbers 打开。</p><button class="btn block" data-do="csvTasks">导出任务表</button><button class="btn block mt" data-do="csvWorks">导出项目表</button></div>';
-    h += SRV ? sec('数据') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">服务器：' + esc(TMS.serverUrl()) + '</p><button class="btn block" data-do="srvUsage">使用情况（AI 费用、设备、空间）</button><button class="btn block mt" data-do="srvOps">操作日志（谁做了什么）</button>' + (isOwner() ? '<button class="btn block mt" data-do="srvExportFull">完整备份（含全部附件，压缩包）</button><button class="btn block mt" data-do="srvExport">只导出团队数据（JSON）</button>' : '') + '<div class="mt"></div>' + (isOwner() && !S.real ? '<button class="btn danger block" data-do="clearDemo">清理演示数据</button>' : '<p class="muted" style="margin:0;font-size:13.5px">数据每天自动备份在服务器的 backups 目录。</p>') + '</div>' :
+    h += SRV ? sec('数据') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">服务器：' + esc(TMS.serverUrl()) + '</p><button class="btn block" data-do="srvUsage">使用情况（AI 费用、设备、空间）</button><button class="btn block mt" data-do="srvOps">操作日志（谁做了什么）</button>' + (isOwner() ? '<button class="btn block mt" data-do="srvExportFull">完整备份（含全部附件，压缩包）</button><button class="btn block mt" data-do="srvExport">只导出团队数据（JSON）</button>' : '') + '<div class="mt"></div>' + (isOwner() && !S.real ? '<button class="btn danger block" data-do="clearDemo">清空示例内容（保留成员和设置）</button>' : '<p class="muted" style="margin:0;font-size:13.5px">数据每天自动备份在服务器的 backups 目录。</p>') + '</div>' :
       sec('演示工具') + '<div class="card">' + sw('demoAiFail', '模拟 AI 失败', '用来演示「AI 失败后运营者手写整理稿继续推进」。') +
       '<div class="callout">演示版里：账号是预设的；AI 整理和共创汇总由规则模拟生成，界面都标了「AI 模拟输出」；录音只在本机，不上传、不转写；通知只在 App 内。</div>' +
-      (isOwner() ? '<button class="btn block" data-do="clearDemo">清理演示数据（保留成员）</button>' : '') + '<button class="btn danger block mt" data-do="reset">重置全部演示数据</button></div>';
+      (isOwner() ? '<button class="btn block" data-do="clearDemo">清空示例内容（保留成员和设置）</button>' : '') + '<button class="btn danger block mt" data-do="reset">重置全部演示数据</button></div>';
     if (TM.hasRole(S, me, 'admin') || isOwner()) h += membersHTML();
     h += '</div>';
     return h;
@@ -2946,7 +2946,7 @@
   /* ---------- 弹层 ---------- */
   var sheetHandler = null;
   function openSheet(title, body, submitLabel, onSubmit, danger) {
-    var layer = document.getElementById('layer');
+    var layer = document.getElementById('layer'), tEl = document.getElementById('toast'); if (tEl && /\bon\b/.test(tEl.className)) tEl.className = 'toast'; // 打开面板时收起上一条提示，免得压住输入框
     layer.innerHTML = '<div class="scrim" data-do="closeSheet"></div><form class="sheet" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><header><h2>' + esc(title) + '</h2><button type="button" class="circle" data-do="closeSheet" aria-label="关闭">×</button></header><div class="body">' + wordsFix(body) + '</div>' +
       // 只用来查看的面板（主按钮就是「关闭」）：不再多放一个作用相同的「取消」
       '<footer>' + (/^(关闭|知道了|好的)$/.test(submitLabel) ? '' : '<button type="button" class="btn" data-do="closeSheet">' + (/取消/.test(submitLabel) ? '返回' : '取消') + '</button>') + '<button type="submit" class="btn ' + (danger ? 'danger' : 'pri') + '">' + esc(submitLabel) + '</button></footer></form>';
@@ -3073,7 +3073,7 @@
     wReassign: function () {
       var w = W(cur().id), ow = isOwner(), act0 = TM.activeUsers(S);
       var leads = TM.leadUsers(S), ops = act0.filter(function (u) { return TM.canFollow(S, u.id); }).map(function (u) { return u.id; }), revs = act0.filter(function (u) { return !u.roles.every(function (a) { return a.role === 'admin'; }); }).map(function (u) { return u.id; });
-      openSheet('更换项目人员', '<div class="callout">更换后会写进项目动态，并通知新旧双方。</div>' +
+      openSheet(ow ? '更换项目人员' : '更换验收人', '<div class="callout">更换后会写进项目动态，并通知新旧双方。</div>' +
         (ow && w.leadId ? field('项目负责人', userSelect('leadId', leads, w.leadId)) : '') + (ow ? field('跟进运营', userSelect('operatorId', ops, w.operatorId)) : '') +
         field('验收人', userSelect('reviewerId', revs, w.reviewerId)), '保存', function (o) {
           var pl = { id: w.id }; ['leadId', 'operatorId', 'reviewerId'].forEach(function (k) { if (o[k] && o[k] !== w[k]) pl[k] = o[k]; });
@@ -3354,7 +3354,7 @@
   function opsHTML() {
     var ppl = S.users.map(function (u) { return '<option value="' + u.id + '"' + (opsS.uid === u.id ? ' selected' : '') + '>' + esc(u.name) + '</option>'; }).join('');
     return '<div class="ops-f"><select data-ops="uid"><option value="">全部成员</option>' + ppl + '</select><label class="ops-c"><input type="checkbox" data-ops="fail"' + (opsS.fail ? ' checked' : '') + '> 只看失败</label></div>' +
-      (opsS.rows.length ? '<div class="ops-l">' + opsS.rows.map(function (r) { return '<div class="ops-r' + (r.ok ? '' : ' bad') + '"><b>' + esc(TM.name(S, r.uid)) + '</b><span>' + esc(OPN[r.action] || r.action) + (r.ok ? '' : '（失败：' + esc(r.error) + '）') + '</span><small>' + new Date(r.at).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) + '</small></div>'; }).join('') + '</div>' : '<p class="muted">没有记录。</p>') +
+      (opsS.rows.length ? '<div class="ops-l">' + opsS.rows.map(function (r) { return '<div class="ops-r' + (r.ok ? '' : ' bad') + '"><b>' + esc(TM.name(S, r.uid)) + '</b><span>' + esc(OPN[r.action] || r.action) + (r.ok ? '' : '（失败：' + esc(r.error) + '）') + '</span><small>' + ixDate(r.at) + '</small></div>'; }).join('') + '</div>' : emptyBox(opsS.fail ? '没有失败的操作。' : '还没有记录。')) +
       (opsS.more ? '<button type="button" class="btn block mt" data-do="opsMore">加载更早的</button>' : '');
   }
   function opsLoad(more) {
@@ -3366,11 +3366,12 @@
   DO.opsMore = function () { opsLoad(true); };
   document.addEventListener('change', function (e) { var k = e.target && e.target.dataset && e.target.dataset.ops; if (!k) return; if (k === 'uid') opsS.uid = e.target.value; else opsS.fail = e.target.checked; opsLoad(false); });
   // 登录设备：看自己在哪些设备上登录着，可以退出某一台或其他全部（手机丢了、换了手机时用）
-  function uaName(a) { a = String(a || ''); return /iPhone|iPad/.test(a) ? 'iPhone / iPad' : /Android/.test(a) ? '安卓手机' : /Macintosh/.test(a) ? 'Mac 电脑浏览器' : /Windows/.test(a) ? 'Windows 电脑浏览器' : '其他设备'; }
+  function uaName(a) { a = String(a || ''); var dev = /iPhone|iPad/.test(a) ? 'iPhone / iPad' : /Android/.test(a) ? '安卓手机' : /Macintosh/.test(a) ? 'Mac 电脑' : /Windows/.test(a) ? 'Windows 电脑' : '其他设备';
+    var br = /wv\)|; wv|TeamOps|Capacitor/i.test(a) || (/iPhone|iPad/.test(a) && !/Safari\//.test(a)) ? 'App' : /Edg\//.test(a) ? 'Edge' : /Chrome\//.test(a) ? 'Chrome' : /Firefox\//.test(a) ? 'Firefox' : /Safari\//.test(a) ? 'Safari' : ''; return dev + (br ? ' · ' + br : ''); }
   DO.srvSessions = function () {
     TMS.sessions().then(function (r) {
       var xs = r.sessions || [], others = xs.filter(function (x) { return !x.current; }).length;
-      openSheet('登录设备', '<div class="list">' + xs.map(function (x) { return '<div class="row ses-r"><div class="t"><span><b>' + uaName(x.agent) + '</b>' + (x.current ? '<span class="tag soft">这台</span>' : '') + '<small class="muted">最近使用 ' + ago(x.seen) + ' · 登录于 ' + ixDate(x.created) + '</small></span>' + (x.current ? '' : '<button type="button" class="btn ghost" data-do="sesOut" data-id="' + x.id + '">退出</button>') + '</div></div>'; }).join('') + '</div>' +
+      openSheet('登录设备', '<div class="list">' + xs.map(function (x) { return '<div class="row ses-r"><div class="t"><span><b>' + uaName(x.agent) + ' <em class="ses-id">#' + esc(x.id.slice(-4)) + '</em></b>' + (x.current ? '<span class="tag soft">这台</span>' : '') + '<small class="muted">最近使用 ' + ago(x.seen) + ' · 登录于 ' + ixDate(x.created) + '</small></span>' + (x.current ? '' : '<button type="button" class="btn ghost" data-do="sesOut" data-id="' + x.id + '">退出</button>') + '</div></div>'; }).join('') + '</div>' +
         (others ? '<button type="button" class="btn danger block mt" data-do="sesOutAll">退出其他 ' + others + ' 台设备</button>' : '<p class="muted" style="font-size:13.5px">只有这一台设备登录着。</p>'), '关闭', function () { closeSheet(); });
     }, function (e) { toast(e.error || '读取失败', true); });
   };
@@ -3383,7 +3384,7 @@
     if (typeof TMN !== 'undefined' && TMN.native && TMN.canShareFile) { TMN.shareFile(blob, name).then(function () {}, function () { toast('导出失败，请重试', true); }); return; }
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000); toast('已导出：' + name);
   }
-  var dstr = function (t) { return t ? ixDate(t) : ''; }, today = function () { return new Date().toISOString().slice(0, 10); };
+  var dstr = function (t) { return t ? ixDate(t) : ''; }, today = function () { return TM.todayStr(S); }; // 本地日期（以前用 UTC，早上导出的文件名会是昨天）
   DO.csvTasks = function () {
     var rows = [['任务', '所属项目', '状态', '主负责人', '协作者', '验收人', '优先级', '截止日期', '是否逾期', '预期成果', '验收标准', '创建时间', '最近更新']];
     vTasks().forEach(function (t) { var w = W(t.workId) || {}; rows.push([t.title, w.title, L.task[t.status], nm(t.ownerId), (t.collabs || []).map(nm).join('、'), nm(t.reviewerId), ({ hi: '高', mid: '中', lo: '低' })[t.priority || 'mid'], t.due || '', TM.isOverdue(S, t) ? '是' : '', t.expected, t.criteria, dstr(t.createdAt), dstr(t.lastActivity)]); });
@@ -3400,11 +3401,11 @@
     var u = TM.user(S, me), p = u.prefs || {}, mute = p.mute || [];
     openSheet('通知设置', '<p class="muted" style="margin:0 0 8px;font-size:13.5px">关掉的类别仍会记在「通知」里，可以随时查看，只是不算未读、不推送到手机。</p>' +
       Object.keys(TM.NCATS).map(function (k) { return '<label class="sw"><span><b>' + TM.NCATS[k] + '</b></span><input type="checkbox" name="c_' + k + '" value="1"' + (mute.indexOf(k) < 0 ? ' checked' : '') + '></label>'; }).join('') +
-      '<label class="sw mt"><span><b>推送到手机</b><small>' + (SRV ? '需要管理员配置推送（iPhone）' : '演示版只有 App 内通知') + '</small></span><input type="checkbox" name="push" value="1"' + (p.notifyImportant !== false ? ' checked' : '') + '></label>' +
+      (function () { var can = SRV && typeof TMN !== 'undefined' && TMN.native && TMN.platform === 'ios'; return '<label class="sw mt' + (can ? '' : ' off') + '"><span><b>推送到手机</b><small>' + (can ? '关掉后只在 App 里提醒' : !SRV ? '演示版只有 App 内通知' : '这台手机暂不支持推送，打开 App 时在「通知」里查看') + '</small></span><input type="checkbox" name="push" value="1"' + (p.notifyImportant !== false ? ' checked' : '') + (can ? '' : ' disabled') + '></label>'; })() +
       '<label class="sw"><span><b>免打扰时段</b><small>这段时间只记在 App 里，不推送</small></span><input type="checkbox" name="quietOn" value="1"' + (p.quietOn ? ' checked' : '') + '></label>' +
       '<div class="n-quiet"><input type="time" name="quietFrom" value="' + esc(p.quietFrom || '22:00') + '"><span>到</span><input type="time" name="quietTo" value="' + esc(p.quietTo || '08:00') + '"></div>', '保存', function (o) {
         var m2 = Object.keys(TM.NCATS).filter(function (k) { return !o['c_' + k]; });
-        act('member.update', { id: me, prefs: { mute: m2, notifyImportant: !!o.push, quietOn: !!o.quietOn, quietFrom: o.quietFrom || '22:00', quietTo: o.quietTo || '08:00' } }, '通知设置已保存');
+        act('member.update', { id: me, prefs: { mute: m2, notifyImportant: o.push === undefined ? (p.notifyImportant !== false) : !!o.push, quietOn: !!o.quietOn, quietFrom: o.quietFrom || '22:00', quietTo: o.quietTo || '08:00' } }, '通知设置已保存');
       });
   };
   /* 使用帮助：按自己的角色讲能做什么、一件事怎么走完、常用功能和常见问题 */
@@ -3420,7 +3421,7 @@
     TMS.usage().then(function (u) {
       var mb = function (n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB'; };
       var K = { ask: 'AI 助手提问', kb: '口述整理', analyze: '想法整理稿', digest: '讨论总结', advice: '决策建议', project: '新建项目解析', image: '拍照识别', doc: '读 PDF', todos: '拆待办', write: '写描述 / 目标', brief: '老板早报' };
-      var row = function (a, b) { return '<div class="cred-r"><span>' + a + '</span><b>' + b + '</b></div>'; };
+      var row = function (a, b) { return '<div class="cred-r"><span>' + a + '</span><b class="plain">' + b + '</b></div>'; };
       openSheet('使用情况', '<div class="cred">' +
         row('AI', u.ai.enabled ? '已启用（' + esc(u.ai.model) + '）' : '未启用（规则模拟）') +
         (u.ai.enabled ? row('今天', u.ai.today.calls + ' 次 · 约 $' + u.ai.today.usd) + row('近 30 天', u.ai.month.calls + ' 次 · 约 $' + u.ai.month.usd) + Object.keys(u.ai.byKind).map(function (k) { return row('　' + (K[k] || k), u.ai.byKind[k] + ' 次'); }).join('') + row('每人每天上限', u.ai.limit + ' 次（后台自动 ' + u.ai.systemLimit + ' 次）') : '') +
@@ -3432,7 +3433,7 @@
   DO.srvExportFull = function () { var u = TMS.exportTgzUrl(); if (!u) return toast('请先登录', true); if (typeof TMN !== 'undefined' && TMN.native && TMN.openUrl) { TMN.openUrl(u); toast('已在浏览器里开始下载完整备份'); return; } var a = document.createElement('a'); a.href = u; a.download = ''; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 1000); toast('开始下载完整备份'); };
   DO.srvExport = function () {
     TMS.exportAll().then(function (d) {
-      var blob = new Blob([JSON.stringify(d, null, 1)], { type: 'application/json' }), name = '团队协同备份-' + new Date().toISOString().slice(0, 10) + '.json';
+      var blob = new Blob([JSON.stringify(d, null, 1)], { type: 'application/json' }), name = '团队协同备份-' + TM.todayStr(S) + '.json';
       if (typeof TMN !== 'undefined' && TMN.native && TMN.canShareFile) { TMN.shareFile(blob, name).then(function () {}, function () { toast('导出失败，请重试', true); }); return; }
       if (typeof TMN !== 'undefined' && TMN.native && navigator.share) { var f = new File([blob], name, { type: 'application/json' }); navigator.share({ files: [f], title: name }).catch(function () {}); return; }
       var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000); toast('已导出：' + name);
@@ -3468,7 +3469,7 @@
     openSheet('相关标签', '<p class="muted" style="font-size:14px;margin:0 0 10px">点选或取消，最多 5 个。</p><div class="ix2-pick">' + pool.map(function (t) { return '<label><input type="checkbox" name="t" value="' + esc(t) + '"' + (sel.indexOf(t) >= 0 ? ' checked' : '') + '><span># ' + esc(t) + '</span></label>'; }).join('') + '</div>' + field('自定义标签', '<input type="text" name="custom" maxlength="8" placeholder="输入后保存即可添加">'), '保存', function (o) { var f = document.querySelector('.sheet form') || document; var ts = Array.prototype.map.call(document.querySelectorAll('.sheet input[name=t]:checked'), function (x) { return x.value; }); if (o.custom && o.custom.trim()) ts.push(o.custom.trim()); act('idea.tags', { id: d.id, tags: ts }, '标签已更新'); }); };
   DO.ixMore = function () { var d = I(cur().id), acts = ideaActions(d).filter(function (x) { return x[2] !== 'pri'; }); openSheet('更多操作', '<div class="wd-ops">' + acts.map(function (x) { return '<button type="button" class="btn block" data-do="' + x[1] + '"' + (x[3] ? ' data-arg="' + x[3] + '"' : '') + '>' + x[0] + '</button>'; }).join('') + (ixCanLog(d) ? '<button type="button" class="btn block" data-do="ixLog">查看操作记录</button>' : '') + '<button type="button" class="btn block" data-do="ixCopy">复制链接</button>' + (isOwner() && ['triage', 'awaiting_owner'].indexOf(d.status) >= 0 && TM.followUsers(S).filter(function (x) { return x !== d.followerId; }).length ? '<button type="button" class="btn block" data-do="ixFollow">改派跟进人</button>' : '') + (isOwner() || (d.creatorId === me && d.status === 'draft') ? '<button type="button" class="btn block danger" data-do="ixDelete">删除这个想法</button>' : '') + '</div>', '关闭', function () { closeSheet(); }); };
   DO.ixFollow = function () { var d = I(cur().id), us = TM.followUsers(S).filter(function (x) { return x !== d.followerId; });
-    openSheet('改派跟进人', '<p class="muted" style="margin:0 0 8px;font-size:14px">现在由 ' + esc(d.followerId ? nm(d.followerId) : '（还没人认领）') + ' 跟进。</p>' + field('交给', userSelect('to', us, us[0])), '改派', function (o) { act('idea.reassignFollower', { id: d.id, to: o.to }, '已改派，对方收到通知'); }); };
+    openSheet('改派跟进人', '<p class="muted" style="margin:0 0 8px;font-size:14px">' + (d.followerId ? '现在由 ' + esc(nm(d.followerId)) + ' 跟进。' : '还没有人认领，指定一位运营者跟进。') + '</p>' + field('交给', userSelect('to', us, us[0])), d.followerId ? '改派' : '指定', function (o) { act('idea.reassignFollower', { id: d.id, to: o.to }, '已改派，对方收到通知'); }); };
   DO.ixDelete = function () {
     var d = I(cur().id); if (!d) return;
     var live = S.workItems.filter(function (w) { return w.ideaId === d.id && ['done', 'cancelled'].indexOf(w.status) < 0; });

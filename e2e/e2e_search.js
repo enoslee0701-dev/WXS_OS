@@ -15,6 +15,8 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
   ok(r.groups.includes('任务') && r.marks > 0, '按任务标题搜到任务并高亮 ' + JSON.stringify(r.groups));
   r = await search('紫荆花 王经理');
   ok(r.groups.includes('留言') && /紫荆花酒店/.test(r.text), '多个词同时匹配，搜到任务留言');
+  r = await search(await p.evaluate(() => { const S = window.__tm.S, t = S.tasks.find(x => x.status !== 'cancelled'); return S.users.find(u => u.id === t.ownerId).name + ' ' + t.title.slice(0, 2); }));
+  ok(r.groups.includes('任务'), '执行人姓名 + 标题关键词能搜到任务');
   r = await search('刘洋');
   ok(r.groups.includes('成员'), '搜到成员');
   r = await search('完全不存在的词xyz');

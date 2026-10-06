@@ -1065,7 +1065,7 @@ var TM = (function () {
     var w = work(s, p.id); need(canViewWork(s, uid, w), '只有项目成员可以参与讨论'); need(w.status !== 'cancelled', '项目已取消');
     var b = txt(p.body); need(b, '内容不能为空'); need(b.length <= 2000, '留言不超过 2000 字');
     var c = { id: nid(s, 'M'), workId: w.id, taskId: null, authorId: uid, body: b, at: now(s) }; s.comments.push(c);
-    ev(s, { workId: w.id, ideaId: w.ideaId, actor: uid, action: 'work.comment', text: '讨论：' + b.slice(0, 60) });
+    // 讨论是聊天，不写进「操作记录」（动态只记事情本身的变化）
     var at = mentioned(s, b).filter(function (x) { return canViewWork(s, x, w); });
     if (at.length) notify(s, at, uid, name(s, uid) + ' 提到了你', b.slice(0, 60), '#/work/' + w.id);
     notify(s, relatedOfWork(s, w).filter(function (x) { return at.indexOf(x) < 0; }), uid, name(s, uid) + ' 在项目里发言', w.title + '：' + b.slice(0, 40), '#/work/' + w.id);

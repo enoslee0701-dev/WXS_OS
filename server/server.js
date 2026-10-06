@@ -50,7 +50,7 @@ let S = null, version = 0;
 })();
 function persist() {
   setMeta('state', JSON.stringify(S)); setMeta('version', String(version));
-  const day = new Date().toISOString().slice(0, 10), f = path.join(DATA, 'backups', 'state-' + day + '.json');
+  const day = localDay(), f = path.join(DATA, 'backups', 'state-' + day + '.json');
   if (!fs.existsSync(f)) fs.writeFile(f, JSON.stringify(S), () => {});
 }
 /* 首次创建团队需要初始化码（防止同一网络里有人抢先创建团队、成为老板） */
@@ -157,6 +157,8 @@ function body(req, limit) {
   const max = limit || MAX_BODY;
   return new Promise((ok, bad) => { let n = 0; const ch = []; req.on('data', d => { n += d.length; if (n > max) { bad(new Error('too large')); req.destroy(); } else ch.push(d); }); req.on('end', () => { try { const v = ch.length ? JSON.parse(Buffer.concat(ch).toString('utf8')) : {}; ok(v && typeof v === 'object' ? v : {}); } catch (e) { e.badRequest = true; bad(e); } }); req.on('error', bad); });
 }
+// 服务器所在时区的今天（文件名用；以前用 UTC，早上导出的是昨天的日期）
+function localDay() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 /* ---------- 完整备份：手写 tar（ustar）+ gzip，零依赖 ---------- */
 function tarHeader(name, size, mtime) {
   const h = Buffer.alloc(512), w = (str, off, len) => h.write(str, off, len, 'utf8'), oct = (n, len) => n.toString(8).padStart(len - 1, '0') + '\0';
@@ -165,7 +167,7 @@ function tarHeader(name, size, mtime) {
   let sum = 0; for (let i = 0; i < 512; i++) sum += h[i]; w(sum.toString(8).padStart(6, '0') + '\0 ', 148, 8); return h;
 }
 async function exportTgz(res) {
-  const day = new Date().toISOString().slice(0, 10), gz = zlib.createGzip();
+  const day = localDay(), gz = zlib.createGzip();
   res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Disposition': 'attachment; filename="teamops-backup-' + day + '.tar.gz"; filename*=UTF-8\'\'' + encodeURIComponent('团队协同完整备份-' + day + '.tar.gz'), 'Cache-Control': 'no-store' });
   gz.pipe(res);
   const put = (b) => new Promise(ok => { if (gz.write(b)) ok(); else gz.once('drain', ok); });

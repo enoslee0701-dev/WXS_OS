@@ -149,12 +149,13 @@ var TMS = (function () {
   var es = null, pollT = null;
   function connect() {
     if (!api.loggedIn()) return;
-    var poll = function () { clearInterval(pollT); pollT = setInterval(pull, 8000); };
+    var poll = function () { if (pollT) return; pollT = setInterval(pull, 8000); }; // 只开一个定时器（以前每次断线都重开，8 秒永远到不了）
     if (!window.EventSource || api.nativeMode) return poll(); // 原生网络模式下浏览器内核连不上服务器：改成定时拉取
     try {
       es = new EventSource(api.base + '/api/events?token=' + encodeURIComponent(api.token));
-      es.addEventListener('v', function (e) { var v = 0; try { v = JSON.parse(e.data).version; } catch (x) {} setStatus('online'); clearInterval(pollT); if (v > api.version) pull(); flush(); });
-      es.onerror = function () { setStatus('offline'); poll(); };
+      es.addEventListener('v', function (e) { var v = 0; try { v = JSON.parse(e.data).version; } catch (x) {} setStatus('online'); clearInterval(pollT); pollT = null; if (v > api.version) pull(); flush(); });
+      // 断线时马上拉一次：如果是账号被停用 / 会话失效，会拿到 401 立即回到登录页
+      es.onerror = function () { setStatus('offline'); var now = Date.now(); if (!es.lastPull || now - es.lastPull > 5000) { es.lastPull = now; pull(); } poll(); };
     } catch (e) { poll(); }
   }
 
