@@ -72,7 +72,13 @@ function setCred(uid, login, pw, mustChange) {
   q(`INSERT INTO creds(uid,login,salt,hash,must_change,disabled,created) VALUES(?,?,?,?,?,0,?)
      ON CONFLICT(uid) DO UPDATE SET login=excluded.login, salt=excluded.salt, hash=excluded.hash, must_change=excluded.must_change`).run(uid, login, salt, hashPw(pw, salt), mustChange ? 1 : 0, t);
 }
-function newSession(uid, agent) { const tok = crypto.randomBytes(32).toString('hex'), ft = crypto.randomBytes(24).toString('hex'), t = Date.now(); q('INSERT INTO sessions(token,uid,created,seen,agent,ft) VALUES(?,?,?,?,?,?)').run(tok, uid, t, t, String(agent || '').slice(0, 120), ft); return { token: tok, ft }; }
+// 新登录时顺带清理：这个人过期的会话，并且每人最多保留 20 个（最旧的先踢）
+function pruneSessions(uid) {
+  dropSessions('uid=? AND seen<?', uid, Date.now() - SESSION_DAYS * 864e5);
+  const keep = q('SELECT token FROM sessions WHERE uid=? ORDER BY seen DESC LIMIT 19').all(uid).map(r => r.token);
+  if (keep.length >= 19) dropSessions('uid=? AND token NOT IN (' + keep.map(() => '?').join(',') + ')', uid, ...keep);
+}
+function newSession(uid, agent) { pruneSessions(uid); const tok = crypto.randomBytes(32).toString('hex'), ft = crypto.randomBytes(24).toString('hex'), t = Date.now(); q('INSERT INTO sessions(token,uid,created,seen,agent,ft) VALUES(?,?,?,?,?,?)').run(tok, uid, t, t, String(agent || '').slice(0, 120), ft); return { token: tok, ft }; }
 function dropSessions(where, ...args) { q('DELETE FROM devices WHERE session IN (SELECT token FROM sessions WHERE ' + where + ')').run(...args); q('DELETE FROM sessions WHERE ' + where).run(...args); kickStale(); }
 /* 会话令牌只认请求头；网址里只在 SSE（EventSource 不能带请求头）时认 token，读附件时认文件令牌 ft */
 function auth(req, url, mode) {
@@ -513,6 +519,7 @@ const server = http.createServer(async (req, res) => {
     // 录音 / 视频直接转文字（AI 建项目、AI 拆待办、手机识别不了时的语音输入）：请求体是音视频本身，返回 {text}
     if (url.pathname === '/api/transcribe' && req.method === 'POST') {
       const me = auth(req, url); if (!me) return send(res, 401, { error: '请重新登录' });
+      if (me.mustChange) return send(res, 403, { error: '请先修改初始密码', mustChange: true });
       if (!TR.enabled()) return send(res, 503, { error: '服务器还没有安装语音转写' });
       if (trBusy.has(me.uid)) return send(res, 429, { error: '上一段还在转，请稍等' });
       const max = 300 * 1048576, len = +req.headers['content-length'] || 0;
@@ -629,7 +636,10 @@ function scheduleBrief() {
 }
 
 /* 每天清理一次（启动 1 分钟后先跑一次） */
-function housekeep() { if (!S) return; try { const r = TM.act(S, 'agent', 'system.housekeep', {}); if (r.ok && r.removed) { changed(); console.log('日常清理：删掉 ' + r.removed + ' 条旧通知'); } } catch (e) { console.error('日常清理出错', e); } }
+function housekeep() { if (!S) return;
+  // 操作日志只留 180 天（每条最多 20KB，不清会一直长）
+  try { const n = q('DELETE FROM ops WHERE at<?').run(Date.now() - 180 * 864e5).changes; if (n) console.log('日常清理：删掉 ' + n + ' 条半年前的操作日志'); } catch (e) {}
+  try { const r = TM.act(S, 'agent', 'system.housekeep', {}); if (r.ok && r.removed) { changed(); console.log('日常清理：删掉 ' + r.removed + ' 条旧通知'); } } catch (e) { console.error('日常清理出错', e); } }
 if (require.main === module) server.listen(PORT, HOST, () => {
   setTimeout(sweepAi, 3000); setTimeout(trScan, 4000);
   // Mac 上运行时不让电脑自动睡眠（睡着了同事就连不上）；caffeinate -w 跟着本进程，服务器退出它也退出。KEEP_AWAKE=0 关闭

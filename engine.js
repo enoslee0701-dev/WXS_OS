@@ -399,7 +399,7 @@ var TM = (function () {
   }
   A['idea.create'] = function (s, uid, p) {
     need(canInitiate(s, uid), '只有老板和有发起权的负责人可以创建想法');
-    p.media = cleanMedia(p.media); need(txt(p.note) || txt(p.title) || p.media.length, '请至少写一句话或附上录音');
+    p.media = cleanMedia(p.media); need(txt(p.note) || txt(p.title) || p.media.length, '请至少写一句话或附上录音'); need(txt(p.note).length <= 20000, '想法内容不超过 2 万字');
     var d = { id: nid(s, 'I'), creatorId: uid, dept: p.dept || null, path: null, status: 'draft', aiStatus: 'none', title: txt(p.title).slice(0, 30), titleSource: txt(p.title) ? 'user' : 'ai', note: txt(p.note),
       followerId: null, shareAll: false, shares: [], deadline: null, directionConfirmedAt: null, ownerApproved: false, reviewed: false,
       media: p.media, tags: (Array.isArray(p.tags) ? p.tags : []).map(txt).filter(Boolean).slice(0, 5), submittedAt: null, lastActivity: now(s), createdAt: now(s) };
@@ -410,7 +410,7 @@ var TM = (function () {
   };
   A['idea.update'] = function (s, uid, p) {
     var d = idea(s, p.id); need(d.creatorId === uid && d.status === 'draft', '只有发起人能修改自己的草稿');
-    var nt = txt(p.title).slice(0, 30); if (nt !== d.title) d.titleSource = nt ? 'user' : 'ai'; d.note = txt(p.note); d.title = nt || aiTitle(d); touchIdea(s, d);
+    need(txt(p.note).length <= 20000, '想法内容不超过 2 万字'); var nt = txt(p.title).slice(0, 30); if (nt !== d.title) d.titleSource = nt ? 'user' : 'ai'; d.note = txt(p.note); d.title = nt || aiTitle(d); touchIdea(s, d);
     return {};
   };
   A['idea.submit'] = function (s, uid, p) {
@@ -434,7 +434,7 @@ var TM = (function () {
   A['idea.suggest'] = function (s, uid, p) {
     var d = idea(s, p.id);
     need(canSuggest(s, uid, d), d.status !== 'discussing' ? '讨论已结束，不能再提建议' : '该想法没有分享给你');
-    var body = txt(p.body); need(body, '建议内容不能为空');
+    var body = txt(p.body); need(body, '建议内容不能为空'); need(body.length <= 2000, '建议不超过 2000 字');
     if (p.replyTo) need(s.suggestions.some(function (x) { return x.id === p.replyTo && x.ideaId === d.id; }), '回复的建议不存在');
     var sg = { id: nid(s, 's'), ideaId: d.id, authorId: uid, replyTo: p.replyTo || null, body: body, at: now(s) };
     s.suggestions.push(sg); touchIdea(s, d);
@@ -469,14 +469,21 @@ var TM = (function () {
     runAnalysis(s, d); touchIdea(s, d); return {};
   };
   A['idea.claim'] = function (s, uid, p) {
-    var d = idea(s, p.id); need(canFollow(s, uid), '只有运营者可以认领'); need(d.status === 'triage', '只有待运营整理的想法可以认领'); need(!d.followerId, '已被 ' + name(s, d.followerId) + ' 认领');
+    var d = idea(s, p.id); need(canFollow(s, uid), '只有运营者可以认领'); need(d.status === 'triage', '只有待运营整理的想法可以认领'); need(!d.followerId, '这条想法已经有人认领了');
     d.followerId = uid; ev(s, { ideaId: d.id, actor: uid, action: 'idea.claim', text: '认领，成为跟进人' }); touchIdea(s, d); return {};
   };
+  // 人工整理稿：只保留字符串 / 数字 / 布尔、数组和对象（限层数、个数、长度），防止塞入超大或奇怪的数据
+  function cleanPayload(v, dep) {
+    dep = dep || 0; if (typeof v === 'string') return v.slice(0, 3000); if (typeof v === 'number') return isFinite(v) ? v : 0; if (typeof v === 'boolean') return v;
+    if (dep > 3 || !v || typeof v !== 'object') return undefined;
+    if (Array.isArray(v)) return v.slice(0, 30).map(function (x) { return cleanPayload(x, dep + 1); }).filter(function (x) { return x !== undefined; });
+    var o = {}; Object.keys(v).slice(0, 40).forEach(function (k) { if (k.length <= 40 && k !== '__proto__') { var c = cleanPayload(v[k], dep + 1); if (c !== undefined) o[k] = c; } }); return o;
+  }
   A['idea.saveSummary'] = function (s, uid, p) {
     var d = idea(s, p.id);
     need(d.followerId === uid || hasRole(s, uid, 'owner'), '只有跟进人或老板可以修改整理稿');
     need(['triage', 'awaiting_owner'].indexOf(d.status) >= 0, '当前状态不能修改整理稿');
-    var pl = p.payload || {}; need(txt(pl.title), '整理稿需要标题'); need(['admin', 'product', 'other'].indexOf(pl.category) >= 0, '请选择类别');
+    var pl = cleanPayload(p.payload) || {}; need(txt(pl.title), '整理稿需要标题'); pl.title = txt(pl.title).slice(0, 30); need(JSON.stringify(pl).length <= 60000, '整理稿内容太长'); need(['admin', 'product', 'other'].indexOf(pl.category) >= 0, '请选择类别');
     pl.simulated = false;
     var sm = addSummary(s, d, 'analysis', pl, 'human', uid);
     d.title = pl.title; d.reviewed = true; if (d.aiStatus === 'failed') d.aiStatus = 'ready';
@@ -500,7 +507,7 @@ var TM = (function () {
   };
   A['idea.requestDecision'] = function (s, uid, p) {
     var d = idea(s, p.id); need(d.followerId === uid, '请先认领，由跟进人上报'); need(d.status === 'triage', '当前状态不能上报');
-    need(L.decision[p.kind], '请选择例外类型'); var q = txt(p.question); need(q, '请写清楚要老板决定什么');
+    need(Object.prototype.hasOwnProperty.call(L.decision, p.kind), '请选择例外类型'); var q = txt(p.question); need(q, '请写清楚要老板决定什么');
     var dec = { id: nid(s, 'D'), ideaId: d.id, workId: null, kind: p.kind, question: q, requestedBy: uid, status: 'pending', decidedBy: null, note: '', at: now(s), decidedAt: null };
     s.decisions.push(dec); d.status = 'awaiting_owner';
     ev(s, { ideaId: d.id, actor: uid, action: 'decision.request', from: 'triage', to: 'awaiting_owner', text: L.decision[p.kind] + '：' + q });
@@ -553,7 +560,7 @@ var TM = (function () {
       if (txt(x.title).length > 50) deny('任务标题不超过 50 字');
       if (x.reviewerId) need(live(s, x.reviewerId), '验收人不存在或已停用');
       if (x.due) need(typeof x.due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x.due), '截止日期不正确');
-      var t = { id: nid(s, 'T'), workId: w.id, title: txt(x.title), description: txt(x.description), ttype: x.ttype || '', priority: x.priority || 'mid', milestone: !!x.milestone, ownerId: x.ownerId, collabs: collabs, reviewerId: x.reviewerId || w.reviewerId,
+      var t = { id: nid(s, 'T'), workId: w.id, title: txt(x.title), description: txt(x.description).slice(0, 2000), ttype: typeof x.ttype === 'string' ? x.ttype.slice(0, 20) : '', priority: x.priority || 'mid', milestone: !!x.milestone, ownerId: x.ownerId, collabs: collabs, reviewerId: x.reviewerId || w.reviewerId,
         due: x.due || null, expected: txt(x.expected), criteria: txt(x.criteria), status: 'assigned', blockedReason: '', assignedBy: x.assignedBy || 'manual', lastActivity: now(s), createdAt: now(s) };
       s.tasks.push(t);
       ev(s, { workId: w.id, taskId: t.id, actor: uid, action: 'task.assign', to: 'assigned', text: (t.assignedBy === 'ai' ? '按 AI 推荐（人工确认）' : '') + '派给 ' + name(s, t.ownerId) + (t.collabs.length ? '，协作者 ' + t.collabs.map(function (c) { return name(s, c); }).join('、') : '') + '，验收人 ' + name(s, t.reviewerId) + (t.milestone ? '（里程碑）' : '') });
@@ -581,7 +588,7 @@ var TM = (function () {
     need(owner || op || lead, '只有老板、运营者或有发起权的负责人可以新建项目');
     if (!canCreateProject(s, uid)) deny('当前设置要求每条想法派发前由老板确认，请改用「记录想法」提交');
     var title = txt(p.title); need(title, '请填写项目名称'); need(title.length <= 50, '项目名称不超过 50 字');
-    var pt = PTYPE[p.ptype]; need(pt, '请选择项目类型');
+    var pt = Object.prototype.hasOwnProperty.call(PTYPE, p.ptype) ? PTYPE[p.ptype] : null; need(pt, '请选择项目类型');
     var kind = pt[1];
     var opId = p.operatorId || (op ? uid : followUsers(s)[0]); need(opId && canFollow(s, opId), '请选择跟进运营者');
     var leadId = p.leadId || null;
@@ -912,7 +919,7 @@ var TM = (function () {
     cancel: { from: ['assigned', 'accepted', 'in_progress', 'submitted', 'blocked'], to: 'cancelled', label: '取消' }
   };
   A['task.transition'] = function (s, uid, p) {
-    var t = task(s, p.id); var w = work(s, t.workId); var tr = TT[p.action]; need(tr, '未知操作');
+    var t = task(s, p.id); var w = work(s, t.workId); var tr = Object.prototype.hasOwnProperty.call(TT, p.action) ? TT[p.action] : null; need(tr, '未知操作');
     need(w.status !== 'paused', '事项已被老板暂停，暂不能操作');
     need(tr.from.indexOf(t.status) >= 0, '当前状态为「' + L.task[t.status] + '」，不能' + tr.label);
     var note = txt(p.note);
@@ -972,7 +979,7 @@ var TM = (function () {
     notify(s, [t.ownerId, t.reviewerId], uid, L.verdict[p.verdict], t.title, '#/task/' + t.id); touchTask(s, t); syncWork(s, w, uid); return {};
   };
   A['task.comment'] = function (s, uid, p) {
-    var t = task(s, p.id); need(canViewTask(s, uid, t), '无权评论该任务'); var b = txt(p.body); need(b, '内容不能为空');
+    var t = task(s, p.id); need(canViewTask(s, uid, t), '无权评论该任务'); var b = txt(p.body); need(b, '内容不能为空'); need(b.length <= 2000, '留言不超过 2000 字');
     s.comments.push({ id: nid(s, 'M'), taskId: t.id, authorId: uid, body: b, at: now(s) });
     ev(s, { taskId: t.id, workId: t.workId, actor: uid, action: 'task.comment', text: '留言：' + b });
     var w = work(s, t.workId); notify(s, [t.ownerId, t.reviewerId, w.operatorId, w.leadId].concat(t.collabs), uid, name(s, uid) + ' 在任务里留言', b, '#/task/' + t.id);
@@ -1026,7 +1033,8 @@ var TM = (function () {
     var snapshot = JSON.stringify(stripFns(s));
     try { var r = fn(s, uid, p || {}); return Object.assign({ ok: true }, r); }
     catch (e) {
-      if (e && e.userError) { restore(s, JSON.parse(snapshot)); return { ok: false, error: e.message }; }
+      restore(s, JSON.parse(snapshot)); // 意外错误也回滚，不留下改了一半的数据
+      if (e && e.userError) return { ok: false, error: e.message };
       throw e;
     }
   }
@@ -1061,7 +1069,8 @@ var TM = (function () {
     v.summaries = v.summaries.filter(function (x) { return byIdea(x) && (x.kind !== 'digest' || own); });
     var mgr = hasRole(s, uid, 'owner') || hasRole(s, uid, 'admin');
     // 动态：关联的想法 / 项目 / 任务都得看得到；不关联任何对象的（成员、配置变更）只给老板和管理员
-    v.events = v.events.filter(function (e) { if (!e.ideaId && !e.workId && !e.taskId) return mgr; return byIdea(e) && (!e.workId || W[e.workId]) && (!e.taskId || T[e.taskId]); });
+    // 删除想法的记录：想法本身看不到了，但老板要能在动态里查到是谁、为什么删的
+    v.events = v.events.filter(function (e) { if (!e.ideaId && !e.workId && !e.taskId) return mgr; if (e.action === 'idea.delete') return hasRole(s, uid, 'owner'); return byIdea(e) && (!e.workId || W[e.workId]) && (!e.taskId || T[e.taskId]); });
     v.decisions = v.decisions.filter(function (x) { return (x.ideaId && I[x.ideaId]) || (x.workId && W[x.workId]) || (!x.ideaId && !x.workId && hasRole(s, uid, 'owner')); });
     // 决策上的 Claude 建议基于老板的全部资料，只给老板
     if (!own) v.decisions.forEach(function (x) { delete x.ai; });

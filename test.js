@@ -725,5 +725,17 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   rej(TM.act(e, O, 'work.plan', { id: ew.id, tasks: [{ title: 'x', ownerId: DV, expected: 'a', criteria: 'b', reviewerId: 'nobody' }] }), '验收人不存在被拒');
   rej(TM.act(e, O, 'work.plan', { id: ew.id, tasks: [{ title: 'x', ownerId: DV, expected: 'a', criteria: 'b', due: { a: 1 } }] }), '非法截止日期被拒'); }
 
+// ===== 原型链名字不能当枚举；长度上限；删除记录老板可见；认领不泄露姓名 =====
+{ const f2 = fresh();
+  rej(TM.act(f2, O, 'project.create', { title: 'x', desc: 'y', ptype: 'constructor' }), 'ptype=constructor 被拒');
+  const anyT = f2.tasks.find(t => t.ownerId === DV);
+  { let err = null, r = null; try { r = TM.act(f2, DV, 'task.transition', { id: anyT.id, action: '__proto__' }); } catch (e) { err = e; } ok(!err && r && !r.ok, 'action=__proto__ 是用户错误，不抛异常'); }
+  rej(TM.act(f2, O, 'idea.create', { note: 'x'.repeat(20001) }), '想法内容超过 2 万字被拒');
+  const di = must(TM.act(f2, O, 'idea.create', { note: '要删的' }), '建想法'); must(TM.act(f2, O, 'idea.delete', { id: di.id, reason: '重复' }), '删除');
+  ok(TM.viewFor(f2, O).events.some(e => e.action === 'idea.delete' && e.ideaId === di.id), '老板在动态里能看到删除记录');
+  ok(!TM.viewFor(f2, DV).events.some(e => e.action === 'idea.delete'), '执行者看不到删除记录');
+  const ci2 = f2.ideas.find(d => d.status === 'triage' && d.followerId);
+  if (ci2) { const r2 = TM.act(f2, O, 'idea.claim', { id: ci2.id }); ok(!r2.ok && !(r2.error || '').includes(TM.name(f2, ci2.followerId)), '认领失败不泄露跟进人姓名'); } }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

@@ -221,7 +221,7 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
   - [ ] C 文档校正（测试数量、Node 版本、README 目录、HANDOFF 标题）
   - [x] 引擎审计 P0（cleanMedia 清洗输入 + migrate 清历史坏数据；处理器异常回 500；uncaughtException 兜底；trScan try/catch；act 后试算下发失败则回滚）：畸形 media 让 viewFor 抛异常、trScan 崩溃循环（清洗输入、防御性读取、处理器异常回 500、uncaughtException 兜底、act 后试算 viewFor）
   - [x] P1：发件箱操作 ID（ops.op_id 唯一，重发返回当时结果，也解决多标签页重复）；发件箱绑定服务器、换服务器清空；私人草稿五个动作加 canViewIdea；task.check 校验归属；暂停期间禁止验收/勾选/阶段/纠偏，resume 后 syncWork
-  - [ ] P2：原型链枚举、文本长度上限、saveSummary 清洗、addTasks reviewerId/due 校验、附件字段校验、删除想法 mediaShow、claim 泄露姓名、删除事件老板可见、会话清理、ops 清理
+  - [x] P2：原型链枚举（hasOwnProperty）、act 意外错误也回滚、想法 2 万字/建议和留言 2000 字上限、saveSummary 用 cleanPayload 清洗、addTasks 校验、附件字段清洗、mediaShow 用 idea()、claim 不泄露姓名、删除想法记录老板可见、登录时清理会话（每人最多 20）、操作日志留 180 天、未改初始密码不能用转写
   - [ ] 界面审计（27 条）：高 1 统计趋势口径；2 执行者逾期/受阻任务在首页和任务页不见；3「回复 s1」露 ID；4 选人弹窗头像拉成椭圆。中 5 textarea resize 点；6 演示提示卡切断录音区；7 项目类型横滑无暗示；8 完成率图表误导；9 空的更多操作；10 日期条残角；11/12 弹窗按钮文案；13 统计空状态；14「阶段 3」术语；15 文字页示例像已输入。低 16–27 见审计
   - [x] 设备审计：tm36 爬虫 802/0、aosp30 爬虫 894/0、iOS 爬虫 895/0、iOS 流程 5/0；修：reloadSafe 先收键盘再刷新（旧 WebView triggerEvent 报错）；device_android_flow 授予录音权限、有语音识别时回首页、返回键多等。tm36 看界面请加 `-gpu host`（软件渲染有重影伪影）。调试版编译需 JAVA_HOME=java_home -v 21
   - [x] 界面审计已修：1 统计趋势、2 执行者受阻/逾期、3 回复露 ID、4 头像拉伸、5 resize 点、6 演示提示、7/10/17/18 横滑渐隐与残角、9 空更多操作、11/12 按钮文案、14 阶段 3、16 小字号、26 文案
