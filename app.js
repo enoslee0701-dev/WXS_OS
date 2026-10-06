@@ -1286,6 +1286,8 @@
     markChecked(); flexGapFix(document.getElementById('app'));
     if (SRV && me && TMS.mustChange && !mustAsked && !document.querySelector('#layer .sheet')) { mustAsked = true; setTimeout(function () { DO.srvPassword(); }, 300); }
     if (SRV && me && isOwner() && S.real && !S.loading && cur().name === 'home' && !onboardAsked && !document.querySelector('#layer .sheet') && !onboardDone()) { onboardAsked = true; setTimeout(function () { DO.onboard(); }, 400); }
+    // 新成员第一次进来（改完初始密码后）：按角色欢迎一次，说清楚在哪里做事
+    if (SRV && me && !isOwner() && !TMS.mustChange && !S.loading && cur().name === 'home' && !welcomeAsked && !document.querySelector('#layer .sheet') && !welcomed()) { welcomeAsked = true; setTimeout(function () { DO.welcome(); }, 400); }
     var strip = document.getElementById('tkdays');
     if (strip) { if (td.stripScroll != null) strip.scrollLeft = td.stripScroll; else { var tg = strip.querySelector('.today') || strip.querySelector('.on'); if (tg) strip.scrollLeft = tg.offsetLeft - strip.firstElementChild.offsetLeft; } strip.onscroll = function () { td.stripScroll = strip.scrollLeft; }; }
     document.querySelectorAll('video[data-vmeta]').forEach(function (v) { v.onloadedmetadata = function () { var m = cam.clips[+v.dataset.vmeta]; if (m && !m.durationSec && isFinite(v.duration)) { m.durationSec = Math.round(v.duration); render(); } }; });
@@ -3290,6 +3292,17 @@
     openSheet('三步开始使用', '<p class="muted" style="margin:0 0 12px;font-size:14px">团队已经建好。完成这三步，团队就能运转起来：</p><div class="ob-list">' + st.map(function (x, i) { return '<button type="button" class="ob-i' + (x[3] ? ' done' : '') + '" data-do="onboardGo" data-h="' + x[4] + '"><span class="ob-n">' + (x[3] ? '✓' : i + 1) + '</span><span><b>' + x[1] + '</b><small>' + x[2] + '</small></span>' + hi('chev', 2) + '</button>'; }).join('') + '</div>', '以后再说', function () { try { localStorage.setItem('tm_onboard_' + me, '1'); } catch (e) {} closeSheet(); });
   };
   DO.onboardGo = function (el) { closeSheet(); location.hash = el.dataset.h; };
+  var welcomeAsked = false;
+  function welcomed() { try { return localStorage.getItem('tm_welcomed_' + me) === '1'; } catch (e) { return true; } }
+  var WELCOME = { operator: [['想法页 → 待整理', '新想法提交后先到这里，点「认领」后由你跟进'], ['整理稿', 'AI 先整理一版，你核对、修改'], ['派发', '普通事项直接派任务；超预算、人事等例外送老板决策']],
+    lead: [['项目页', '交给你的产品项目在这里：拆任务、派人、推进阶段'], ['任务验收', '执行者提交成果后，由你验收或退回'], ['记录想法', '有发起权时，首页可以直接记想法']],
+    executor: [['任务页', '派给你的任务都在这里：先「接收」，再「开始」，做完「提交成果」'], ['遇到问题', '在任务里点「报阻碍」，跟进人会来处理'], ['记一条待办', '自己的小事也可以记在待办里，能设重复']],
+    admin: [['成员与账号', '添加成员、分派登录账号、重置密码、停用离职的人'], ['AI 知识库', '维护公司资料，AI 回答问题时会参考'], ['更多设置', '流程开关、操作日志、报表导出']] };
+  DO.welcome = function () {
+    try { localStorage.setItem('tm_welcomed_' + me, '1'); } catch (e) {}
+    var r = TM.primaryRole(S, me), xs = WELCOME[r] || WELCOME.executor;
+    openSheet('欢迎加入团队', '<p class="muted" style="margin:0 0 12px;font-size:14px">你的角色是<b>' + L.role[r] + '</b>。最常用的是这几个地方：</p><div class="ob-list">' + xs.map(function (x, i) { return '<div class="ob-i"><span class="ob-n">' + (i + 1) + '</span><span><b>' + x[0] + '</b><small>' + x[1] + '</small></span></div>'; }).join('') + '</div><p class="muted" style="margin:12px 0 0;font-size:13px">以后随时在「我的 → 使用帮助」查看。</p>', '开始使用', function () { closeSheet(); });
+  };
   DO.demoChoose = function () { try { localStorage.setItem('tm_demo_chosen', '1'); } catch (e) {} render(); };
   // 自动查找团队服务器：找到就填进地址框（登录页会顺便重新检查）
   DO.srvScan = function (el, done) {
@@ -3312,7 +3325,7 @@
     openSheet(must ? '请先修改初始密码' : '修改密码', (must ? '<p class="muted" style="margin:0 0 10px;font-size:14px">你正在使用别人帮你设置的初始密码，改成只有你知道的密码。</p>' : field('原密码', '<input type="password" name="old" autocomplete="current-password" required>')) +
       field('新密码', '<input type="password" name="password" minlength="8" autocomplete="new-password" required>', '至少 8 位，别用生日、连续数字') + field('再输一次', '<input type="password" name="again" minlength="6" autocomplete="new-password" required>'), '保存', function (o) {
       if (o.password !== o.again) return toast('两次输入的新密码不一样', true);
-      TMS.changePassword(o.old || '', o.password).then(function () { closeSheet(); toast('密码已修改'); }, function (e) { toast(e.error || '修改失败', true); });
+      TMS.changePassword(o.old || '', o.password).then(function () { closeSheet(); toast('密码已修改'); render(); /* 改完初始密码后重新检查要不要显示欢迎说明 */ }, function (e) { toast(e.error || '修改失败', true); });
     }); };
   /* 安卓 App 更新：团队服务器上放着最新的安装包（npm run android 发布），App 启动时比较版本号，有新版就提示下载 */
   var appUpd = { meta: null, info: null, newer: false };
