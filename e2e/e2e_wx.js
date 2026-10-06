@@ -56,6 +56,10 @@ const URL=(require('./_env').URL);
   await p.evaluate(()=>{}); await p.click('[data-do=wTab][data-t=files]'); await p.waitForTimeout(80);
   ok(await p.locator('.wf-up').count()===1, '执行者能上传');
   await p.click('[data-do=wTab][data-t=ov]'); await p.click('.wx-ask'); await p.click('[data-do=wcAsk][data-q="下一步做什么"]'); await p.waitForTimeout(80); ok((await p.textContent('#wc-list')).length>10, '执行者也能问 AI');
+  // 任务看板：切换后按状态分 5 列，任务卡点进任务详情；切回列表
+  await p.click('[data-do=wTab][data-t=tasks]'); await p.waitForTimeout(80); await p.click('[data-do=wtView][data-v=board]'); await p.waitForTimeout(100);
+  ok(await p.locator('.wt-col').count() === 5 && await p.locator('.wt-bc').count() >= 1, '任务看板按状态分列');
+  await p.click('[data-do=wtView][data-v=list]'); await p.waitForTimeout(80); ok(await p.locator('.wt-board').count() === 0 && await p.locator('.wt-list').count() === 1, '切回列表');
   // 项目讨论：概览底部发言
   await p.click('[data-do=wTab][data-t=ov]'); await p.waitForTimeout(80);
   if (await p.locator('form[data-form=wComment]').count()) { await p.fill('form[data-form=wComment] textarea','这周五前给初稿'); await p.click('form[data-form=wComment] button[type=submit]'); await p.waitForTimeout(150);

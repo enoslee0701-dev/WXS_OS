@@ -3124,3 +3124,15 @@ body.has-actions .toast{bottom:calc(96px + var(--sab))}
 .wx-cf .btn{min-height:44px;padding:0 16px;flex:none}
 .n-quiet{display:flex;align-items:center;gap:10px;margin:4px 0 2px}.n-quiet input{flex:1;min-width:0}.n-quiet span{color:#6B7586;font-size:14px}
 .me-nset{min-height:34px;padding:0 14px;font-size:14px}
+/* 项目任务：列表 / 看板切换与看板 */
+.wt-view{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:#EEF1F5;margin:2px 0 10px}
+.wt-view button{border:0;background:none;padding:5px 14px;border-radius:999px;font:600 13.5px var(--font);color:#5B6475;cursor:pointer}.wt-view button.on{background:#fff;color:#141B2D;box-shadow:0 1px 3px rgba(20,27,45,.12)}
+.wt-board{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px 8px;scroll-snap-type:x proximity}
+.wt-col{flex:0 0 72%;max-width:260px;scroll-snap-align:start;background:#F4F6FA;border-radius:16px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.wt-col h4{margin:2px 4px 2px;display:flex;align-items:center;gap:6px;font-size:14px;color:#3E4A63}.wt-col h4 span{font:600 12px "Figtree",var(--font);color:#8A93A3;background:#fff;border-radius:999px;padding:1px 7px}
+.wt-bc{display:flex;flex-direction:column;gap:6px;padding:10px 12px;border-radius:12px;background:#fff;box-shadow:0 1px 3px rgba(20,27,45,.06);color:inherit;text-decoration:none}
+.wt-bc.warn{box-shadow:inset 3px 0 0 #F03E50,0 1px 3px rgba(20,27,45,.06)}.wt-bc b{font-size:14.5px;line-height:1.4;font-weight:600}.wt-bc span{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#6B7586}
+.wt-none{margin:4px;font-size:13px;color:#A3ABB8}
+.wt-col{background:#E8ECF2}
+.wt-board{-webkit-mask-image:linear-gradient(90deg,transparent 0,transparent 13px,#000 16px,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,transparent 0,transparent 13px,#000 16px,#000 calc(100% - 30px),transparent)}
+.wt-board{margin:0 -16px 0 0;padding:0 16px 8px 0;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 30px),transparent)}

@@ -2595,7 +2595,7 @@
     return h + (ws.length ? ws.map(wCard).join('') : emptyBox('这个分类下没有项目。'));
   }
 
-  var wd = { id: null, tab: 'ov' };
+  var wd = { id: null, tab: 'ov', board: (function () { try { return localStorage.getItem('tm_wt_board') === '1'; } catch (e) { return false; } })() };
   function wEvText(e, t) {
     var tt = t ? '「' + t.title + '」' : '';
     var m = { 'work.done': '项目已完成', 'task.review.pass': '验收通过任务' + tt, 'task.review.return': '退回任务' + tt, 'task.submit': '提交了任务' + tt + '的成果', 'task.start': '开始任务' + tt, 'task.accept': '接收任务' + tt, 'task.block': '任务' + tt + '受阻', 'task.assign': '派出任务' + tt, 'idea.route': '项目创建', 'work.stage': e.text, 'work.update': e.text, 'work.status': e.text };
@@ -2726,6 +2726,13 @@
     vts.sort(function (a, b) { return (wtFlag(b) && b.status !== 'done') - (wtFlag(a) && a.status !== 'done') || (ord[a.status] || 4) - (ord[b.status] || 4); });
     var f = wd.tf || 'all', rows = vts.filter(function (t) { return wtIn(f, t); });
     var h = '<div class="wt-chips">' + WTF.map(function (x) { var n = vts.filter(function (t) { return wtIn(x[0], t); }).length; return '<button class="' + (f === x[0] ? 'on' : '') + (x[0] === 'flag' && n ? ' warn' : '') + '" data-do="wTf" data-f="' + x[0] + '">' + x[1] + '<i>' + n + '</i></button>'; }).join('') + '</div>';
+    h += '<div class="wt-view"><button class="' + (wd.board ? '' : 'on') + '" data-do="wtView" data-v="list">列表</button><button class="' + (wd.board ? 'on' : '') + '" data-do="wtView" data-v="board">看板</button></div>';
+    if (wd.board && vts.length) {
+      // 看板：按状态分列，横向滑动；每列显示数量
+      var COLS = [['待接收', ['assigned']], ['进行中', ['accepted', 'in_progress']], ['受阻', ['blocked']], ['待验收', ['submitted', 'owner_review']], ['已完成', ['done']]];
+      return h + '<div class="wt-board">' + COLS.map(function (c) { var xs = rows.filter(function (t) { return c[1].indexOf(t.status) >= 0; });
+        return '<section class="wt-col"><h4>' + c[0] + '<span>' + xs.length + '</span></h4>' + (xs.length ? xs.map(function (t) { return '<a class="wt-bc' + (wtFlag(t) && t.status !== 'done' ? ' warn' : '') + '" href="#/task/' + t.id + '"><b>' + esc(t.title) + '</b><span>' + av(t.ownerId, true) + esc(nm(t.ownerId)) + (t.due ? ' · ' + esc(mdTxt(t.due)) : '') + '</span></a>'; }).join('') : '<p class="wt-none">没有</p>') + '</section>'; }).join('') + '</div>';
+    }
     return h + (rows.length ? '<div class="list wt-list">' + rows.map(wTaskRow).join('') + '</div>' : emptyBox(!vts.length ? (w.status === 'planning' ? '还没有任务，点下方「新建任务」分配。' : '没有你可见的任务。') : '这个分类下没有任务。'));
   }
   function wMemTab(w, mg) {
@@ -2813,6 +2820,7 @@
     },
     wLog: function () { closeSheet(); var b = document.querySelector('[data-do=wTab][data-t=log]'); if (b) b.click(); },
     wCardMore: function (el) { var w = W(el.dataset.id); openSheet(w.title, '<div class="wd-ops"><a class="btn block" href="#/work/' + w.id + '">打开项目</a>' + (workActions(w).some(function (a) { return a[1] === 'goAssignWork'; }) ? '<button type="button" class="btn block" data-do="goAssignWork" data-arg="' + w.id + '">新建任务</button>' : '') + '</div>', '关闭', function () { closeSheet(); }); },
+    wtView: function (el) { wd.board = el.dataset.v === 'board'; try { localStorage.setItem('tm_wt_board', wd.board ? '1' : ''); } catch (e) {} render(); },
     wPri: function () { var w = W(cur().id); openSheet('项目优先级', '<div class="opts">' + [['hi', '高'], ['mid', '中'], ['lo', '低']].map(function (p) { return opt('priority', p[0], p[1], '', (w.priority || 'mid') === p[0]); }).join('') + '</div>', '保存', function (o) { act('work.update', { id: w.id, priority: o.priority }, '已更新优先级'); }); },
     wEditText: function (el) { var w = W(cur().id), k = el.dataset.k; openSheet(k === 'goal' ? '项目目标' : '关键成果', field(k === 'goal' ? '项目目标' : '关键成果', '<textarea name="v" rows="3" maxlength="200">' + esc(w[k] || '') + '</textarea>'), '保存', function (o) { var p = { id: w.id }; p[k] = o.v; act('work.update', p, '已保存'); }); },
     wAddMs: function () { var w = W(cur().id); openSheet('添加里程碑', field('名称', '<input type="text" name="title" maxlength="30" placeholder="例如：内部评审">') + field('日期', '<input type="date" name="date" value="' + (w.due || TM.dateAdd(S, 7)) + '">'), '添加', function (o) { act('work.milestone.add', { id: w.id, title: o.title, date: o.date }, '已添加里程碑'); }); },
