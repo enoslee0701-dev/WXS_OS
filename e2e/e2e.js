@@ -31,7 +31,7 @@ let pass=0, fail=0; const ok=(c,m)=>{ if(c)pass++; else {fail++; console.log('�
   await btn('派发'); await p.waitForSelector('.sheet.on');
   await p.selectOption('select[name=t_ownerId]','u_admin_ex'); await p.fill('input[name=t_expected]','新打印机照片'); await p.fill('textarea[name=t_criteria]','连续打印 20 页不卡纸');
   await p.screenshot({path:'shot-route.png'});
-  await sheetSubmit(); ok(p.url().includes('#/work/'),'派发后跳到事项');
+  await sheetSubmit(); ok(p.url().includes('#/work/'),'派发后跳到项目');
   await p.click('[data-do=wTab][data-t=tasks]'); await p.locator('.list .row').first().click(); const taskUrl=p.url(); ok(taskUrl.includes('#/task/'),'进入任务');
   // 执行者
   await login('周敏'); await p.goto(taskUrl);
@@ -47,7 +47,7 @@ let pass=0, fail=0; const ok=(c,m)=>{ if(c)pass++; else {fail++; console.log('�
   await login('林晓'); await p.goto(taskUrl); await btn('验收通过'); await p.fill('.sheet textarea[name=note]','符合标准'); await sheetSubmit();
   ok(await p.locator('.pill',{hasText:'完成'}).count()>0,'任务完成');
   await p.locator('.tx-work').first().click();
-  await p.click('.wd-accept [data-do=closeWork]'); await sheetSubmit(); ok(await p.locator('.ws',{hasText:'已完成'}).count()>0,'事项完成');
+  await p.click('.wd-accept [data-do=closeWork]'); await sheetSubmit(); ok(await p.locator('.ws',{hasText:'已完成'}).count()>0,'项目完成');
   // 老板查验 + 纠偏
   await login('Enos'); await p.goto(taskUrl);
   ok(await p.locator('.tx-log .wx-tl li').count()>=6,'老板看到完整操作记录');

@@ -24,18 +24,18 @@ const URL=(require('./_env').URL);
   ok(await p.isVisible('#cx-ait-tx'), '原样确认仍显示 AI 拟题');
   await p.click('[data-do=capNext][data-k=tx]'); await p.waitForSelector('.sheet.on'); await p.click('.sheet footer button[type=button]'); await p.waitForTimeout(150);
   ok(await p.locator('.ix2-ait').count()===1, '保留 AI 标题时详情标 AI 拟题');
-  // 2. 形成的事项紧凑卡片
+  // 2. 形成的项目紧凑卡片
   let found=null;
   for (let i=1;i<=12 && !found;i++){ await p.goto(URL+'#/idea/I'+i); await p.waitForTimeout(120); if (await p.locator('.ix2-wk').count()) found='I'+i; }
-  ok(!!found, '找到有事项的想法');
+  ok(!!found, '找到有项目的想法');
   if (found) {
     ok(!(await p.locator('.ix2-card .list .row').count()), '不再用旧大行');
     const h = await p.locator('.ix2-wk').first().evaluate(e=>e.getBoundingClientRect().height);
-    ok(h<=110, '事项卡片紧凑（高 '+Math.round(h)+'）');
+    ok(h<=110, '项目卡片紧凑（高 '+Math.round(h)+'）');
     const fs = await p.locator('.ix2-wkt b').first().evaluate(e=>parseFloat(getComputedStyle(e).fontSize)); ok(fs<=15.5, '标题字号 '+fs);
     await p.locator('.ix2-wk').first().click(); await p.waitForTimeout(150); ok(p.url().includes('#/work/'), '点击进入项目');
     await p.goto(URL+'#/idea/'+found); await p.waitForTimeout(150); await p.screenshot({ path: 'shot_wk.png', fullPage: true });
   }
   await p.goto(URL+'#/new/text'); await p.fill('[data-cap="tx.note"]','下个月整理一下仓库的旧设备'); await p.waitForTimeout(80); await p.screenshot({ path: 'shot_ait.png' });
-  ok(!errs.length,'无脚本错误 '+errs.join(';')); console.log('AI 拟题/事项卡片 E2E 通过',pass,'失败',fail); await b.close();
+  ok(!errs.length,'无脚本错误 '+errs.join(';')); console.log('AI 拟题/项目卡片 E2E 通过',pass,'失败',fail); await b.close();
 })();

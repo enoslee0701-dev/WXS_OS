@@ -5,7 +5,7 @@ let pass=0,fail=0;const ok=(c,m)=>{if(c)pass++;else{fail++;console.log('✗',m);
 await c.route(/fonts\.(googleapis|gstatic)\.com/, r=>r.fulfill({status:200,contentType:'text/css',body:''}));
 const p=await c.newPage();const errs=[];p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
 const toast=async()=>p.textContent('#toast');const sub=async()=>{await p.click('.sheet footer button[type=submit]');await p.waitForTimeout(120);};
-await p.goto(URL);await p.click('.acct:has-text("Enos")');await p.click('.tabs a:has-text("项目")');await p.waitForTimeout(150);ok(p.url().endsWith('#/work') && (await p.locator('.tabs a').allTextContents()).join(',')==='首页,想法,任务,项目,我的','导航顺序：首页、想法、任务、项目、我的');ok(await p.locator('.sc-chip[data-do=workFilter]').count()>=4 && await p.evaluate(()=>document.querySelector('.w-card').getBoundingClientRect().top<innerHeight),'事项状态改为紧凑胶囊，打开即见项目');
+await p.goto(URL);await p.click('.acct:has-text("Enos")');await p.click('.tabs a:has-text("项目")');await p.waitForTimeout(150);ok(p.url().endsWith('#/work') && (await p.locator('.tabs a').allTextContents()).join(',')==='首页,想法,任务,项目,我的','导航顺序：首页、想法、任务、项目、我的');ok(await p.locator('.sc-chip[data-do=workFilter]').count()>=4 && await p.evaluate(()=>document.querySelector('.w-card').getBoundingClientRect().top<innerHeight),'项目状态改为紧凑胶囊，打开即见项目');
 ok((await p.textContent('.tk2-top h1'))==='项目','项目页标题');
 ok(await p.locator('.w-card').count()===2,'进行中 2 个项目');
 const meta=await p.locator('.w-card').first().locator('.wc-m').textContent();console.log('卡片信息:',meta);ok(/个任务未完成|任务已全部完成|还没有任务/.test(meta) && await p.locator('.w-card .wc-th').count()>=1,'卡片含图片与任务情况');

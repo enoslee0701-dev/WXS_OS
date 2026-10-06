@@ -23,9 +23,9 @@ rej(TM.act(s, DS, 'idea.claim', { id: I.id }), '执行者不能认领');
 must(TM.act(s, OP, 'idea.claim', { id: I.id }), '运营者认领');
 rej(TM.act(s, OP, 'idea.claim', { id: I.id }), '重复认领');
 rej(TM.act(s, OP, 'idea.route', { id: I.id, kind: 'admin', tasks: [{ title: 'x', ownerId: AX, expected: '', criteria: 'y' }] }), '缺预期成果');
-ok(s.workItems.length === 4, '失败操作已回滚（无多余事项）');
+ok(s.workItems.length === 4, '失败操作已回滚（无多余项目）');
 let r = must(TM.act(s, OP, 'idea.route', { id: I.id, kind: 'admin', title: '更换投影仪', tasks: [{ title: '采购并安装投影仪', ownerId: AX, expected: '安装照片', criteria: '能正常投屏' }] }), '派发行政任务');
-ok(I.status === 'planned', '想法变为已形成事项');
+ok(I.status === 'planned', '想法变为已形成项目');
 let Wid = r.workId; const W_ = () => s.workItems.find(w => w.id === Wid); let W = new Proxy({}, { get: (_, k) => W_()[k] });
 let Tid = s.tasks.find(x => x.workId === Wid).id; const T_ = () => s.tasks.find(x => x.id === Tid); let T = new Proxy({}, { get: (_, k) => T_()[k] });
 ok(T.reviewerId === OP, '行政任务验收人为运营者');
@@ -46,9 +46,9 @@ must(TM.act(s, AX, 'task.transition', { id: T.id, action: 'submit', media: Array
 { const dv = s.deliverables.filter(x => x.taskId === T.id).pop();
   ok(dv.media.length === 9 && dv.media[0].kind === 'file' && dv.media[1].kind === 'image' && dv.media[1].localId === 'b_dv1' && dv.note === '', '交付物照片最多 9 个，未知类型按文件处理'); }
 must(TM.act(s, OP, 'task.review', { id: T.id, verdict: 'pass', note: '通过' }), '验收通过');
-ok(T.status === 'done' && W.status === 'acceptance', '任务完成，事项待验收');
-must(TM.act(s, OP, 'work.close', { id: W.id }), '事项确认完成');
-ok(W.status === 'done', '事项完成');
+ok(T.status === 'done' && W.status === 'acceptance', '任务完成，项目待验收');
+must(TM.act(s, OP, 'work.close', { id: W.id }), '项目确认完成');
+ok(W.status === 'done', '项目完成');
 ok(s.events.filter(e => e.ideaId === I.id || e.workId === W.id).length >= 8, '全过程有审计事件');
 ok(TM.canViewIdea(s, O, I) && TM.canViewTask(s, O, T), '老板可查全过程');
 // 纠偏：撤销验收
@@ -56,7 +56,7 @@ const nReviews = s.reviews.length;
 rej(TM.act(s, OP, 'owner.override', { id: T.id, action: 'revoke', reason: 'x' }), '非老板纠偏');
 rej(TM.act(s, O, 'owner.override', { id: T.id, action: 'revoke', reason: '' }), '纠偏无原因');
 must(TM.act(s, O, 'owner.override', { id: T.id, action: 'revoke', reason: '投屏偏色，需复查' }), '老板撤销验收');
-ok(T.status === 'in_progress' && W.status === 'active', '任务回执行中，事项重开');
+ok(T.status === 'in_progress' && W.status === 'active', '任务回执行中，项目重开');
 ok(s.reviews.length === nReviews + 1 && s.reviews.some(x => x.verdict === 'pass' && x.taskId === T.id), '原验收记录保留，新增撤销记录');
 ok(s.notifications.some(n => n.userId === AX && n.title === '老板纠偏'), '相关人收到纠偏通知');
 
@@ -83,7 +83,7 @@ must(TM.act(s, OP, 'idea.claim', { id: I2.id }), '认领');
 rej(TM.act(s, OP, 'idea.route', { id: I2.id, kind: 'product' }), '产品未指定负责人');
 r = must(TM.act(s, OP, 'idea.route', { id: I2.id, kind: 'product', leadId: LD, title: '门徒圈语音灵修' }), '交项目负责人');
 Wid = r.workId;
-ok(W.status === 'planning' && W.leadId === LD, '事项待规划');
+ok(W.status === 'planning' && W.leadId === LD, '项目待规划');
 rej(TM.act(s, DV, 'work.plan', { id: W.id, tasks: [{ title: 'x', ownerId: DV, expected: 'a', criteria: 'b' }] }), '执行者不能安排任务');
 must(TM.act(s, LD, 'work.plan', { id: W.id, tasks: [{ title: '录制流程原型', ownerId: DS, expected: '可点原型', criteria: '能录能听' }] }), '负责人派任务');
 must(TM.act(s, LD, 'work.stage', { id: W.id, stage: 'prototype' }), '进入原型');
@@ -353,7 +353,7 @@ ok(dgp.next.length >= 1 && dgp.people.every(p => p.points.length), '有建议下
 ok(dgp.divergences.length === 1 && dgp.divergences[0].sides.some(x => x.who.includes('何静')), '识别分歧并标注是谁的观点');
 ok(s.ideas.find(x => x.id === 'I2').status === 'discussing', '总结不会结束讨论');
 
-// ===== 形成事项后附件锁定 =====
+// ===== 形成项目后附件锁定 =====
 s = fresh();
 must(TM.act(s, O, 'idea.create', { note: '会议室换投影仪', media: [{ kind: 'image', name: '旧投影仪.jpg' }] }), '建想法');
 const IlId = s.ideas[s.ideas.length - 1].id;
@@ -361,8 +361,8 @@ must(TM.act(s, O, 'idea.attach', { id: IlId, media: [{ kind: 'file', name: '型�
 must(TM.act(s, O, 'idea.submit', { id: IlId, path: 'direct' }), '提交');
 must(TM.act(s, OP, 'idea.claim', { id: IlId }), '认领');
 must(TM.act(s, OP, 'idea.attach', { id: IlId, media: [{ kind: 'file', name: '报价单.pdf' }] }), '待整理时运营者可补充');
-must(TM.act(s, OP, 'idea.route', { id: IlId, kind: 'admin', tasks: [{ title: '采购投影仪', ownerId: AX, expected: '照片', criteria: '能投屏' }] }), '派发形成事项');
-ok(TM.ideaLocked(s.ideas.find(x => x.id === IlId)), '形成事项后锁定');
+must(TM.act(s, OP, 'idea.route', { id: IlId, kind: 'admin', tasks: [{ title: '采购投影仪', ownerId: AX, expected: '照片', criteria: '能投屏' }] }), '派发形成项目');
+ok(TM.ideaLocked(s.ideas.find(x => x.id === IlId)), '形成项目后锁定');
 rej(TM.act(s, O, 'idea.attach', { id: IlId, media: [{ kind: 'file', name: '补充.pdf' }] }), '锁定后老板也不能加');
 rej(TM.act(s, O, 'idea.detach', { id: IlId, index: 0 }), '锁定后不能删');
 must(TM.act(s, O, 'idea.mediaShow', { id: IlId, index: 0, show: false }), '锁定后仍可设置呈现');
@@ -852,7 +852,7 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   ok(tg.nextDate >= TM.todayStr(g2), '下一次不早于今天 ' + tg.nextDate);
   rej(TM.act(g2, O, 'work.plan', { id: g2.workItems.find(w => w.status === 'active').id, tasks: [{ title: 'x', ownerId: DV, reviewerId: DV, expected: 'a', criteria: 'b' }] }), '派任务时验收人不能是执行人'); }
 
-// ===== 对照开发者文档补齐：共创截止、事项级上报、老板复核、事项受阻、定时提醒 =====
+// ===== 对照开发者文档补齐：共创截止、项目级上报、老板复核、项目受阻、定时提醒 =====
 { let tt = Date.UTC(2026, 9, 1, 3); const ck = () => tt; const z = TM.seed(ck), day = 864e5;
   // 共创截止：截止当天提醒，过了自动结束（没有建议也能结束）
   const ci = must(TM.act(z, LD, 'idea.create', { note: '年会节目' }), '负责人建想法');
@@ -862,7 +862,7 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   ok(z.notifications.some(n => n.userId === LD && /今天截止/.test(n.title)), '截止当天提醒发起人');
   tt += 2 * day; const dd = must(TM.act(z, 'agent', 'system.discussionDue', {}), '过了截止日');
   ok(dd.closed === 1 && z.ideas.find(d => d.id === ci.id).status === 'summary_ready' && z.notifications.some(n => n.userId === LD && /共创汇总完成/.test(n.title)), '过了截止日自动结束并通知发起人');
-  // 事项级上报
+  // 项目级上报
   const w = z.workItems.find(x => x.status === 'active' && x.leadId);
   rej(TM.act(z, DV, 'work.requestDecision', { id: w.id, kind: 'over_budget', question: '要加钱' }), '执行者不能上报');
   const rd = must(TM.act(z, w.leadId, 'work.requestDecision', { id: w.id, kind: 'over_budget', question: '采购超预算 3000，是否同意？' }), '负责人在项目里上报老板');
@@ -874,12 +874,12 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   must(TM.act(z, O, 'task.reviewComment', { id: st.id, note: '方案再补一份预算表' }), '老板写复核意见');
   ok(z.reviews.some(r => r.taskId === st.id && r.verdict === 'comment') && z.tasks.find(t => t.id === st.id).status === st.status, '复核意见只追加记录、不改状态');
   rej(TM.act(z, OP, 'task.reviewComment', { id: st.id, note: 'x' }), '非老板不能写复核意见');
-  // 事项受阻
+  // 项目受阻
   const at = z.tasks.find(t => ['accepted', 'in_progress'].includes(t.status) && z.workItems.find(x => x.id === t.workId).status === 'active');
   must(TM.act(z, at.ownerId, 'task.transition', { id: at.id, action: 'block', note: '等报价' }), '报阻碍');
-  ok(z.workItems.find(x => x.id === at.workId).status === 'blocked', '任务受阻时事项标为受阻');
+  ok(z.workItems.find(x => x.id === at.workId).status === 'blocked', '任务受阻时项目标为受阻');
   must(TM.act(z, at.ownerId, 'task.transition', { id: at.id, action: 'unblock', note: '报价到了' }), '解除');
-  ok(z.workItems.find(x => x.id === at.workId).status === 'active', '解除后事项回到进行中');
+  ok(z.workItems.find(x => x.id === at.workId).status === 'active', '解除后项目回到进行中');
   // 产品项目：运营者不能安排执行人
   const pw = z.workItems.find(x => x.kind === 'product' && x.operatorId && x.status !== 'done');
   if (pw) rej(TM.act(z, pw.operatorId, 'work.plan', { id: pw.id, tasks: [{ title: 'x', ownerId: DV, expected: 'a', criteria: 'b' }] }), '产品项目由负责人安排执行人');

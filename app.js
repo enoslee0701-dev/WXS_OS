@@ -185,7 +185,7 @@
     var flags = S.tasks.filter(function (t) { return t.workId === w.id && (t.status === 'blocked' || TM.isOverdue(S, t) || TM.isStale(S, t)); }).length;
     var meta = ['<span>' + L.kind[w.kind] + '</span>', '<span>阶段：' + esc(TM.stageName(w.kind, w.stage)) + '</span>', '<span>任务 ' + p.done + '/' + p.total + '</span>'];
     if (flags) meta.push('<span class="r">' + flags + ' 项需关注</span>');
-    var nx = w.status === 'planning' ? { who: w.leadId, what: '安排任务' } : w.status === 'acceptance' ? { who: w.reviewerId, what: '确认事项完成' } : null;
+    var nx = w.status === 'planning' ? { who: w.leadId, what: '安排任务' } : w.status === 'acceptance' ? { who: w.reviewerId, what: '确认项目完成' } : null;
     return '<a class="row' + (flags ? ' flag' : '') + '" href="#/work/' + w.id + '"><div class="t"><span>' + esc(w.title) + '</span>' + pill('work', w.status) + '</div><div class="m">' + meta.join('') + '</div>' +
       (p.total ? '<div class="bar"><i style="width:' + Math.round(p.done / p.total * 100) + '%"></i></div>' : '') + batonHTML(nx) + '</a>';
   }
@@ -212,7 +212,7 @@
   /* ---------- 页面：登录 ---------- */
   var ROLE_DESC = {
     u_owner: '录想法、做例外决策、查看全局、纠偏', u_op: '认领想法、复核整理稿、派发、跟进、验收行政任务',
-    u_lead: '发起想法、规划产品事项、派执行人、验收', u_admin_ex: '行政执行：接收、执行、交付', u_design: '产品执行：原型与 UI',
+    u_lead: '发起想法、规划产品项目、派执行人、验收', u_admin_ex: '行政执行：接收、执行、交付', u_design: '产品执行：原型与 UI',
     u_dev: '产品执行：开发', u_sys: '管理成员与配置，看不到想法内容'
   };
   /* ---------- 服务器模式：登录 / 创建团队 ---------- */
@@ -387,7 +387,7 @@
     });
     vWork().forEach(function (w) {
       if ((w.status === 'planning' && w.leadId === me) || (w.status === 'acceptance' && w.reviewerId === me))
-        out.push({ title: (w.status === 'planning' ? '安排任务：' : '确认完成：') + w.title, tag: ['事项', 'tg-blue'], prio: 'mid', who: w.operatorId, due: dueLabel(w.due), href: '#/work/' + w.id, at: w.createdAt, date: actDate(w.due), comments: 0, mine: false, people: [w.operatorId] });
+        out.push({ title: (w.status === 'planning' ? '安排任务：' : '确认完成：') + w.title, tag: ['项目', 'tg-blue'], prio: 'mid', who: w.operatorId, due: dueLabel(w.due), href: '#/work/' + w.id, at: w.createdAt, date: actDate(w.due), comments: 0, mine: false, people: [w.operatorId] });
     });
     var rank = { hi: 0, mid: 1, lo: 2 };
     return out.sort(function (a, b) { return (a.done ? 1 : 0) - (b.done ? 1 : 0) || rank[a.prio] - rank[b.prio]; });
@@ -469,7 +469,7 @@
     var t0 = TM.todayStr(S);
     return unified().filter(function (x) { return x.date <= t0 && (!x.done || isToday(x.doneAt || 0)); }).map(function (x) {
       var tag = x.tags.filter(function (g) { return g !== '高优先级'; })[0] || '待办';
-      return { title: x.title, tag: [tag, tag === '决策' || tag === '想法' ? 'tg-purple' : tag === '产品' || tag === '事项' ? 'tg-blue' : 'tg-green'], prio: x.prio, who: x.people[0] || me, due: { t: x.time ? (x.date < t0 ? '逾期' : '今天 ') + x.time : x.timeLabel || '今天', bad: x.date < t0 }, href: x.sys ? x.href : '#/tasks', done: x.done };
+      return { title: x.title, tag: [tag, tag === '决策' || tag === '想法' ? 'tg-purple' : tag === '产品' || tag === '项目' ? 'tg-blue' : 'tg-green'], prio: x.prio, who: x.people[0] || me, due: { t: x.time ? (x.date < t0 ? '逾期' : '今天 ') + x.time : x.timeLabel || '今天', bad: x.date < t0 }, href: x.sys ? x.href : '#/tasks', done: x.done };
     }).sort(function (a, b) { return (a.done ? 1 : 0) - (b.done ? 1 : 0) || ({ hi: 0, mid: 1, lo: 2 })[a.prio] - ({ hi: 0, mid: 1, lo: 2 })[b.prio]; });
   }
   function viewTodo() {
@@ -495,7 +495,7 @@
     return '<div class="chips">' + TF.map(function (x) { return '<button class="' + (f === x[0] ? 'on' : '') + '" data-do="tasksFilter" data-f="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</div>' +
       list(ts.map(function (t) { return taskRow(t); }), role() === 'admin' ? '管理员不参与任务。' : '这个分类下没有任务。');
   }
-  function projSeg(on) { return '<div class="seg"><button class="' + (on === 'work' ? 'on' : '') + '" data-do="goWork">事项</button><button class="' + (on === 'ideas' ? 'on' : '') + '" data-do="goIdeas">想法</button></div>'; }
+  function projSeg(on) { return '<div class="seg"><button class="' + (on === 'work' ? 'on' : '') + '" data-do="goWork">项目</button><button class="' + (on === 'ideas' ? 'on' : '') + '" data-do="goIdeas">想法</button></div>'; }
   /* 全局搜索：在自己能看到的数据里找（S 已按身份裁剪）。多个词同时匹配、不分大小写；结果按类别分组、片段里高亮命中的词 */
   function searchAll(raw) {
     var ks = String(raw || '').toLowerCase().split(/\s+/).filter(Boolean); if (!ks.length) return [];
@@ -575,7 +575,7 @@
     cocreate: ['共创中', '团队一起出主意', '<circle cx="9" cy="8.5" r="3"/><path d="M3.8 19c.8-2.9 2.7-4.4 5.2-4.4s4.4 1.5 5.2 4.4M15.2 5.8a3 3 0 0 1 0 5.4M16.8 14.8c1.7.5 2.9 1.9 3.4 4.2"/>', 'ib-violet'],
     triage: ['待整理', '等运营认领', '<path d="M4 7h16M4 12h10M4 17h6"/><circle cx="18" cy="16" r="3"/>', 'ib-amber'],
     awaiting: ['等决策', '等老板拍板', '<path d="M6 21V4"/><path d="M6 4.5h11l-2.5 4 2.5 4H6"/>', 'ib-red'],
-    planned: ['进行中', '已形成事项', '<circle cx="12" cy="12" r="8.5"/><path d="M10 8.8v6.4l5-3.2z"/>', 'ib-blue'],
+    planned: ['进行中', '已形成项目', '<circle cx="12" cy="12" r="8.5"/><path d="M10 8.8v6.4l5-3.2z"/>', 'ib-blue'],
     finished: ['已完成', '结果已交付', '<circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.3l2.4 2.4 4.6-5"/>', 'ib-green'],
     closed: ['暂缓 / 不做', '先放一放', '<circle cx="12" cy="12" r="8.5"/><path d="M10 9v6M14 9v6"/>', 'ib-gray'],
     mine: ['我参与的', '提过建议或有我的任务', '<circle cx="10" cy="8" r="3.2"/><path d="M4 19.5c.7-3.1 3-4.8 6-4.8 1.3 0 2.4.3 3.4.9"/><path d="M15 17.2l2 2 3.5-3.7"/>', 'ib-amber']
@@ -1309,7 +1309,7 @@
   var WK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
   function dayInfo(off) { var d = new Date(); d.setDate(d.getDate() + off); var ds = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); return { ds: ds, name: off === 0 ? '今天' : off === 1 ? '明天' : WK[d.getDay()], md: (d.getMonth() + 1) + '/' + d.getDate() }; }
   function relDay(ds) { var n = dayDiff(ds); if (n == null) return ''; if (n < 0) return '逾期'; if (n === 0) return '今天'; if (n === 1) return '明天'; if (n === 2) return '后天'; if (n < 7) { var p = ds.split('-'); return WK[new Date(+p[0], p[1] - 1, +p[2]).getDay()]; } var q = ds.split('-'); return +q[1] + '月' + +q[2] + '日'; }
-  var TAGC = { '高优先级': 'k-red', '想法': 'k-blue', '会议': 'k-violet', '决策': 'k-violet', '沟通': 'k-green', '数据': 'k-violet', '个人成长': 'k-orange', '事工': 'k-orange', '工作': 'k-blue', '学习': 'k-green', '内容': 'k-violet', '活动': 'k-green', '运维': 'k-gray', '产品': 'k-blue', '行政': 'k-green', '事项': 'k-blue', '任务': 'k-blue', '运营': 'k-green' };
+  var TAGC = { '高优先级': 'k-red', '想法': 'k-blue', '会议': 'k-violet', '决策': 'k-violet', '沟通': 'k-green', '数据': 'k-violet', '个人成长': 'k-orange', '事工': 'k-orange', '工作': 'k-blue', '学习': 'k-green', '内容': 'k-violet', '活动': 'k-green', '运维': 'k-gray', '产品': 'k-blue', '行政': 'k-green', '项目': 'k-blue', '任务': 'k-blue', '运营': 'k-green' };
   function unified() {
     TM.ensureTodos(S);
     var out = S.todos.filter(function (t) { return t.ownerId === me || t.people.indexOf(me) >= 0; }).map(function (t) {
@@ -1371,7 +1371,7 @@
     '事工': '<path d="M12 20s-7-4.3-7-9.6A4 4 0 0 1 12 8a4 4 0 0 1 7 2.4C19 15.7 12 20 12 20z"/>',
     '产品': '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/>',
     '行政': '<path d="M4 21V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M15 10h4a1 1 0 0 1 1 1v10M3 21h18M8 8h3M8 12h3M8 16h3"/>',
-    '事项': '<path d="M3.8 8.2a2.7 2.7 0 0 1 2.7-2.7h3l2 2.2h6a2.7 2.7 0 0 1 2.7 2.7v6.9a2.7 2.7 0 0 1-2.7 2.7h-11a2.7 2.7 0 0 1-2.7-2.7z"/>',
+    '项目': '<path d="M3.8 8.2a2.7 2.7 0 0 1 2.7-2.7h3l2 2.2h6a2.7 2.7 0 0 1 2.7 2.7v6.9a2.7 2.7 0 0 1-2.7 2.7h-11a2.7 2.7 0 0 1-2.7-2.7z"/>',
     '任务': '<rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8.6 12.2l2.3 2.3 4.6-4.8"/>',
     '待办': '<circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.3l2.4 2.4 4.6-5"/>'
   };
@@ -1379,7 +1379,7 @@
     var path = TGI[g] || '<path d="M3.5 12V5a1.5 1.5 0 0 1 1.5-1.5h7l8.5 8.5-8.5 8.5z"/><circle cx="8" cy="8" r="1.3"/>';
     return '<i class="tg' + (g === '高优先级' ? ' tg-hi' : '') + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + path + '</svg>' + esc(g) + '</i>';
   }
-  var TACC = { '高优先级': ['#F0475A', 'c-hi'], '决策': ['#9AA3B2', 'c-gray'], '沟通': ['#9AA7BC', 'c-slate'], '数据': ['#C9D0DA', 'c-gray'], '个人成长': ['#E8C48C', 'c-amber'], '事工': ['#E8C48C', 'c-amber'], '想法': ['#C6BEF3', 'c-lav'], '会议': ['#AFC3E8', 'c-slate'], '工作': ['#AFC3E8', 'c-slate'], '学习': ['#B9DCC8', 'c-mint'], '内容': ['#C6BEF3', 'c-lav'], '活动': ['#B9DCC8', 'c-mint'], '运维': ['#C9D0DA', 'c-gray'], '产品': ['#AFC3E8', 'c-slate'], '行政': ['#B9DCC8', 'c-mint'], '事项': ['#AFC3E8', 'c-slate'], '任务': ['#AFC3E8', 'c-slate'], '待办': ['#C9D0DA', 'c-gray'] };
+  var TACC = { '高优先级': ['#F0475A', 'c-hi'], '决策': ['#9AA3B2', 'c-gray'], '沟通': ['#9AA7BC', 'c-slate'], '数据': ['#C9D0DA', 'c-gray'], '个人成长': ['#E8C48C', 'c-amber'], '事工': ['#E8C48C', 'c-amber'], '想法': ['#C6BEF3', 'c-lav'], '会议': ['#AFC3E8', 'c-slate'], '工作': ['#AFC3E8', 'c-slate'], '学习': ['#B9DCC8', 'c-mint'], '内容': ['#C6BEF3', 'c-lav'], '活动': ['#B9DCC8', 'c-mint'], '运维': ['#C9D0DA', 'c-gray'], '产品': ['#AFC3E8', 'c-slate'], '行政': ['#B9DCC8', 'c-mint'], '项目': ['#AFC3E8', 'c-slate'], '任务': ['#AFC3E8', 'c-slate'], '待办': ['#C9D0DA', 'c-gray'] };
   function tagChip(g) { var c = TACC[g] || ['#C9D0DA', 'c-gray']; return '<i class="tg2 ' + c[1] + (g === '高优先级' ? ' tg-hi' : '') + '"><em style="background:' + c[0] + '"></em>' + esc(g) + '</i>'; }
   function tdCard(x) {
     var circle = x.personal && x.own ? '<button class="t-chk' + (x.done ? ' on' : '') + '" data-do="tdToggle" data-id="' + x.id + '" aria-label="' + (x.done ? '标为未完成' : '标为完成') + '"></button>' : '<span class="t-chk' + (x.done ? ' on' : '') + (x.sys ? ' sys' : '') + '" aria-hidden="true"></span>';
@@ -1434,7 +1434,7 @@
     { key: 'meeting', name: '会议纪要', sub: '讨论 / 决策 / 跟进', icon: 'team', c: 'c-indigo', tags: ['会议'], scope: 'team', note: '【讨论】\n【决策】\n【跟进】', title: '会议纪要：' },
     { key: 'study', name: '学习计划', sub: '课程 / 阅读 / 练习', icon: 'grad', c: 'c-teal', tags: ['学习'], scope: 'mine' },
     { key: 'content', name: '内容创作', sub: '文案 / 视频 / 设计', icon: 'brush', c: 'c-pink', tags: ['内容'], scope: 'mine' },
-    { key: 'personal', name: '个人事项', sub: '生活 / 健康 / 其他', icon: 'person', c: 'c-orange', tags: ['个人成长'], scope: 'other' },
+    { key: 'personal', name: '个人项目', sub: '生活 / 健康 / 其他', icon: 'person', c: 'c-orange', tags: ['个人成长'], scope: 'other' },
     { key: 'event', name: '活动策划', sub: '筹备 / 分工 / 物资', icon: 'event', c: 'c-green', tags: ['活动'], scope: 'team' },
     { key: 'custom', name: '自定义模板', sub: '按需创建', icon: 'more', c: 'c-gray', tags: [], scope: 'mine' }
   ];
@@ -1971,7 +1971,7 @@
       '<div class="tm-stats me-stats">' + tiles.map(function (t) { return '<a class="tm-stat" href="' + t[4] + '"><span class="tm-si sq ' + t[0] + '">' + t[1] + '</span><b>' + t[2] + '</b><small>' + t[3] + '</small></a>'; }).join('') + '</div>' +
       '<a class="me-team" href="#/team"><span class="me-ic blue">' + ti('team', 1.8) + '</span><span class="me-tt"><b>我的团队</b><small>' + S.users.length + ' 位伙伴 · ' + TM.GROUPS.filter(function (g) { return S.users.some(function (u) { return u.group === g; }); }).length + ' 个分组</small></span><span class="h-stack">' + S.users.slice(0, 4).map(function (u) { return av(u.id, true); }).join('') + (S.users.length > 4 ? '<i class="w-more-n">+' + (S.users.length - 4) + '</i>' : '') + '</span>' + hi('chev', 2) + '</a>' +
       '<a class="me-team me-kb" href="#/kb"><span class="me-ic kbic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/><path d="M9 8h7M9 11.5h5"/></svg></span><span class="me-tt"><b>AI 知识库</b><small>' + TM.kbVisible(S, me).filter(function (k) { return k.on; }).length + ' 份资料 · 让 AI 了解公司和老板的想法</small></span>' + hi('chev', 2) + '</a>' +
-      (SRV ? '' : '<button class="me-team me-demo" data-do="demoStart"><span class="me-ic dk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg></span><span class="me-tt"><b>演示向导</b><small>一键走完 想法 → 整理 → 事项 → 执行 → 验收</small></span>' + hi('chev', 2) + '</button>') +
+      (SRV ? '' : '<button class="me-team me-demo" data-do="demoStart"><span class="me-ic dk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 5l12 7-12 7z"/></svg></span><span class="me-tt"><b>演示向导</b><small>一键走完 想法 → 整理 → 项目 → 执行 → 验收</small></span>' + hi('chev', 2) + '</button>') +
       '<section class="me-sec"><div class="me-sh">' + ic(ai2('ops', 1.8)).replace('me-ic', 'me-ic blue') + '<b>工作概览</b></div>' + homeStats().map(function (x) { return '<a class="me-info me-ov" href="#/stat/' + x.k + '">' + hi(x.icon, 1.7).replace('<svg ', '<svg class="' + x.cls + '" ') + '<span>' + esc(x.label) + '</span><b><strong>' + x.n + '</strong></b>' + hi('chev', 2) + '</a>'; }).join('') + '</section>' +
       (can ? '<section class="me-sec"><a class="me-sh" href="#/settings">' + ic('<svg viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z" fill="#fff"/><path d="M19.4 13.5l1.6 1.2-1.8 3.2-1.9-.7a7 7 0 0 1-1.8 1l-.3 2h-3.6l-.3-2a7 7 0 0 1-1.8-1l-1.9.7-1.8-3.2 1.6-1.2a7 7 0 0 1 0-2.1L4.6 10.3 6.4 7l1.9.8a7 7 0 0 1 1.8-1l.3-2h3.6l.3 2a7 7 0 0 1 1.8 1l1.9-.8 1.8 3.3-1.6 1.1a7 7 0 0 1 0 2.1z" fill="currentColor"/><circle cx="12" cy="12" r="2.6" fill="#E8F0FF"/></svg>').replace('me-ic', 'me-ic blue') + '<b>流程开关</b><small>根据团队需要灵活设置</small>' + hi('chev', 2) + '</a>' +
       
@@ -2260,7 +2260,7 @@
   function trailIdea(d) {
     var ws = S.workItems.filter(function (w) { return w.ideaId === d.id; });
     var ts = S.tasks.filter(function (t) { return ws.some(function (w) { return w.id === t.workId; }); });
-    var steps = [['想法', d.status !== 'draft'], ['整理', ['planned'].indexOf(d.status) >= 0], ['事项', ws.length > 0], ['执行', ts.length && ts.every(function (t) { return t.status === 'done' || t.status === 'cancelled'; })], ['验收', ws.length && ws.every(function (w) { return w.status === 'done'; })]];
+    var steps = [['想法', d.status !== 'draft'], ['整理', ['planned'].indexOf(d.status) >= 0], ['项目', ws.length > 0], ['执行', ts.length && ts.every(function (t) { return t.status === 'done' || t.status === 'cancelled'; })], ['验收', ws.length && ws.every(function (w) { return w.status === 'done'; })]];
     return trail(steps);
   }
   function trail(steps) {
@@ -2325,7 +2325,7 @@
   }
   function fileKind(m) { var n = (m.name || '').toLowerCase(); return m.kind === 'audio' ? ['ix-a', 'mic'] : m.kind === 'video' ? ['ix-v', 'vcam'] : m.kind === 'image' || /\.(png|jpe?g|gif|webp)/.test(n) ? ['ix-i', 'img'] : /\.pdf/.test(n) ? ['ix-p', 'doc2'] : /\.(xlsx?|csv)/.test(n) ? ['ix-x', 'doc2'] : ['ix-d', 'doc2']; }
   function ixHead(t, sub, more) { return '<header class="ix-hd ix2-hd"><button class="circle" data-do="back" aria-label="返回">' + hi('chev', 2.2).replace('M9 6l6 6-6 6', 'M15 6l-6 6 6 6') + '</button><div><h1>' + t + '</h1><p>' + sub + '</p></div>' + (more ? '<button class="circle ix-dots" data-do="ixMore" aria-label="更多">' + ti('more', 1.6) + '</button>' : '<span></span>') + '</header>'; }
-  function ixSteps(d) { var st = ideaStep(d); return '<section class="ix-steps ix2-steps">' + ['想法', '整理', '事项', '执行', '验收'].map(function (t, i) { return '<div class="' + (i < st ? 'done' : i === st ? 'cur' : '') + '"><i>' + (i < st ? ni('check', 2.6) : '') + '</i><span>' + t + '</span></div>'; }).join('') + '</section>'; }
+  function ixSteps(d) { var st = ideaStep(d); return '<section class="ix-steps ix2-steps">' + ['想法', '整理', '项目', '执行', '验收'].map(function (t, i) { return '<div class="' + (i < st ? 'done' : i === st ? 'cur' : '') + '"><i>' + (i < st ? ni('check', 2.6) : '') + '</i><span>' + t + '</span></div>'; }).join('') + '</section>'; }
   function ixDate(ts) { var d = new Date(ts), y = d.getFullYear() !== new Date().getFullYear(); return (y ? d.getFullYear() + '年' : '') + (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); } // 和全站「10月6日」写法一致
   function ixSource(d) { var k = (d.media || []).map(function (m) { return m.kind; }); return k.indexOf('audio') >= 0 ? '语音记录' : k.indexOf('video') >= 0 ? '视频记录' : k.length ? '文件导入' : '想法记录'; }
   function ixDenied() { return ixHead('想法详情', '把想法变成行动') + emptyBox('这个想法不存在，或你没有查看权限。'); }
@@ -2352,14 +2352,14 @@
     if (d.path === 'cocreate' || sugg.length) h += discHTML(d);
     if (d.status === 'summary_ready') h += cocreateHTML(d, true);
     if (d.media.length || canAttach) h += ixFiles(d, canAttach, canMedia);
-    if (ws.length) h += '<section class="ix2-card"><div class="ix2-sh"><b>' + ai2('flagO', 1.7) + '形成的事项（' + ws.length + '）</b></div><div class="ix2-wks">' + ws.map(ixWorkRow).join('') + '</div></section>';
+    if (ws.length) h += '<section class="ix2-card"><div class="ix2-sh"><b>' + ai2('flagO', 1.7) + '形成的项目（' + ws.length + '）</b></div><div class="ix2-wks">' + ws.map(ixWorkRow).join('') + '</div></section>';
     h += flowHTML(d);
     return h;
   }
   function ixWorkRow(w) {
     var p = TM.workProgress(S, w.id), pc = p.total ? Math.round(p.done / p.total * 100) : 0;
     var flags = S.tasks.filter(function (t) { return t.workId === w.id && (t.status === 'blocked' || TM.isOverdue(S, t) || TM.isStale(S, t)); }).length;
-    var nx = w.status === 'planning' ? [w.leadId, '安排任务'] : w.status === 'acceptance' ? [w.reviewerId, '确认事项完成'] : null;
+    var nx = w.status === 'planning' ? [w.leadId, '安排任务'] : w.status === 'acceptance' ? [w.reviewerId, '确认项目完成'] : null;
     return '<a class="ix2-wk" href="#/work/' + w.id + '"><span class="ix2-wkt"><b>' + esc(w.title) + '</b>' + pill('work', w.status) + '</span>' +
       '<span class="ix2-wkm">' + L.kind[w.kind] + ' · ' + esc(TM.stageName(w.kind, w.stage)) + ' · 任务 ' + p.done + '/' + p.total + (flags ? '<em>' + flags + ' 项需关注</em>' : '') + '</span>' +
       (p.total ? '<span class="ix2-wkb"><i style="width:' + pc + '%"></i></span>' : '') +
@@ -2398,15 +2398,15 @@
       (fold ? '<button class="ix2-more" data-do="ixFold" aria-expanded="false"><span>看理由</span>' + hi('chev', 2) + '</button>' : '') + '</div>';
   }
   /* 落实过程：谁在什么时候接手了这件事 */
-  var FLOW_STAGE = ['想法', '整理', '事项', '执行', '验收'];
+  var FLOW_STAGE = ['想法', '整理', '项目', '执行', '验收'];
   function flowMap(e, d) {
     var a = e.action, who = e.actorType === 'agent' ? 'AI 助理' : e.actorType === 'system' ? '系统' : nm(e.actorId), T = e.taskId ? T_(e.taskId) : null, tt = T ? '「' + T.title + '」' : '';
     var m = {
       'idea.create': [0, '记录了这个想法'], 'idea.submit': [0, e.to === 'discussing' ? '提交，开启团队共创' : '提交，直接推进'], 'idea.suggest': [0, '提了建议'], 'idea.close_discussion': [0, '结束讨论，AI 汇总'], 'idea.confirm_direction': [0, '确认了方向'], 'idea.reopen': [0, '重新开放讨论'],
       'ai.analyze.ready': [1, '生成整理稿'], 'ai.reanalyze': [1, '重新整理'], 'idea.claim': [1, '认领跟进'], 'decision.request': [1, '报老板决策'], 'idea.to_owner': [1, '送老板确认'], 'decision.approved': [1, '批准'], 'decision.rejected': [1, '否决'], 'decision.needs_info': [1, '要求补充'], 'idea.status': [1, e.text || '改了状态'],
-      'idea.route': [2, e.text || '形成事项'], 'task.assign': [2, '派任务' + tt + '：' + (e.text || '')], 'work.stage': [2, e.text || '推进阶段'], 'work.status': [2, e.text || '事项状态变化'], 'work.resume': [2, '恢复事项'],
+      'idea.route': [2, e.text || '形成项目'], 'task.assign': [2, '派任务' + tt + '：' + (e.text || '')], 'work.stage': [2, e.text || '推进阶段'], 'work.status': [2, e.text || '项目状态变化'], 'work.resume': [2, '恢复项目'],
       'task.accept': [3, '接收任务' + tt], 'task.start': [3, '开始做' + tt], 'task.submit': [3, '提交成果' + tt], 'task.block': [3, '报阻碍' + tt + (e.reason ? '：' + e.reason : '')], 'task.unblock': [3, '解除阻碍' + tt], 'task.cancel': [3, '取消任务' + tt],
-      'task.review.pass': [4, '验收通过' + tt], 'task.review.return': [4, '退回' + tt + (e.reason ? '：' + e.reason : '')], 'task.owner_pass': [4, '终验通过' + tt], 'task.owner_return': [4, '终验退回' + tt], 'work.done': [4, '确认事项完成'], 'work.attach': [3, e.text || '上传文件']
+      'task.review.pass': [4, '验收通过' + tt], 'task.review.return': [4, '退回' + tt + (e.reason ? '：' + e.reason : '')], 'task.owner_pass': [4, '终验通过' + tt], 'task.owner_return': [4, '终验退回' + tt], 'work.done': [4, '确认项目完成'], 'work.attach': [3, e.text || '上传文件']
     }[a];
     if (!m && a === 'decision.request') m = [1, '报老板决策'];
     if (!m) return null;
@@ -2560,7 +2560,7 @@
     return a;
   }
 
-  /* ---------- 页面：事项 ---------- */
+  /* ---------- 页面：项目 ---------- */
   var WF = [['active', '进行中'], ['planning', '待规划'], ['acceptance', '待验收'], ['done', '已完成']];
   var WST = { active: ['进行中', 'ws-blue'], blocked: ['受阻', 'ws-red'], paused: ['暂停', 'ws-gray'], planning: ['待规划', 'ws-orange'], acceptance: ['待验收', 'ws-gray'], done: ['已完成', 'ws-green'], cancelled: ['已取消', 'ws-gray'] };
   var WI = {
@@ -2811,7 +2811,7 @@
   function memRole(w, u) { return u === w.leadId ? '项目负责人' : u === w.operatorId ? '跟进运营' : u === w.reviewerId ? '验收人' : pRole(u); }
   function moreOps(w) {
     var a = [], ow = isOwner();
-    if (w.status === 'acceptance' && (w.reviewerId === me || ow)) a.push([w.reviewerId === me ? '确认事项完成' : '老板代验收（确认完成）', 'closeWork']);
+    if (w.status === 'acceptance' && (w.reviewerId === me || ow)) a.push([w.reviewerId === me ? '确认项目完成' : '老板代验收（确认完成）', 'closeWork']);
     if ((w.leadId === me || (w.kind !== 'product' && w.operatorId === me) || ow) && TM.STAGES[w.kind].length > 1 && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['推进阶段', 'stage']);
     if (ow && ['planning', 'active', 'acceptance', 'blocked'].indexOf(w.status) >= 0) a.push(['暂停', 'pause']);
     if (ow && w.status === 'paused') a.push(['恢复', 'resume']);
@@ -2875,7 +2875,7 @@
     if (!t || !TM.canViewTask(S, me, t)) return ixHead('任务详情', '把事情做完、做好') + emptyBox('这个任务不存在，或你没有查看权限。');
     var w = W(t.workId), d = w && w.ideaId ? I(w.ideaId) : null;
     var stp = t.status === 'done' ? 5 : ['submitted', 'owner_review'].indexOf(t.status) >= 0 ? 4 : 3;
-    var steps = '<section class="ix-steps ix2-steps">' + ['想法', '整理', '事项', '执行', '验收'].map(function (n, i) { var href = i === 0 && d && TM.canViewIdea(S, me, d) ? '#/idea/' + d.id : i === 2 ? '#/work/' + w.id : null; return '<div ' + (href ? 'role="link" tabindex="0" data-do="goH" data-h="' + href + '" style="cursor:pointer" ' : '') + 'class="' + (i < stp ? 'done' : i === stp ? 'cur' : '') + '"><i>' + (i < stp ? ni('check', 2.6) : '') + '</i><span>' + n + '</span></div>'; }).join('') + '</section>';
+    var steps = '<section class="ix-steps ix2-steps">' + ['想法', '整理', '项目', '执行', '验收'].map(function (n, i) { var href = i === 0 && d && TM.canViewIdea(S, me, d) ? '#/idea/' + d.id : i === 2 ? '#/work/' + w.id : null; return '<div ' + (href ? 'role="link" tabindex="0" data-do="goH" data-h="' + href + '" style="cursor:pointer" ' : '') + 'class="' + (i < stp ? 'done' : i === stp ? 'cur' : '') + '"><i>' + (i < stp ? ni('check', 2.6) : '') + '</i><span>' + n + '</span></div>'; }).join('') + '</section>';
     var od = TM.isOverdue(S, t), st = TM.isStale(S, t), nx = TM.nextForTask(S, t), mine = t.ownerId === me;
     var IC = function (path, c) { return '<svg viewBox="0 0 24 24" fill="none" stroke="' + (c || 'currentColor') + '" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + path + '</svg>'; };
     var h = ixHead('任务详情', '把事情做完、做好') + steps +
@@ -2912,7 +2912,7 @@
   function taskActions(t) {
     if (!t || !TM.canViewTask(S, me, t)) return [];
     var w = W(t.workId), a = [], o = t.ownerId === me, ow = isOwner();
-    if (w.status === 'paused') return ow ? [['恢复事项', 'resume', 'pri', w.id]] : [];
+    if (w.status === 'paused') return ow ? [['恢复项目', 'resume', 'pri', w.id]] : [];
     if (o && t.status === 'assigned') { a.push(['报阻碍', 'block']); a.push(['接收任务', 'tt', 'pri', 'accept']); }
     if (o && t.status === 'accepted') { a.push(['报阻碍', 'block']); a.push(['开始执行', 'tt', 'pri', 'start']); }
     if (o && t.status === 'in_progress') { a.push(['报阻碍', 'block']); a.push(['提交成果', 'submit', 'pri']); }
@@ -2926,7 +2926,7 @@
   }
 
   /* ---------- 页面：通知、设置 ---------- */
-  function nKind(n) { var t = n.title + n.body; return /决策/.test(t) ? 'dec' : /@|提到了你/.test(t) ? 'at' : /邀请|加入|新成员/.test(t) ? 'team' : /进度|完成|里程碑|阶段|事项/.test(n.title) ? 'proj' : /待办|评论|留言|建议|提醒/.test(t) ? 'cmt' : 'sys'; }
+  function nKind(n) { var t = n.title + n.body; return /决策/.test(t) ? 'dec' : /@|提到了你/.test(t) ? 'at' : /邀请|加入|新成员/.test(t) ? 'team' : /进度|完成|里程碑|阶段|项目/.test(n.title) ? 'proj' : /待办|评论|留言|建议|提醒/.test(t) ? 'cmt' : 'sys'; }
   var NK = {
     dec: ['n-red', '<svg viewBox="0 0 24 24"><path d="M6 21V4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M6 4h12l-3 4.5 3 4.5H6z" fill="currentColor"/></svg>'],
     at: ['n-blue', '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3.8"/><path d="M15.8 12v1.6a2.6 2.6 0 0 0 5.2 0V12a9 9 0 1 0-3.6 7.2"/></svg>'],
@@ -3095,7 +3095,7 @@
       openSheet('推进阶段', '<div class="opts">' + TM.STAGES[w.kind].map(function (x) { return opt('stage', x[0], x[1], x[0] === w.stage ? '当前阶段' : '', x[0] === w.stage); }).join('') + '</div>' + field('说明（可选）', '<input type="text" name="note">'), '更新阶段',
         function (o) { act('work.stage', { id: w.id, stage: o.stage, note: o.note }, '阶段已更新'); });
     },
-    closeWork: function () { var w = W(cur().id); openSheet('确认事项完成', '<p>事项下的任务已全部验收通过。确认后事项完成，老板和发起人会收到通知。</p>' + field('验收意见（可选）', '<textarea name="note" rows="2"></textarea>'), '确认完成', function (o) { act('work.close', { id: w.id, note: o.note }, '事项已完成'); }); },
+    closeWork: function () { var w = W(cur().id); openSheet('确认项目完成', '<p>项目下的任务已全部验收通过。确认后项目完成，老板和发起人会收到通知。</p>' + field('验收意见（可选）', '<textarea name="note" rows="2"></textarea>'), '确认完成', function (o) { act('work.close', { id: w.id, note: o.note }, '项目已完成'); }); },
     wEscalate: function () { var w = W(cur().id);
       openSheet('上报老板决策', '<p class="muted" style="margin:0 0 8px;font-size:14px">项目里遇到超预算、人事、战略调整、重要对外发布这类事，交老板拍板。</p>' + field('例外类型', '<select name="kind">' + ['over_budget', 'personnel', 'strategy_change', 'major_release', 'other'].map(function (k) { return '<option value="' + k + '">' + L.decision[k] + '</option>'; }).join('') + '</select>') +
         field('要老板决定什么', '<textarea name="question" rows="3" maxlength="500" placeholder="例如：场地费超出预算 3000 元，是否同意？" required></textarea>'), '上报', function (o) { act('work.requestDecision', { id: w.id, kind: o.kind, question: o.question }, '已上报老板'); }); },
@@ -3124,7 +3124,7 @@
     },
     cancelWork: function () { var w = W(cur().id), n = S.tasks.filter(function (t) { return t.workId === w.id && ['done', 'cancelled'].indexOf(t.status) < 0; }).length;
       openSheet('取消项目', '<div class="callout warn">取消后项目不能再操作' + (n ? '，' + n + ' 个未完成的任务会一并取消' : '') + '，相关人会收到通知，记录保留。来源想法会转为「暂缓」。</div>' + field('原因', '<textarea name="reason" rows="3" required></textarea>'), '确认取消', function (o) { act('work.cancel', { id: w.id, reason: o.reason }, '项目已取消'); }, true); },
-    pause: function () { var w = W(cur().id); openSheet('暂停事项（纠偏）', '<div class="callout warn">暂停后所有任务不能操作，相关人会收到通知，原记录保留。</div>' + field('原因', '<textarea name="reason" rows="3"></textarea>'), '暂停', function (o) { act('work.pause', { id: w.id, reason: o.reason }, '已暂停'); }, true); },
+    pause: function () { var w = W(cur().id); openSheet('暂停项目（纠偏）', '<div class="callout warn">暂停后所有任务不能操作，相关人会收到通知，原记录保留。</div>' + field('原因', '<textarea name="reason" rows="3"></textarea>'), '暂停', function (o) { act('work.pause', { id: w.id, reason: o.reason }, '已暂停'); }, true); },
     resume: function (el) { act('work.resume', { id: el.dataset.arg || cur().id }, '已恢复'); },
     tt: function (el) { var a = el.dataset.arg; act('task.transition', { id: cur().id, action: a }, { accept: '已接收', start: '已开始', unblock: '阻碍已解除' }[a]); },
     block: function () { openSheet('报阻碍', field('卡在哪里', '<textarea name="note" rows="3" placeholder="写清楚原因和需要谁帮忙"></textarea>', '跟进人和负责人会收到通知。'), '报阻碍', function (o) { act('task.transition', { id: cur().id, action: 'block', note: o.note }, '已报阻碍，跟进人已收到通知'); }, true); },
@@ -3145,7 +3145,7 @@
     override: function () {
       var t = T(cur().id), done = t.status === 'done';
       var people = TM.activeUsers(S).filter(function (u) { return u.id !== t.ownerId && u.roles.some(function (a) { return a.role !== 'admin' && a.role !== 'owner'; }); }).map(function (u) { return u.id; });
-      openSheet('老板纠偏', '<div class="callout warn">纠偏必须填写原因。相关人都会收到通知，原记录保留。</div><div class="opts">' + (done ? opt('action', 'revoke', '撤销验收', '任务回到执行中，事项重新打开', true) : '') +
+      openSheet('老板纠偏', '<div class="callout warn">纠偏必须填写原因。相关人都会收到通知，原记录保留。</div><div class="opts">' + (done ? opt('action', 'revoke', '撤销验收', '任务回到执行中，项目重新打开', true) : '') +
         (!done ? opt('action', 'reassign', '改派', '换一个主负责人，任务回到待接收', true) : '') + '</div>' + (!done ? field('改派给', userSelect('ownerId', people)) : '') + field('原因', '<textarea name="reason" rows="3"></textarea>'), '执行纠偏',
         function (o) { act('owner.override', { id: t.id, action: o.action, ownerId: o.ownerId, reason: o.reason }, '纠偏已执行，相关人已收到通知'); }, true);
     },
@@ -3177,8 +3177,8 @@
     var mustOwner = S.settings.ownerApprovalMode === 'all' && !d.ownerApproved;
     var ai = S.settings.agentDirectRoute && p.suggested_route ? '<div class="callout ai">AI 已按整理稿预填：' + esc(L.route[p.suggested_route]) + '。核对后点「派发」，派发由你决定。</div>' : '';
     openSheet('派发', (mustOwner ? '<div class="callout warn">当前设置为「每条都送老板」。请先通过「更多」上报老板，批准后才能派发。</div>' : '') + ai +
-      '<div class="fld"><span>事项类型</span><div class="opts">' + opt('kind', 'admin', '行政：直接派任务', '你来派执行人，并负责验收', cat !== 'product') + opt('kind', 'product', '产品：交项目负责人', '由负责人拆任务、派执行人、验收', cat === 'product') + '</div></div>' +
-      field('事项标题', '<input type="text" name="title" value="' + esc(p.title || d.title) + '">') + field('目标', '<input type="text" name="goal" value="' + esc(p.goal && p.goal !== '待确认' ? p.goal : '') + '">') +
+      '<div class="fld"><span>项目类型</span><div class="opts">' + opt('kind', 'admin', '行政：直接派任务', '你来派执行人，并负责验收', cat !== 'product') + opt('kind', 'product', '产品：交项目负责人', '由负责人拆任务、派执行人、验收', cat === 'product') + '</div></div>' +
+      field('项目标题', '<input type="text" name="title" value="' + esc(p.title || d.title) + '">') + field('目标', '<input type="text" name="goal" value="' + esc(p.goal && p.goal !== '待确认' ? p.goal : '') + '">') +
       '<div id="leadBox">' + field('项目负责人', userSelect('leadId', leads)) + '</div>' +
       '<div id="taskBox">' + taskFields('t_', { title: st.title, expected: st.expected_output, criteria: st.acceptance_criteria, due: TM.dateAdd(S, st.suggested_due_days || 3) }) + '</div>', '派发',
       function (o) {
@@ -3773,8 +3773,8 @@
       { who: 'u_op', t: '运营者认领', d: '林晓在待整理里看到这条想法，点「认领跟进」，这件事就归她盯了，同时生成正式的 AI 整理稿。', run: function () { var r = TM.act(S, me, 'idea.claim', { id: g().idea }); return r.ok ? { ok: true, hash: '#/idea/' + g().idea } : r; } },
       { who: 'u_op', t: '运营者报老板决策', d: '扩编属于「人事决定」，是例外情况，运营者不能自己做主，要先报给老板拍板。', run: function () { var r = TM.act(S, me, 'idea.requestDecision', { id: g().idea, kind: 'personnel', question: '是否同意明年增招两名开发（一攻一守）？' }); if (r.ok) g().dec = r.id; return r.ok ? { ok: true, hash: '#/idea/' + g().idea } : r; } },
       { who: 'u_owner', t: '老板批准', d: '老板收到「待决策」通知，看完后点批准。想法回到运营者手里，可以派发了。', run: function () { var r = TM.act(S, me, 'decision.decide', { id: g().dec, status: 'approved' }); return r.ok ? { ok: true, hash: '#/idea/' + g().idea } : r; } },
-      { who: 'u_op', t: '运营者派发，形成事项', d: '林晓把它派给项目负责人陈立。想法正式变成「事项」：负责人陈立、运营者林晓、验收人陈立。', run: function () { var r = TM.act(S, me, 'idea.route', { id: g().idea, kind: 'product', leadId: 'u_lead', title: '明年开发团队扩编' }); if (r.ok) g().work = r.workId; return r.ok ? { ok: true, hash: '#/work/' + g().work } : r; } },
-      { who: 'u_lead', t: '负责人拆任务', d: '陈立把事项拆成具体任务，写清：谁做、交什么、怎样算合格、哪天截止。这里派给刘洋写招聘方案。', run: function () {
+      { who: 'u_op', t: '运营者派发，形成项目', d: '林晓把它派给项目负责人陈立。想法正式变成「项目」：负责人陈立、运营者林晓、验收人陈立。', run: function () { var r = TM.act(S, me, 'idea.route', { id: g().idea, kind: 'product', leadId: 'u_lead', title: '明年开发团队扩编' }); if (r.ok) g().work = r.workId; return r.ok ? { ok: true, hash: '#/work/' + g().work } : r; } },
+      { who: 'u_lead', t: '负责人拆任务', d: '陈立把项目拆成具体任务，写清：谁做、交什么、怎样算合格、哪天截止。这里派给刘洋写招聘方案。', run: function () {
         var due = TM.todayStr ? TM.todayStr(S) : null;
         var r = TM.act(S, me, 'work.plan', { id: g().work, tasks: [{ title: '写开发岗位招聘方案', ownerId: 'u_dev', expected: '一份招聘方案文档', criteria: '包含岗位职责、预算和时间表', priority: 'hi', due: due }] }); if (!r.ok) return r;
         var t = S.tasks.filter(function (x) { return x.workId === g().work; }).pop(); g().task = t.id; return { ok: true, hash: '#/work/' + g().work }; } },
@@ -3782,8 +3782,8 @@
       { who: 'u_dev', t: '执行者提交成果', d: '刘洋做完，点「提交成果」，附上说明。球踢到验收人那边。', run: function () { var r = TM.act(S, me, 'task.transition', { id: g().task, action: 'submit', note: '招聘方案已完成：两个岗位职责、预算、三个月时间表' }); return r.ok ? { ok: true, hash: '#/task/' + g().task } : r; } },
       { who: 'u_lead', t: '验收人验收任务', d: '陈立看成果，觉得可以就点「通过」（不行就「退回」并写原因，执行者改完再交）。', run: function () { var r = TM.act(S, me, 'task.review', { id: g().task, verdict: 'pass', note: '方案清楚，可以执行' }); return r.ok ? { ok: true, hash: '#/task/' + g().task } : r; } },
       { who: 'u_owner', t: '老板终验', d: '设置里开了「老板终验」，所以负责人验收后还要老板再过一道。', skip: function () { var t = S.tasks.find(function (x) { return x.id === dm.task; }); return !t || t.status !== 'owner_review'; }, run: function () { var r = TM.act(S, me, 'task.ownerReview', { id: g().task, verdict: 'owner_pass', note: '同意' }); return r.ok ? { ok: true, hash: '#/task/' + g().task } : r; } },
-      { who: 'u_lead', t: '确认事项完成', d: '所有任务都通过了，事项自动进入「待验收」。验收人点「确认事项完成」，整件事收尾。', run: function () { var r = TM.act(S, me, 'work.close', { id: g().work, note: '招聘方案通过，进入执行' }); return r.ok ? { ok: true, hash: '#/idea/' + g().idea } : r; } },
-      { who: 'u_owner', t: '流程走完了', d: '已切回老板。看顶部进度条：想法 → 整理 → 事项 → 执行 → 验收，五格全部完成。点「查看操作记录」可以看到每一步是谁、什么时候做的。', end: true }
+      { who: 'u_lead', t: '确认项目完成', d: '所有任务都通过了，项目自动进入「待验收」。验收人点「确认项目完成」，整件事收尾。', run: function () { var r = TM.act(S, me, 'work.close', { id: g().work, note: '招聘方案通过，进入执行' }); return r.ok ? { ok: true, hash: '#/idea/' + g().idea } : r; } },
+      { who: 'u_owner', t: '流程走完了', d: '已切回老板。看顶部进度条：想法 → 整理 → 项目 → 执行 → 验收，五格全部完成。点「查看操作记录」可以看到每一步是谁、什么时候做的。', end: true }
     ];
   }
   function dmGo(h) { if (location.hash === h) render(); else location.hash = h; }
@@ -4020,7 +4020,7 @@
       root.setAttribute('data-nav', kind);
       try {
         var t = document.startViewTransition(update);
-        t.finished.then(done, done);
+        t.finished.then(done, done); if (t.ready) t.ready.catch(function () {}); if (t.updateCallbackDone) t.updateCallbackDone.catch(function () {}); // 连点两次时上一个动画被打断：不算错误
       } catch (e) { done(); update(); }
       return;
     }

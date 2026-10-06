@@ -5,7 +5,7 @@ var TM = (function () {
 
   var L = {
     role: { owner: '老板', operator: '运营者', lead: '项目负责人', executor: '执行者', admin: '管理员' },
-    idea: { draft: '私人草稿', discussing: '共创讨论中', summary_ready: '待确认方向', triage: '待运营整理', awaiting_owner: '等老板决策', planned: '已形成事项', on_hold: '暂缓', declined: '不做' },
+    idea: { draft: '私人草稿', discussing: '共创讨论中', summary_ready: '待确认方向', triage: '待运营整理', awaiting_owner: '等老板决策', planned: '已形成项目', on_hold: '暂缓', declined: '不做' },
     work: { planning: '待规划', active: '进行中', acceptance: '待验收', done: '完成', blocked: '受阻', paused: '暂停', cancelled: '已取消' },
     task: { assigned: '待接收', accepted: '已接收', in_progress: '进行中', submitted: '待验收', done: '完成', owner_review: '老板终验', blocked: '受阻', cancelled: '已取消' },
     kind: { admin: '行政', product: '产品', other: '其他' },
@@ -48,7 +48,7 @@ var TM = (function () {
   function get(arr, id, what) { var x = arr.find(function (o) { return o.id === id; }); if (!x) deny('找不到该' + (what || '记录')); return x; }
   // 已删除的想法对所有人都不可见，任何操作都不能再动它
   function idea(s, id) { var d = get(s.ideas, id, '想法'); if (d.deleted) deny('找不到该想法'); return d; }
-  function work(s, id) { return get(s.workItems, id, '事项'); }
+  function work(s, id) { return get(s.workItems, id, '项目'); }
   function task(s, id) { return get(s.tasks, id, '任务'); }
   function nid(s, p) { s.seq = (s.seq || 100) + 1; return p + s.seq; }
   function now(s) { return s.clock ? s.clock() : Date.now(); }
@@ -559,7 +559,7 @@ var TM = (function () {
     ev(s, { ideaId: d.id, actor: uid, action: 'decision.request', from: 'triage', to: 'awaiting_owner', text: L.decision[p.kind] + '：' + q });
     notify(s, usersWith(s, 'owner'), uid, '新的待决策', q, '#/idea/' + d.id); touchIdea(s, d); return { id: dec.id };
   };
-  /* 项目执行中遇到例外（超预算、人事等）：负责人 / 跟进运营上报老板决策，不改变想法状态（文档 4.2、12 request_decision 的事项级） */
+  /* 项目执行中遇到例外（超预算、人事等）：负责人 / 跟进运营上报老板决策，不改变想法状态（文档 4.2、12 request_decision 的项目级） */
   A['work.requestDecision'] = function (s, uid, p) {
     var w = work(s, p.id); need(w.leadId === uid || w.operatorId === uid, '只有项目负责人或跟进运营可以上报'); need(['done', 'cancelled'].indexOf(w.status) < 0, '项目已结束');
     need(Object.prototype.hasOwnProperty.call(L.decision, p.kind), '请选择例外类型'); var q = txt(p.question); need(q, '请写清楚要老板决定什么'); need(q.length <= 500, '不超过 500 字');
@@ -592,8 +592,8 @@ var TM = (function () {
   A['idea.route'] = function (s, uid, p) {
     var d = idea(s, p.id); need(d.followerId === uid, '只有跟进人可以派发'); need(d.status === 'triage', '只有待运营整理的想法可以派发');
     if (s.settings.ownerApprovalMode === 'all') need(d.ownerApproved, '当前设置要求每条想法派发前由老板确认，请先送老板决策');
-    var kind = p.kind; need(kind === 'admin' || kind === 'product' || kind === 'other', '请选择事项类型');
-    var title = txt(p.title) || d.title; need(title, '事项需要标题');
+    var kind = p.kind; need(kind === 'admin' || kind === 'product' || kind === 'other', '请选择项目类型');
+    var title = txt(p.title) || d.title; need(title, '项目需要标题');
     var w = { id: nid(s, 'W'), ideaId: d.id, dept: p.dept || d.dept, kind: kind, title: title, goal: txt(p.goal), status: 'planning', stage: 'clarify',
       operatorId: uid, leadId: null, reviewerId: uid, externalLink: '', due: p.due || null, lastActivity: now(s), createdAt: now(s) };
     if (kind === 'product') {
@@ -605,8 +605,8 @@ var TM = (function () {
     }
     s.workItems.push(w);
     d.status = 'planned'; touchIdea(s, d);
-    ev(s, { ideaId: d.id, workId: w.id, actor: uid, action: 'idea.route', from: 'triage', to: 'planned', text: '形成事项「' + title + '」（' + L.kind[kind] + '）' + (w.leadId ? '，交 ' + name(s, w.leadId) : '') });
-    if (kind === 'product') notify(s, [w.leadId], uid, '新事项待你规划', title, '#/work/' + w.id);
+    ev(s, { ideaId: d.id, workId: w.id, actor: uid, action: 'idea.route', from: 'triage', to: 'planned', text: '形成项目「' + title + '」（' + L.kind[kind] + '）' + (w.leadId ? '，交 ' + name(s, w.leadId) : '') });
+    if (kind === 'product') notify(s, [w.leadId], uid, '新项目待你规划', title, '#/work/' + w.id);
     else addTasks(s, uid, w, p.tasks);
     return { workId: w.id };
   };
@@ -667,7 +667,7 @@ var TM = (function () {
       operatorId: opId, leadId: leadId, reviewerId: reviewerId, externalLink: '', due: p.due || null, priority: ['hi', 'mid', 'lo'].indexOf(p.priority) >= 0 ? p.priority : 'mid', lastActivity: now(s), createdAt: now(s) };
     s.workItems.push(w);
     ev(s, { ideaId: d.id, actor: uid, action: 'project.create', to: 'planned', text: '新建项目（' + (p.source === 'ai' ? 'AI 解析后人工确认' : '手动填写') + '）：' + title });
-    ev(s, { ideaId: d.id, workId: w.id, actor: uid, action: 'idea.route', from: 'triage', to: 'planned', text: '形成事项「' + title + '」（' + pt[0] + '）' + (leadId ? '，负责人 ' + name(s, leadId) : '') + '，跟进 ' + name(s, opId) });
+    ev(s, { ideaId: d.id, workId: w.id, actor: uid, action: 'idea.route', from: 'triage', to: 'planned', text: '形成项目「' + title + '」（' + pt[0] + '）' + (leadId ? '，负责人 ' + name(s, leadId) : '') + '，跟进 ' + name(s, opId) });
     if (tasks.length) {
       addTasks(s, uid, w, tasks.map(function (t) { return { title: t.title, ownerId: t.ownerId, expected: t.expected, criteria: t.criteria, due: t.due || p.due, reviewerId: reviewerId }; }));
       w.status = 'active'; if (kind === 'admin') w.stage = 'handle';
@@ -946,7 +946,7 @@ var TM = (function () {
   };
   A['work.plan'] = function (s, uid, p) {
     var w = work(s, p.id); need(w.leadId === uid || (w.kind !== 'product' && w.operatorId === uid) || hasRole(s, uid, 'owner'), w.kind === 'product' ? '产品项目由项目负责人安排执行人' : '只有项目负责人或跟进的运营者可以安排任务');
-    need(['planning', 'active', 'acceptance', 'blocked'].indexOf(w.status) >= 0, '当前事项状态不能新增任务');
+    need(['planning', 'active', 'acceptance', 'blocked'].indexOf(w.status) >= 0, '当前项目状态不能新增任务');
     need((p.tasks || []).length, '请至少添加一个任务');
     addTasks(s, uid, w, p.tasks);
     if (w.status === 'planning' || w.status === 'acceptance') { var f = w.status; w.status = 'active'; ev(s, { workId: w.id, actor: uid, action: 'work.status', from: f, to: 'active', text: '开始执行' }); }
@@ -960,12 +960,12 @@ var TM = (function () {
     return {};
   };
   A['work.close'] = function (s, uid, p) {
-    var w = work(s, p.id), proxy = w.reviewerId !== uid && hasRole(s, uid, 'owner'); need(w.reviewerId === uid || proxy, '只有事项验收人或老板可以确认完成'); need(w.status === 'acceptance', '事项下任务全部完成后才能确认');
+    var w = work(s, p.id), proxy = w.reviewerId !== uid && hasRole(s, uid, 'owner'); need(w.reviewerId === uid || proxy, '只有项目验收人或老板可以确认完成'); need(w.status === 'acceptance', '项目下任务全部完成后才能确认');
     w.status = 'done'; if (w.kind === 'admin') w.stage = 'done';
     s.reviews.push({ id: nid(s, 'R'), taskId: null, workId: w.id, reviewerId: uid, verdict: 'pass', note: txt(p.note), at: now(s) });
-    ev(s, { workId: w.id, ideaId: w.ideaId, actor: uid, action: 'work.done', from: 'acceptance', to: 'done', text: (proxy ? '老板代验收：' : '') + '事项验收完成' + (txt(p.note) ? '：' + txt(p.note) : '') });
+    ev(s, { workId: w.id, ideaId: w.ideaId, actor: uid, action: 'work.done', from: 'acceptance', to: 'done', text: (proxy ? '老板代验收：' : '') + '项目验收完成' + (txt(p.note) ? '：' + txt(p.note) : '') });
     var d = w.ideaId && s.ideas.find(function (x) { return x.id === w.ideaId; });
-    notify(s, usersWith(s, 'owner').concat([w.operatorId, w.leadId, d && d.creatorId]), uid, '事项完成', w.title, '#/work/' + w.id);
+    notify(s, usersWith(s, 'owner').concat([w.operatorId, w.leadId, d && d.creatorId]), uid, '项目完成', w.title, '#/work/' + w.id);
     touchWork(s, w); return {};
   };
   A['work.pause'] = function (s, uid, p) {
@@ -973,12 +973,12 @@ var TM = (function () {
     need(['planning', 'active', 'acceptance', 'blocked'].indexOf(w.status) >= 0, '当前状态不能暂停');
     var f = w.status; w.status = 'paused'; w.pausedFrom = f;
     ev(s, { workId: w.id, ideaId: w.ideaId, actor: uid, action: 'owner.override.pause', from: f, to: 'paused', reason: r, text: '老板暂停：' + r });
-    notify(s, relatedOfWork(s, w), uid, '老板暂停了事项', w.title + '：' + r, '#/work/' + w.id); touchWork(s, w); return {};
+    notify(s, relatedOfWork(s, w), uid, '老板暂停了项目', w.title + '：' + r, '#/work/' + w.id); touchWork(s, w); return {};
   };
   A['work.resume'] = function (s, uid, p) {
-    var w = work(s, p.id); need(hasRole(s, uid, 'owner'), '只有老板可以恢复'); need(w.status === 'paused', '事项未暂停');
-    w.status = w.pausedFrom || 'active'; ev(s, { workId: w.id, actor: uid, action: 'work.resume', from: 'paused', to: w.status, text: '恢复事项' }); syncWork(s, w, uid); // 暂停期间任务状态可能变了：按任务重新算项目状态
-    notify(s, relatedOfWork(s, w), uid, '事项已恢复', w.title, '#/work/' + w.id); touchWork(s, w); return {};
+    var w = work(s, p.id); need(hasRole(s, uid, 'owner'), '只有老板可以恢复'); need(w.status === 'paused', '项目未暂停');
+    w.status = w.pausedFrom || 'active'; ev(s, { workId: w.id, actor: uid, action: 'work.resume', from: 'paused', to: w.status, text: '恢复项目' }); syncWork(s, w, uid); // 暂停期间任务状态可能变了：按任务重新算项目状态
+    notify(s, relatedOfWork(s, w), uid, '项目已恢复', w.title, '#/work/' + w.id); touchWork(s, w); return {};
   };
   /* 取消项目：老板、项目负责人或跟进运营者，必须写原因；未结束的任务一并取消；来源想法没有别的进行中项目时回到「暂缓」（之后可恢复或删除） */
   A['work.cancel'] = function (s, uid, p) {
@@ -1004,15 +1004,15 @@ var TM = (function () {
     var ts = s.tasks.filter(function (t) { return t.workId === w.id && t.status !== 'cancelled'; });
     if (!ts.length) return;
     var allDone = ts.every(function (t) { return t.status === 'done'; }), anyBlocked = ts.some(function (t) { return t.status === 'blocked'; });
-    // 事项「受阻」（文档 6.2）：有任务受阻时事项标受阻，都解除后回到进行中
-    if (anyBlocked && w.status === 'active') { w.status = 'blocked'; ev(s, { workId: w.id, actor: 'system', action: 'work.status', from: 'active', to: 'blocked', text: '有任务受阻，事项标为受阻' }); return; }
-    if (!anyBlocked && w.status === 'blocked' && !allDone) { w.status = 'active'; ev(s, { workId: w.id, actor: 'system', action: 'work.status', from: 'blocked', to: 'active', text: '阻碍已解除，事项回到进行中' }); return; }
+    // 项目「受阻」（文档 6.2）：有任务受阻时项目标受阻，都解除后回到进行中
+    if (anyBlocked && w.status === 'active') { w.status = 'blocked'; ev(s, { workId: w.id, actor: 'system', action: 'work.status', from: 'active', to: 'blocked', text: '有任务受阻，项目标为受阻' }); return; }
+    if (!anyBlocked && w.status === 'blocked' && !allDone) { w.status = 'active'; ev(s, { workId: w.id, actor: 'system', action: 'work.status', from: 'blocked', to: 'active', text: '阻碍已解除，项目回到进行中' }); return; }
     if (allDone && (w.status === 'active' || w.status === 'blocked')) {
       var f = w.status; w.status = 'acceptance';
-      ev(s, { workId: w.id, actor: 'system', action: 'work.status', from: f, to: 'acceptance', text: '任务全部完成，事项进入待验收' });
-      notify(s, [w.reviewerId], uid, '事项待你验收', w.title, '#/work/' + w.id);
+      ev(s, { workId: w.id, actor: 'system', action: 'work.status', from: f, to: 'acceptance', text: '任务全部完成，项目进入待验收' });
+      notify(s, [w.reviewerId], uid, '项目待你验收', w.title, '#/work/' + w.id);
     } else if (!allDone && w.status === 'acceptance') {
-      w.status = 'active'; ev(s, { workId: w.id, actor: 'system', action: 'work.status', from: 'acceptance', to: 'active', text: '有任务重新打开，事项回到进行中' });
+      w.status = 'active'; ev(s, { workId: w.id, actor: 'system', action: 'work.status', from: 'acceptance', to: 'active', text: '有任务重新打开，项目回到进行中' });
     }
   }
 
@@ -1026,7 +1026,7 @@ var TM = (function () {
   };
   A['task.transition'] = function (s, uid, p) {
     var t = task(s, p.id); var w = work(s, t.workId); var tr = Object.prototype.hasOwnProperty.call(TT, p.action) ? TT[p.action] : null; need(tr, '未知操作');
-    need(w.status !== 'paused', '事项已被老板暂停，暂不能操作');
+    need(w.status !== 'paused', '项目已被老板暂停，暂不能操作');
     need(tr.from.indexOf(t.status) >= 0, '当前状态为「' + L.task[t.status] + '」，不能' + tr.label);
     var note = txt(p.note);
     if (p.action === 'cancel') need(w.operatorId === uid || w.leadId === uid || hasRole(s, uid, 'owner'), '只有跟进人、负责人或老板可以取消任务');
@@ -1120,7 +1120,7 @@ var TM = (function () {
       s.reviews.push({ id: nid(s, 'R'), taskId: t.id, workId: w.id, reviewerId: uid, verdict: 'owner_revoke', note: r, at: now(s) });
       t.status = 'in_progress';
       ev(s, { taskId: t.id, workId: w.id, actor: uid, action: 'owner.override.revoke', from: from, to: 'in_progress', reason: r, text: '老板撤销验收：' + r });
-      if (w.status === 'done') { w.status = 'active'; ev(s, { workId: w.id, actor: 'system', action: 'work.status', from: 'done', to: 'active', text: '因撤销验收，事项重新打开' }); }
+      if (w.status === 'done') { w.status = 'active'; ev(s, { workId: w.id, actor: 'system', action: 'work.status', from: 'done', to: 'active', text: '因撤销验收，项目重新打开' }); }
     } else if (p.action === 'reassign') {
       need(p.ownerId && live(s, p.ownerId) && p.ownerId !== t.ownerId, '请选择新的主负责人（不能是已停用的成员）');
       need(t.status !== 'done' && t.status !== 'cancelled', '已结束的任务不能改派');
@@ -1513,7 +1513,7 @@ var TM = (function () {
     s.decisions.push({ id: 'D3', ideaId: 'I6', workId: null, kind: 'over_budget', question: '年会预算是否可上调到 3 万元？', requestedBy: 'u_op', status: 'approved', decidedBy: 'u_owner', note: '同意，控制在 3 万以内。', at: at(9), decidedAt: at(8) });
     s.decisions.push({ id: 'D4', ideaId: null, workId: null, kind: 'over_budget', question: '是否采购新的云服务套餐？', requestedBy: 'u_lead', status: 'rejected', decidedBy: 'u_owner', note: '现有套餐够用，暂不采购。', at: at(20), decidedAt: at(19) });
     s.events.push({ id: 'E4', at: at(0.3), ideaId: 'I4', actorType: 'human', actorId: 'u_op', action: 'decision.request', from: 'triage', to: 'awaiting_owner', text: '重要对外发布：是否同意 11 月对外发布新版官网？' });
-    // 5. 已形成产品事项：清醒 App 原型
+    // 5. 已形成产品项目：清醒 App 原型
     I({ id: 'I5', creatorId: 'u_owner', status: 'planned', aiStatus: 'ready', followerId: 'u_op', reviewed: true, title: '「清醒」App 第一版原型', note: '个人生活规划 + AI 顾问，先出可点的原型给团队试。', createdAt: at(12), submittedAt: at(12) });
     s.workItems.push({ id: 'W1', ideaId: 'I5', dept: 'd_prod', kind: 'product', title: '「清醒」App 第一版原型', goal: '两周内出可点击原型，团队试用', status: 'active', stage: 'prototype', operatorId: 'u_op', leadId: 'u_lead', reviewerId: 'u_lead', externalLink: '', due: dateAddS(T0, 6), lastActivity: at(1), createdAt: at(10) });
     s.workItems[0].priority = 'hi'; s.workItems[0].keyResults = '交互原型、功能清单、评审意见'; s.workItems[0].goal = '完成第一版可交互原型并通过评审'; s.workItems[0].desc = '基于核心功能完成第一版交互原型，验证产品方向，为后续开发提供依据。';
@@ -1522,7 +1522,7 @@ var TM = (function () {
     s.tasks.push({ id: 'T2', workId: 'W1', title: '数据结构与本地存储方案', ownerId: 'u_dev', collabs: ['u_design'], reviewerId: 'u_lead', due: dateAddS(T0, 1), expected: '方案文档一页', criteria: '说明表结构、离线策略，负责人确认可行', status: 'submitted', blockedReason: '', lastActivity: at(0.2), createdAt: at(9) });
     s.checklist.push({ id: 'C1', taskId: 'T1', title: '首页', done: true }, { id: 'C2', taskId: 'T1', title: '今日计划', done: false }, { id: 'C3', taskId: 'T1', title: 'AI 顾问入口', done: false });
     s.deliverables.push({ id: 'F1', taskId: 'T2', note: '方案已写在文档里：本地 SQLite + 云端同步，离线草稿优先。', url: 'https://example.com/demo-doc', by: 'u_dev', at: at(0.2) });
-    s.events.push({ id: 'E5', at: at(10), ideaId: 'I5', workId: 'W1', actorType: 'human', actorId: 'u_op', action: 'idea.route', from: 'triage', to: 'planned', text: '形成事项「「清醒」App 第一版原型」（产品），交 陈立' });
+    s.events.push({ id: 'E5', at: at(10), ideaId: 'I5', workId: 'W1', actorType: 'human', actorId: 'u_op', action: 'idea.route', from: 'triage', to: 'planned', text: '形成项目「「清醒」App 第一版原型」（产品），交 陈立' });
     s.events.push({ id: 'E6', at: at(9), workId: 'W1', taskId: 'T1', actorType: 'human', actorId: 'u_lead', action: 'task.assign', to: 'assigned', text: '派给 何静，验收人 陈立' });
     s.events.push({ id: 'E7', at: at(9), workId: 'W1', taskId: 'T2', actorType: 'human', actorId: 'u_lead', action: 'task.assign', to: 'assigned', text: '派给 刘洋，验收人 陈立' });
     s.events.push({ id: 'E8', at: at(5), workId: 'W1', taskId: 'T1', actorType: 'human', actorId: 'u_design', action: 'task.start', from: 'accepted', to: 'in_progress', text: '开始' });
@@ -1544,7 +1544,7 @@ var TM = (function () {
     s.tasks.push({ id: 'T5', workId: 'W3', title: '整理培训课程表', ownerId: 'u_admin_ex', collabs: [], reviewerId: 'u_op', due: dateAddS(T0, -5), expected: '课程表', criteria: '覆盖四周课程', status: 'done', blockedReason: '', lastActivity: at(4), createdAt: at(18), ttype: '文档' });
     s.tasks.push({ id: 'T6', workId: 'W3', title: '培训海报设计', ownerId: 'u_design', collabs: [], reviewerId: 'u_op', due: dateAddS(T0, -3), expected: '海报', criteria: '风格统一', status: 'done', blockedReason: '', lastActivity: at(2), createdAt: at(18), ttype: '设计' });
     s.reviews.push({ id: 'R2', taskId: 'T5', workId: 'W3', reviewerId: 'u_op', verdict: 'pass', note: '课程表完整。', at: at(4) }, { id: 'R3', taskId: 'T6', workId: 'W3', reviewerId: 'u_op', verdict: 'pass', note: '海报通过。', at: at(2) });
-    s.events.push({ id: 'E13', at: at(1), workId: 'W3', actorType: 'system', actorId: 'system', action: 'work.status', from: 'active', to: 'acceptance', text: '任务全部完成，事项进入待验收' });
+    s.events.push({ id: 'E13', at: at(1), workId: 'W3', actorType: 'system', actorId: 'system', action: 'work.status', from: 'active', to: 'acceptance', text: '任务全部完成，项目进入待验收' });
     s.workItems.push({ id: 'W4', ideaId: null, dept: 'd_ops', kind: 'other', ptype: '其他', title: 'Q3 财务复盘', goal: '输出 Q3 复盘报告', desc: '整理 Q3 数据，输出复盘报告。', keyResults: '复盘报告', priority: 'mid', status: 'done', stage: 'clarify', operatorId: 'u_op', leadId: null, reviewerId: 'u_op', externalLink: '', due: dateAddS(T0, -1), lastActivity: at(1.5), createdAt: at(25), milestones: [] });
     s.tasks.push({ id: 'T7', workId: 'W4', title: '整理 Q3 收支数据', ownerId: 'u_admin_ex', collabs: [], reviewerId: 'u_op', due: dateAddS(T0, -4), expected: '数据表', criteria: '与账目一致', status: 'done', blockedReason: '', lastActivity: at(3), createdAt: at(20), ttype: '文档' });
     s.reviews.push({ id: 'R4', taskId: 'T7', workId: 'W4', reviewerId: 'u_op', verdict: 'pass', note: '数据核对无误。', at: at(3) }, { id: 'R5', taskId: null, workId: 'W4', reviewerId: 'u_op', verdict: 'pass', note: '复盘报告已发。', at: at(1.5) });
