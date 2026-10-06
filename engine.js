@@ -104,13 +104,14 @@ var TM = (function () {
   }
   /* 通知分类（用于「通知设置」按类别开关）：决策、验收、任务、留言讨论、团队、提醒 */
   var NCATS = { dec: '决策', review: '验收', task: '任务', cmt: '留言与讨论', team: '团队与成员', remind: '截止提醒与早报' };
-  function ncat(title) { var t = String(title || ''); return /决策|上报|老板确认|批准/.test(t) ? 'dec' : /验收|终验|提交了成果/.test(t) ? 'review' : /提到了你|留言|回复|建议|讨论|发言|评论/.test(t) ? 'cmt' : /逾期|截止|早报|提醒/.test(t) ? 'remind' : /成员|加入|停用|注销|角色/.test(t) ? 'team' : 'task'; }
+  // 只看标题模板本身：去掉开头的发言人姓名、冒号后面的用户内容（不然叫「陈验收」的人发的留言会被当成验收类）
+  function ncat(title, who) { var t = String(title || ''); if (who && t.indexOf(who) === 0) t = t.slice(who.length); t = t.split(/[：:]/)[0]; return /决策|上报|老板确认|批准/.test(t) ? 'dec' : /验收|终验|提交了成果/.test(t) ? 'review' : /提到了你|留言|回复|建议|讨论|发言|评论/.test(t) ? 'cmt' : /逾期|截止|早报|提醒/.test(t) ? 'remind' : /成员|加入|停用|注销|角色/.test(t) ? 'team' : 'task'; }
   function notify(s, uids, actor, title, body, link) {
     var seen = {};
     (uids || []).forEach(function (u) {
       if (!u || u === actor || seen[u] || u === 'agent' || u === 'system') return; seen[u] = 1;
       // 关掉的类别：仍记在通知列表里（可查），但直接标为已读、不推送
-      var uu = user(s, u), mute = uu && uu.prefs && Array.isArray(uu.prefs.mute) && uu.prefs.mute.indexOf(ncat(title)) >= 0;
+      var uu = user(s, u), mute = uu && uu.prefs && Array.isArray(uu.prefs.mute) && uu.prefs.mute.indexOf(ncat(title, actor && name(s, actor))) >= 0;
       s.notifications.push({ id: nid(s, 'N'), userId: u, from: actor || null, title: title, body: body || '', link: link || '', at: now(s), read: !!mute, muted: mute || undefined });
     });
   }
@@ -437,11 +438,11 @@ var TM = (function () {
       ev(s, { ideaId: d.id, actor: uid, action: 'idea.submit', from: 'draft', to: 'triage', text: '直接推进' });
       runAnalysis(s, d);
     } else {
-      var ids = (p.shares || []).filter(function (x) { return x !== uid && user(s, x); });
+      var ids = (Array.isArray(p.shares) ? p.shares : []).filter(function (x) { return x !== uid && live(s, x); });
       need(p.shareAll || ids.length, '共创请选择分享范围');
       d.shareAll = !!p.shareAll; d.shares = ids; d.deadline = p.deadline || null; d.status = 'discussing';
       ev(s, { ideaId: d.id, actor: uid, action: 'idea.submit', from: 'draft', to: 'discussing', text: '开启团队共创（' + (d.shareAll ? '全体' : ids.length + ' 人') + (d.deadline ? '，有截止时间' : '，发起人手动结束') + '）' });
-      notify(s, d.shareAll ? s.users.map(function (u) { return u.id; }) : ids, uid, '邀请你参与共创', d.title || d.note.slice(0, 20), '#/idea/' + d.id);
+      notify(s, d.shareAll ? activeUsers(s).map(function (u) { return u.id; }) : ids, uid, '邀请你参与共创', d.title || d.note.slice(0, 20), '#/idea/' + d.id);
     }
     return {};
   };
@@ -586,7 +587,7 @@ var TM = (function () {
       var collabs = (x.collabs || []).filter(function (c, i, a) { return c !== x.ownerId && live(s, c) && a.indexOf(c) === i; });
       if (x.priority) need(['hi', 'mid', 'lo'].indexOf(x.priority) >= 0, '优先级不正确');
       if (txt(x.title).length > 50) deny('任务标题不超过 50 字');
-      if (x.reviewerId) need(live(s, x.reviewerId), '验收人不存在或已停用');
+      if (x.reviewerId) { need(live(s, x.reviewerId), '验收人不存在或已停用'); need(x.reviewerId !== x.ownerId, '验收人不能是执行人自己'); }
       if (x.due) need(typeof x.due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x.due), '截止日期不正确');
       var t = { id: nid(s, 'T'), workId: w.id, title: txt(x.title), description: txt(x.description).slice(0, 2000), ttype: typeof x.ttype === 'string' ? x.ttype.slice(0, 20) : '', priority: x.priority || 'mid', milestone: !!x.milestone, ownerId: x.ownerId, collabs: collabs, reviewerId: x.reviewerId || w.reviewerId,
         due: x.due || null, expected: txt(x.expected), criteria: txt(x.criteria), status: 'assigned', blockedReason: '', assignedBy: x.assignedBy || 'manual', lastActivity: now(s), createdAt: now(s) };
@@ -618,13 +619,13 @@ var TM = (function () {
     var title = txt(p.title); need(title, '请填写项目名称'); need(title.length <= 50, '项目名称不超过 50 字');
     var pt = Object.prototype.hasOwnProperty.call(PTYPE, p.ptype) ? PTYPE[p.ptype] : null; need(pt, '请选择项目类型');
     var kind = pt[1];
-    var opId = p.operatorId || (op ? uid : followUsers(s)[0]); need(opId && canFollow(s, opId), '请选择跟进运营者');
+    var opId = p.operatorId || (op ? uid : followUsers(s)[0]); need(opId && live(s, opId) && canFollow(s, opId), '请选择在职的跟进运营者');
     var leadId = p.leadId || null;
     if (lead && !owner && !op) leadId = uid;
     // 还没有负责人的小团队：老板可以自己担任产品项目负责人
     if (kind === 'product') need(leadId && leadUsers(s).indexOf(leadId) >= 0, '产品开发项目请指定项目负责人');
     if (leadId) need(leadUsers(s).indexOf(leadId) >= 0, '项目负责人必须是负责人角色');
-    var reviewerId = p.reviewerId || leadId || opId; need(user(s, reviewerId), '请选择验收人');
+    var reviewerId = p.reviewerId || leadId || opId; need(live(s, reviewerId), '请选择在职的验收人');
     var tasks = (p.tasks || []).filter(function (t) { return txt(t.title); });
     var leadDept = leadId && (user(s, leadId).roles.find(function (a) { return a.role === 'lead'; }) || {}).dept;
     var d = { id: nid(s, 'I'), creatorId: uid, dept: leadDept || null, path: 'direct', status: 'planned', aiStatus: p.source === 'ai' ? 'ready' : 'none', title: title, note: txt(p.note),
@@ -665,7 +666,7 @@ var TM = (function () {
     need(['hi', 'mid', 'lo'].indexOf(p.priority || 'mid') >= 0, '优先级不正确');
     need(['mine', 'team', 'other'].indexOf(p.scope || 'mine') >= 0, '归类不正确');
     if (p.repeat) need(Object.prototype.hasOwnProperty.call(REPEATS, p.repeat), '重复方式不正确');
-    var people = (p.people || []).filter(function (x) { return x !== uid && user(s, x); });
+    var people = (Array.isArray(p.people) ? p.people : []).filter(function (x) { return x !== uid && live(s, x); });
     var td = { id: nid(s, 'TD'), ownerId: uid, title: t, note: txt(p.note), date: p.date, time: p.time || '', priority: p.priority || 'mid', scope: people.length ? 'team' : (p.scope || 'mine'),
       tags: (p.tags || []).map(txt).filter(Boolean).slice(0, 4), people: people, done: false, doneAt: null, comments: [], source: p.source || 'manual', repeat: p.repeat || '', at: now(s) };
     s.todos.push(td);
@@ -677,7 +678,10 @@ var TM = (function () {
   A['todo.toggle'] = function (s, uid, p) {
     var td = myTodo(s, uid, p.id); td.done = !td.done; td.doneAt = td.done ? now(s) : null;
     // 重复待办第一次完成时生成下一次（取消勾选再勾上不会重复生成）
-    if (td.done && td.repeat && !td.nextId) { var nx = { id: nid(s, 'TD'), ownerId: td.ownerId, title: td.title, note: td.note, date: nextDate(td.date, td.repeat), time: td.time, priority: td.priority, scope: td.scope, tags: td.tags.slice(), people: td.people.slice(), done: false, doneAt: null, comments: [], source: 'repeat', repeat: td.repeat, at: now(s) };
+    if (td.done && td.repeat && !(td.nextId && s.todos.some(function (x) { return x.id === td.nextId; }))) {
+      // 下一次不早于今天（很久以前的每日待办今天才完成，不会一口气补出一串过去的）
+      var nd = nextDate(td.date, td.repeat), t0 = todayStr(s); while (nd < t0) nd = nextDate(nd, td.repeat);
+      var nx = { id: nid(s, 'TD'), ownerId: td.ownerId, title: td.title, note: td.note, date: nd, time: td.time, priority: td.priority, scope: td.scope, tags: (td.tags || []).slice(), people: (td.people || []).slice(), done: false, doneAt: null, comments: [], source: 'repeat', repeat: td.repeat, at: now(s) };
       s.todos.push(nx); td.nextId = nx.id; return { next: nx.id, nextDate: nx.date }; }
     return {};
   };
@@ -716,7 +720,7 @@ var TM = (function () {
   function canManageWork(s, uid, w) { return w.leadId === uid || w.operatorId === uid || hasRole(s, uid, 'owner'); }
   /* 项目文件：项目成员可上传；上传人、负责人、跟进运营者、老板可删除 */
   A['work.attach'] = function (s, uid, p) {
-    var w = work(s, p.id); need(canViewWork(s, uid, w), '只有项目成员可以上传文件'); need(w.status !== 'cancelled', '项目已取消，不能再上传');
+    var w = work(s, p.id); need(canViewWork(s, uid, w), '只有项目成员可以上传文件'); need(['done', 'cancelled'].indexOf(w.status) < 0, '项目已结束，不能再上传');
     var m = cleanMedia(p.media).filter(function (x) { return txt(x.name); }); need(m.length, '请选择文件');
     w.files = w.files || []; need(w.files.length + m.length <= 50, '每个项目最多 50 个文件');
     m.forEach(function (x) { if (x.kind === 'link') need(/^https?:\/\/\S+\.\S+/.test(txt(x.url)), '请填写以 http:// 或 https:// 开头的链接'); });
@@ -729,7 +733,7 @@ var TM = (function () {
     w.files.splice(i, 1); ev(s, { workId: w.id, actor: uid, action: 'work.detach', text: '删除了「' + f.name + '」' }); w.lastActivity = now(s); return {};
   };
   A['work.update'] = function (s, uid, p) {
-    var w = work(s, p.id); need(canManageWork(s, uid, w), '只有项目负责人、跟进运营者或老板可以修改项目信息');
+    var w = work(s, p.id); need(['done', 'cancelled'].indexOf(w.status) < 0, '项目已结束，不能修改'); need(canManageWork(s, uid, w), '只有项目负责人、跟进运营者或老板可以修改项目信息');
     var ch = [];
     if ('priority' in p) { need(['hi', 'mid', 'lo'].indexOf(p.priority) >= 0, '优先级不正确'); w.priority = p.priority; ch.push('优先级'); }
     if ('goal' in p) { w.goal = txt(p.goal).slice(0, 200); ch.push('目标'); }
@@ -772,14 +776,14 @@ var TM = (function () {
     notify(s, [t.ownerId].concat(extra), uid, '任务有修改', t.title + '：' + ch.join('、'), '#/task/' + t.id); touchTask(s, t); return {};
   };
   A['work.milestone.add'] = function (s, uid, p) {
-    var w = work(s, p.id); need(canManageWork(s, uid, w), '只有项目负责人、跟进运营者或老板可以添加里程碑');
+    var w = work(s, p.id); need(['done', 'cancelled'].indexOf(w.status) < 0, '项目已结束，不能修改'); need(canManageWork(s, uid, w), '只有项目负责人、跟进运营者或老板可以添加里程碑');
     var t = txt(p.title); need(t, '请填写里程碑名称'); need(t.length <= 30, '里程碑名称不超过 30 字'); need(/^\d{4}-\d{2}-\d{2}$/.test(p.date || ''), '请选择日期');
     w.milestones = w.milestones || []; var m = { id: nid(s, 'MS'), title: t, date: p.date, done: false, doneAt: null };
     w.milestones.push(m); w.milestones.sort(function (a, b) { return a.date.localeCompare(b.date); });
     ev(s, { workId: w.id, actor: uid, action: 'work.milestone.add', text: '添加里程碑「' + t + '」（' + p.date + '）' }); touchWork(s, w); return { id: m.id };
   };
   A['work.milestone.toggle'] = function (s, uid, p) {
-    var w = work(s, p.id); need(canManageWork(s, uid, w), '只有项目负责人、跟进运营者或老板可以更新里程碑');
+    var w = work(s, p.id); need(['done', 'cancelled'].indexOf(w.status) < 0, '项目已结束，不能修改'); need(canManageWork(s, uid, w), '只有项目负责人、跟进运营者或老板可以更新里程碑');
     var m = get(w.milestones || [], p.mid, '里程碑'); m.done = !m.done; m.doneAt = m.done ? now(s) : null;
     ev(s, { workId: w.id, actor: uid, action: 'work.milestone.' + (m.done ? 'done' : 'reopen'), text: (m.done ? '完成里程碑「' : '重新打开里程碑「') + m.title + '」' });
     notify(s, relatedOfWork(s, w), uid, (m.done ? '里程碑完成：' : '里程碑重新打开：') + m.title, w.title, '#/work/' + w.id); touchWork(s, w); return {};
@@ -795,7 +799,7 @@ var TM = (function () {
     var old = u.roles.map(function (a) { return L.role[a.role]; }).join('、'), ci = p.role === 'lead' && p.canInitiate !== false;
     if (u.roles.length === 1 && u.roles[0].role === p.role && !!u.roles[0].canInitiate === ci) deny('角色没有变化');
     u.roles = [{ role: p.role, dept: roleDept(p.role, u.group), canInitiate: ci }];
-    var ow = openWorkOf(s, u.id), keep = ow.works.filter(function (w) { return (w.leadId === u.id && p.role !== 'lead') || (w.operatorId === u.id && p.role !== 'operator'); }).length;
+    var ow = openWorkOf(s, u.id), keep = ow.works.filter(function (w) { return (w.leadId === u.id && p.role !== 'lead') || (w.operatorId === u.id && p.role !== 'operator'); }).length + (p.role === 'admin' ? ow.tasks.length + ow.reviews.length + ow.ideas.length : 0);
     ev(s, { actor: uid, action: 'member.role', text: u.name + ' 的角色：' + old + ' → ' + L.role[p.role] });
     notify(s, [u.id], uid, '你的角色调整为「' + L.role[p.role] + '」', '打开 App 看看新的功能入口', '#/home');
     return { keep: keep };
@@ -832,7 +836,8 @@ var TM = (function () {
     if ('avatar' in p) { var av = txt(p.avatar); need(!av || /^[A-Za-z0-9_-]{4,64}$/.test(av), '头像格式不对'); need(p.id === uid, '头像只能自己换'); u.avatar = av || null; }
     if ('prefs' in p) {
       // 偏好只收白名单里的布尔开关（防止往全局状态里塞任意数据）
-      var PREFS = ['notifyImportant', 'quietOn'], np = Object.assign({}, u.prefs || {}), pp = p.prefs || {};
+      need(p.prefs && typeof p.prefs === 'object' && !Array.isArray(p.prefs), '偏好设置格式不对');
+      var PREFS = ['notifyImportant', 'quietOn'], np = Object.assign({}, u.prefs || {}), pp = p.prefs;
       need(p.id === uid, '通知设置只能自己改');
       Object.keys(pp).forEach(function (k) { if (PREFS.indexOf(k) < 0) return; need(typeof pp[k] === 'boolean', '偏好设置格式不对'); np[k] = pp[k]; });
       if ('mute' in pp) { need(Array.isArray(pp.mute) && pp.mute.every(function (x) { return Object.prototype.hasOwnProperty.call(NCATS, x); }), '通知类别不正确'); np.mute = pp.mute.filter(function (x, i, a) { return a.indexOf(x) === i; }); }
@@ -918,7 +923,7 @@ var TM = (function () {
     return {};
   };
   A['work.stage'] = function (s, uid, p) {
-    var w = work(s, p.id); need(w.status !== 'paused', '项目已暂停，恢复后才能操作'); need(w.leadId === uid || hasRole(s, uid, 'owner') || (w.kind !== 'product' && w.operatorId === uid), '只有项目负责人可以推进阶段');
+    var w = work(s, p.id); need(['done', 'cancelled'].indexOf(w.status) < 0, '项目已结束，不能修改'); need(w.status !== 'paused', '项目已暂停，恢复后才能操作'); need(w.leadId === uid || hasRole(s, uid, 'owner') || (w.kind !== 'product' && w.operatorId === uid), '只有项目负责人可以推进阶段');
     var st = STAGES[w.kind].map(function (x) { return x[0]; }); need(st.indexOf(p.stage) >= 0, '阶段不存在'); need(p.stage !== w.stage, '已经在该阶段');
     var from = w.stage; w.stage = p.stage; touchWork(s, w);
     ev(s, { workId: w.id, ideaId: w.ideaId, actor: uid, action: 'work.stage', from: stageName(w.kind, from), to: stageName(w.kind, p.stage), reason: txt(p.note), text: '阶段：' + stageName(w.kind, from) + ' 到 ' + stageName(w.kind, p.stage) });
@@ -950,7 +955,8 @@ var TM = (function () {
     var w = work(s, p.id); need(hasRole(s, uid, 'owner') || w.leadId === uid || w.operatorId === uid, '只有老板、项目负责人或跟进运营者可以取消项目');
     need(['done', 'cancelled'].indexOf(w.status) < 0, '项目已结束，不能取消'); var r = txt(p.reason); need(r, '取消项目必须填写原因');
     var who = relatedOfWork(s, w), f = w.status, n = 0;
-    s.tasks.forEach(function (t) { if (t.workId === w.id && ['done', 'cancelled'].indexOf(t.status) < 0) { t.status = 'cancelled'; t.lastActivity = now(s); n++; } });
+    s.tasks.forEach(function (t) { if (t.workId === w.id && ['done', 'cancelled'].indexOf(t.status) < 0) { ev(s, { taskId: t.id, workId: w.id, actor: uid, action: 'task.cancel', from: t.status, to: 'cancelled', text: '项目取消，任务一并取消' }); t.status = 'cancelled'; t.lastActivity = now(s); n++; } });
+    s.decisions.forEach(function (dc) { if (dc.workId === w.id && dc.status === 'pending') { dc.status = 'withdrawn'; dc.decidedAt = now(s); dc.note = '项目已取消'; } });
     w.status = 'cancelled'; w.cancelReason = r; w.cancelledAt = now(s); w.cancelledBy = uid;
     ev(s, { workId: w.id, ideaId: w.ideaId, actor: uid, action: 'work.cancel', from: f, to: 'cancelled', reason: r, text: '取消项目：' + r + (n ? '（一并取消 ' + n + ' 个未完成任务）' : '') });
     var d = w.ideaId && s.ideas.find(function (x) { return x.id === w.ideaId; });
@@ -1156,7 +1162,7 @@ var TM = (function () {
     var mgr = hasRole(s, uid, 'owner') || hasRole(s, uid, 'admin');
     // 动态：关联的想法 / 项目 / 任务都得看得到；不关联任何对象的（成员、配置变更）只给老板和管理员
     // 删除想法的记录：想法本身看不到了，但老板要能在动态里查到是谁、为什么删的
-    v.events = v.events.filter(function (e) { if (!e.ideaId && !e.workId && !e.taskId) return mgr; if (e.action === 'idea.delete') return hasRole(s, uid, 'owner'); return byIdea(e) && (!e.workId || W[e.workId]) && (!e.taskId || T[e.taskId]); });
+    v.events = v.events.filter(function (e) { if (!e.ideaId && !e.workId && !e.taskId) return mgr; if (e.action === 'idea.delete') return hasRole(s, uid, 'owner'); return (e.workId ? W[e.workId] : byIdea(e)) && (!e.taskId || T[e.taskId]); }); // 项目上的动态：能看项目就能看（不要求能看来源想法）
     v.decisions = v.decisions.filter(function (x) { return (x.ideaId && I[x.ideaId]) || (x.workId && W[x.workId]) || (!x.ideaId && !x.workId && hasRole(s, uid, 'owner')); });
     // 决策上的 Claude 建议基于老板的全部资料，只给老板
     if (!own) v.decisions.forEach(function (x) { delete x.ai; });
@@ -1317,24 +1323,27 @@ var TM = (function () {
   // 手上还没结束的工作：交接时用
   function openWorkOf(s, id) {
     var open = function (x) { return ['done', 'cancelled'].indexOf(x.status) < 0; };
-    return { tasks: s.tasks.filter(function (t) { return open(t) && t.ownerId === id; }), works: s.workItems.filter(function (w) { return open(w) && (w.leadId === id || w.operatorId === id || w.reviewerId === id); }),
+    return { tasks: s.tasks.filter(function (t) { return open(t) && t.ownerId === id; }), reviews: s.tasks.filter(function (t) { return open(t) && t.reviewerId === id && t.ownerId !== id; }), works: s.workItems.filter(function (w) { return open(w) && (w.leadId === id || w.operatorId === id || w.reviewerId === id); }),
       ideas: s.ideas.filter(function (d) { return !d.deleted && d.followerId === id && ['triage', 'awaiting_owner'].indexOf(d.status) >= 0; }) };
   }
   /* 账号停用 / 恢复（服务器在老板或管理员停用账号时以系统身份调用）：停用后不能再被派任务；提醒老板交接 TA 手上的工作 */
   A['member.active'] = function (s, uid, p) {
     need(uid === 'agent', '只有系统可以记录账号停用'); var u = user(s, p.id); need(u, '找不到该成员'); need(!hasRole(s, u.id, 'owner'), '不能停用老板');
     var on = !!p.active; if (!on === !!u.inactive) return {};
-    u.inactive = !on; var ow = openWorkOf(s, u.id), n = ow.tasks.length + ow.works.length + ow.ideas.length;
+    u.inactive = !on; var ow = openWorkOf(s, u.id), n = ow.tasks.length + ow.reviews.length + ow.works.length + ow.ideas.length;
     ev(s, { actor: 'agent', action: 'member.active', text: u.name + (on ? ' 的账号已恢复' : ' 的账号已停用') });
-    if (!on && n) notify(s, usersWith(s, 'owner').concat(usersWith(s, 'admin')), null, u.name + ' 的工作需要交接', '账号已停用，TA 手上还有 ' + [ow.tasks.length && ow.tasks.length + ' 个任务', ow.works.length && ow.works.length + ' 个项目', ow.ideas.length && ow.ideas.length + ' 条跟进中的想法'].filter(Boolean).join('、') + '。到成员资料里一键交接。', '#/team');
+    if (!on && n) notify(s, usersWith(s, 'owner').concat(usersWith(s, 'admin')), null, u.name + ' 的工作需要交接', '账号已停用，TA 手上还有 ' + [ow.tasks.length && ow.tasks.length + ' 个任务', ow.reviews.length && ow.reviews.length + ' 个待 TA 验收的任务', ow.works.length && ow.works.length + ' 个项目', ow.ideas.length && ow.ideas.length + ' 条跟进中的想法'].filter(Boolean).join('、') + '。到成员资料里一键交接。', '#/team');
     return { open: n };
   };
   /* 交接：把一个人（通常是已停用的）手上未结束的任务、项目角色、跟进中的想法转给另一位在职成员；对方没有相应角色的部分保留并说明 */
   A['member.handover'] = function (s, uid, p) {
     need(hasRole(s, uid, 'owner') || hasRole(s, uid, 'admin'), '只有老板或管理员可以交接工作');
     var from = user(s, p.from); need(from, '找不到要交接的成员'); need(p.to && p.to !== p.from && live(s, p.to), '请选择在职的接手人');
-    var to = p.to, ow = openWorkOf(s, from.id), r = { tasks: 0, works: 0, ideas: 0, skipped: [] };
-    ow.tasks.forEach(function (t) { t.ownerId = to; t.collabs = t.collabs.filter(function (c) { return c !== to; }); if (['accepted', 'in_progress', 'blocked'].indexOf(t.status) >= 0) t.status = 'assigned'; t.lastActivity = now(s); r.tasks++;
+    need(hasRole(s, uid, 'owner') || !hasRole(s, from.id, 'owner'), '老板的工作只能由老板自己交接'); need(!onlyAdmin(s, p.to), '接手人不能是只做管理的成员（看不到任务）');
+    var to = p.to, ow = openWorkOf(s, from.id), r = { tasks: 0, reviews: 0, works: 0, ideas: 0, skipped: [] };
+    ow.reviews.forEach(function (t) { var w = s.workItems.find(function (x) { return x.id === t.workId; }) || {}; var nr = t.ownerId !== to ? to : [w.reviewerId, w.leadId, w.operatorId].find(function (x) { return x && x !== t.ownerId && x !== from.id && live(s, x); });
+      if (!nr) { r.skipped.push('任务「' + t.title + '」的验收人（找不到合适的人）'); return; } t.reviewerId = nr; r.reviews++; ev(s, { taskId: t.id, workId: t.workId, actor: uid, action: 'member.handover', text: '验收人从 ' + from.name + ' 交接给 ' + name(s, nr) }); });
+    ow.tasks.forEach(function (t) { t.ownerId = to; if (t.reviewerId === to) { var w0 = s.workItems.find(function (x) { return x.id === t.workId; }) || {}; t.reviewerId = [w0.reviewerId, w0.leadId, w0.operatorId].find(function (x) { return x && x !== to && live(s, x); }) || t.reviewerId; } t.collabs = t.collabs.filter(function (c) { return c !== to; }); if (['accepted', 'in_progress', 'blocked'].indexOf(t.status) >= 0) t.status = 'assigned'; t.lastActivity = now(s); r.tasks++;
       ev(s, { taskId: t.id, workId: t.workId, actor: uid, action: 'member.handover', text: '任务从 ' + from.name + ' 交接给 ' + name(s, to) }); });
     s.tasks.forEach(function (t) { if (['done', 'cancelled'].indexOf(t.status) < 0 && t.collabs.indexOf(from.id) >= 0) t.collabs = t.collabs.filter(function (c) { return c !== from.id; }); });
     ow.works.forEach(function (w) {
@@ -1345,8 +1354,8 @@ var TM = (function () {
       if (did) { r.works++; ev(s, { workId: w.id, actor: uid, action: 'member.handover', text: from.name + ' 在项目里的角色交接给 ' + name(s, to) }); touchWork(s, w); }
     });
     ow.ideas.forEach(function (d) { if (canFollow(s, to)) { d.followerId = to; r.ideas++; touchIdea(s, d); ev(s, { ideaId: d.id, actor: uid, action: 'member.handover', text: '跟进人从 ' + from.name + ' 交接给 ' + name(s, to) }); } else r.skipped.push('想法「' + (d.title || '未命名') + '」的跟进（' + name(s, to) + ' 不是运营者）'); });
-    need(r.tasks + r.works + r.ideas || r.skipped.length, from.name + ' 手上没有需要交接的工作');
-    if (r.tasks + r.works + r.ideas) notify(s, [to], uid, '你接手了 ' + from.name + ' 的工作', [r.tasks && r.tasks + ' 个任务', r.works && r.works + ' 个项目', r.ideas && r.ideas + ' 条想法'].filter(Boolean).join('、'), '#/tasks');
+    // 没有可交接的也算成功（管理员的手机上看不到任务，以服务器上的结果为准）
+    if (r.tasks + r.reviews + r.works + r.ideas) notify(s, [to], uid, '你接手了 ' + from.name + ' 的工作', [r.tasks && r.tasks + ' 个任务', r.reviews && r.reviews + ' 个待验收', r.works && r.works + ' 个项目', r.ideas && r.ideas + ' 条想法'].filter(Boolean).join('、'), '#/tasks');
     return r;
   };
   A['account.deactivated'] = function (s, uid, p) {

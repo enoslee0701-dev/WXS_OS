@@ -65,6 +65,8 @@ if (!S) {
 function hashPw(pw, salt) { return crypto.scryptSync(String(pw), salt, 32).toString('hex'); }
 const DUMMY = { salt: crypto.randomBytes(16).toString('hex'), hash: '' }; DUMMY.hash = hashPw('x', DUMMY.salt);
 function checkPw(c, pw) { const h = Buffer.from(hashPw(pw, c.salt), 'hex'), x = Buffer.from(c.hash, 'hex'); return h.length === x.length && crypto.timingSafeEqual(h, x); }
+// 密码规则（建团队、老板设密码、自己改密码共用）：至少 8 位，不能是一串相同字符或常见弱密码
+function weakPw(pw) { pw = String(pw || ''); if (pw.length < 8) return '密码至少 8 位'; if (/^(.)\1+$/.test(pw) || /^(12345678|123456789|1234567890|87654321|password|qwertyui|abcd1234|a1234567)$/i.test(pw)) return '密码太简单，换一个吧'; return ''; }
 function genPw() { const A = 'abcdefghjkmnpqrstuvwxyz23456789'; let s = ''; const b = crypto.randomBytes(8); for (let i = 0; i < 8; i++) s += A[b[i] % A.length]; return s.slice(0, 4) + '-' + s.slice(4); }
 function setCred(uid, login, pw, mustChange) {
   const salt = crypto.randomBytes(16).toString('hex'), t = Date.now();
@@ -164,7 +166,7 @@ function tarHeader(name, size, mtime) {
 }
 async function exportTgz(res) {
   const day = new Date().toISOString().slice(0, 10), gz = zlib.createGzip();
-  res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent('团队协同完整备份-' + day + '.tar.gz'), 'Cache-Control': 'no-store' });
+  res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Disposition': 'attachment; filename="teamops-backup-' + day + '.tar.gz"; filename*=UTF-8\'\'' + encodeURIComponent('团队协同完整备份-' + day + '.tar.gz'), 'Cache-Control': 'no-store' });
   gz.pipe(res);
   const put = (b) => new Promise(ok => { if (gz.write(b)) ok(); else gz.once('drain', ok); });
   const pad = (n) => n % 512 ? put(Buffer.alloc(512 - n % 512)) : Promise.resolve();
@@ -179,7 +181,7 @@ async function exportTgz(res) {
       await pad(st.size);
     }
     await put(Buffer.alloc(1024));
-  } catch (e) { console.error('导出备份出错', e); }
+  } catch (e) { console.error('导出备份出错', e); gz.destroy(); res.destroy(e); return; } // 出错就中断下载，不给一个看起来正常、其实缺内容的包
   gz.end();
 }
 const stateFor = (uid) => ({ version, state: TM.viewFor(S, uid) });
@@ -211,7 +213,7 @@ const routes = {
     const name = String(b.name || '').trim(), login = String(b.login || '').trim(), pw = String(b.password || '');
     if (!name) return [400, { error: '请填写你的姓名' }];
     if (!LOGIN_RE.test(login)) return [400, { error: '账号 3–32 位，只能用字母、数字和 _ . @ -' }];
-    if (pw.length < 8) return [400, { error: '密码至少 8 位' }];
+    if (weakPw(pw)) return [400, { error: weakPw(pw) }];
     if (b.demo) { S = TM.migrate(TM.seed()); const o = TM.user(S, 'u_owner'); o.name = name.slice(0, 20); if (b.title) o.title = String(b.title).slice(0, 16); }
     else S = TM.blank({ name: name.slice(0, 20), title: String(b.title || '').slice(0, 16) });
     version = 1; persist(); setCred('u_owner', login, pw, false);
@@ -267,7 +269,7 @@ const routes = {
     const c = q('SELECT * FROM creds WHERE uid=?').get(me.uid), pk = 'pw|' + me.uid;
     if (limited(pk, 10)) return [429, { error: '尝试次数太多，请 15 分钟后再试' }];
     if (!me.mustChange && !checkPw(c, b.old || '')) { failed(pk); return [400, { error: '原密码不对' }]; }
-    const pw = String(b.password || ''); if (pw.length < 8) return [400, { error: '新密码至少 8 位' }]; if (/^(\d)\1+$|^(12345678|123456789|87654321|password|11111111)$/i.test(pw)) return [400, { error: '密码太简单，换一个吧' }];
+    const pw = String(b.password || ''); if (weakPw(pw)) return [400, { error: '新' + weakPw(pw) }]; if (c && checkPw(c, pw)) return [400, { error: '新密码不能和原来的一样' }];
     setCred(me.uid, c.login, pw, false);
     dropSessions('uid=? AND token<>?', me.uid, me.token);
     return [200, { ok: true }];
@@ -386,7 +388,7 @@ const routes = {
     if (!LOGIN_RE.test(login)) return [400, { error: '账号 3–32 位，只能用字母、数字和 _ . @ -' }];
     const dup = q('SELECT uid FROM creds WHERE login=?').get(login); if (dup && dup.uid !== uid) return [409, { error: '这个账号名已经有人用了' }];
     let pw = b.password ? String(b.password) : null;
-    if (pw && pw.length < 8) return [400, { error: '密码至少 8 位' }];
+    if (pw && weakPw(pw)) return [400, { error: weakPw(pw) }];
     if (!pw && (!old || b.reset)) pw = genPw();
     if (pw) { setCred(uid, login, pw, uid !== me.uid); dropSessions('uid=?', uid); }
     else q('UPDATE creds SET login=? WHERE uid=?').run(login, uid);
@@ -395,6 +397,7 @@ const routes = {
   'POST /api/accounts/disable': async (req, url, b, me) => {
     if (!isMgr(me.uid)) return [403, { error: '只有老板或管理员可以管理账号' }];
     const uid = String(b.uid || '');
+    if (!TM.user(S, uid)) return [404, { error: '没有这个成员' }];
     if (uid === me.uid) return [400, { error: '不能停用自己的账号' }];
     if (isOwner(uid)) return [403, { error: '不能停用老板的账号' }];
     if (!isOwner(me.uid) && TM.hasRole(S, uid, 'admin')) return [403, { error: '管理员的账号只能由老板停用' }];

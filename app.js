@@ -1822,7 +1822,7 @@
   var tm = { group: 'all' };
   var SKC = ['k-blue', 'k-violet', 'k-green'];
   var PRES = { online: ['在线', '#16C47F'], away: ['离开', '#F59E0B'], busy: ['忙碌', '#F03E50'], offline: ['离线', '#9AA3B2'] };
-  function hoCount(uid) { var o = TM.openWorkOf(S, uid); return o.tasks.length + o.works.length + o.ideas.length; }
+  function hoCount(uid) { var o = TM.openWorkOf(S, uid); return o.tasks.length + o.reviews.length + o.works.length + o.ideas.length; }
   function tCounts(uid) { var mine = S.tasks.filter(function (t) { return t.ownerId === uid; }); return { prog: mine.filter(function (t) { return ['done', 'cancelled'].indexOf(t.status) < 0; }).length, done: mine.filter(function (t) { return t.status === 'done'; }).length }; }
   function weekDue() { var ws = weekStart(0).getTime(), we = ws + 7 * 864e5; return scopeTasks().filter(function (t) { if (!t.due || ['done', 'cancelled'].indexOf(t.status) >= 0) return false; var p = t.due.split('-'), d = new Date(+p[0], p[1] - 1, +p[2]).getTime(); return d >= ws && d < we; }); }
   function viewTeamPage() {
@@ -1870,7 +1870,8 @@
           '<div class="fld"><span>状态</span><div class="opts tdpr">' + Object.keys(PRES).map(function (k) { return opt('presence', k, PRES[k][0], '', (u.presence || 'offline') === k); }).join('') + '</div></div>' : '<p class="tm-motto">“' + esc(u.motto || '') + '”</p>') +
         '<div class="fld"><span>手上的任务（' + c.prog + ' 项进行中，你能看到 ' + ts.length + ' 项）</span>' + (ts.length ? '<div class="list">' + ts.map(function (t) { return taskRow(t); }).join('') + '</div>' : '<p class="muted" style="font-size:13.5px">没有你能看到的进行中任务。</p>') + '</div>' +
         (isOwner() && !TM.hasRole(S, u.id, 'owner') && !u.inactive ? '<button type="button" class="btn block mt" data-do="tmRole" data-u="' + u.id + '">调整角色</button>' : '') +
-        ((isOwner() || TM.hasRole(S, me, 'admin')) && u.id !== me && hoCount(u.id) ? '<button type="button" class="btn block mt' + (u.inactive ? ' pri' : '') + '" data-do="tmHandover" data-u="' + u.id + '">交接 TA 手上的工作（' + hoCount(u.id) + ' 项）</button>' : '') +
+        // 管理员手机上看不到任务，所以停用的人总是给交接按钮，以服务器结果为准
+        ((isOwner() || TM.hasRole(S, me, 'admin')) && u.id !== me && !TM.hasRole(S, u.id, 'owner') && (hoCount(u.id) || u.inactive) ? '<button type="button" class="btn block mt' + (u.inactive ? ' pri' : '') + '" data-do="tmHandover" data-u="' + u.id + '">交接 TA 手上的工作' + (hoCount(u.id) ? '（' + hoCount(u.id) + ' 项）' : '') + '</button>' : '') +
         (!u.inactive && canAssign() && !TM.user(S, u.id).roles.every(function (a) { return a.role === 'admin' || a.role === 'owner'; }) ? '<button type="button" class="btn block mt" data-do="tmAssignTo" data-u="' + u.id + '">给 ' + esc(u.name) + ' 分配任务</button>' : '') +
         (SRV && TMS.loggedIn() && (isOwner() || TM.hasRole(S, me, 'admin')) && (!TM.hasRole(S, u.id, 'owner') || u.id === me) ? '<button type="button" class="btn block mt" data-do="srvAccount" data-u="' + u.id + '">登录账号与密码</button>' : ''),
         mg ? '保存' : '关闭', function (o) { if (!mg) return closeSheet(); act('member.update', { id: u.id, motto: o.motto, skills: (o.skills || '').split(/[、,，\s]+/), presence: o.presence }, '资料已更新'); });
@@ -1886,10 +1887,11 @@
     },
     tmHandover: function (el) {
       var u = TM.user(S, el.dataset.u), ow = TM.openWorkOf(S, u.id), to = TM.activeUsers(S).filter(function (x) { return x.id !== u.id && !x.roles.every(function (a) { return a.role === 'admin'; }); });
-      openSheet('交接 ' + u.name + ' 的工作', '<div class="callout">' + [ow.tasks.length && ow.tasks.length + ' 个未完成任务', ow.works.length && ow.works.length + ' 个项目里的负责人 / 跟进 / 验收角色', ow.ideas.length && ow.ideas.length + ' 条跟进中的想法'].filter(Boolean).join('、') + '，一起转给下面这位。接手人没有相应角色的部分会保留并告诉你。</div>' +
+      openSheet('交接 ' + u.name + ' 的工作', '<div class="callout">' + [ow.tasks.length && ow.tasks.length + ' 个未完成任务', ow.reviews.length && ow.reviews.length + ' 个待 TA 验收的任务', ow.works.length && ow.works.length + ' 个项目里的负责人 / 跟进 / 验收角色', ow.ideas.length && ow.ideas.length + ' 条跟进中的想法'].filter(Boolean).join('、') + '，一起转给下面这位。接手人没有相应角色的部分会保留并告诉你。</div>' +
         field('接手人', userSelect('to', to.map(function (x) { return x.id; }), (to[0] || {}).id)), '交接', function (o) {
           var r = act('member.handover', { from: u.id, to: o.to }); if (!r.ok) return;
-          toast('已交接给 ' + nm(o.to) + (r.skipped && r.skipped.length ? '；未转：' + r.skipped.join('；') : ''), !!(r.skipped && r.skipped.length));
+          var nn = (r.tasks || 0) + (r.reviews || 0) + (r.works || 0) + (r.ideas || 0);
+          toast(nn ? '已交接给 ' + nm(o.to) + (r.skipped && r.skipped.length ? '；未转：' + r.skipped.join('；') : '') : SRV ? '已提交，服务器会把 TA 的工作转给 ' + nm(o.to) : 'TA 手上没有需要交接的工作', !!(r.skipped && r.skipped.length));
         }, true);
     },
     tmAssignTo: function (el) { asg = freshAsg(); asg.ownerId = el.dataset.u; closeSheet(); location.hash = '#/assign'; },

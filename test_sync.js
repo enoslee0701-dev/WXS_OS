@@ -9,7 +9,7 @@ let n = 0;
 TM.act = function (s, uid, name, p) {
   if (uid === 'agent' || !s || !s.users || !TM.user(s, uid)) return orig.apply(this, arguments);
   let rc;
-  try { rc = orig(TM.viewFor(s, uid), uid, name, JSON.parse(JSON.stringify(p || {}))); } catch (e) { rc = { ok: false, error: '客户端抛异常：' + e.message }; }
+  try { const cv = TM.viewFor(s, uid); if (s.clock) cv.clock = s.clock; /* 手机和服务器用同一个时钟（真实环境都是当前时间） */ rc = orig(cv, uid, name, JSON.parse(JSON.stringify(p || {}))); } catch (e) { rc = { ok: false, error: '客户端抛异常：' + e.message }; }
   const rs = orig(s, uid, name, p); n++;
   if (rc.ok !== rs.ok) bad.push(`${name}（${uid}）客户端${rc.ok ? '成功' : '失败：' + rc.error} / 服务器${rs.ok ? '成功' : '失败：' + rs.error}`);
   else if (rs.ok) Object.keys(rs).forEach(k => { if (typeof rs[k] === 'string' && rc[k] !== rs[k]) bad.push(`${name}（${uid}）返回的 ${k} 不一致：客户端 ${rc[k]} / 服务器 ${rs[k]}`); });

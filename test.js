@@ -670,7 +670,7 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   const ht2 = h.tasks.find(t => t.id === ht.id);
   ok(hh.tasks >= 1 && ht2.ownerId === DV && ht2.status === 'assigned' && !h.tasks.some(t => t.ownerId === AX && !['done','cancelled'].includes(t.status)), '任务转给接手人，重新待接收 ' + JSON.stringify(hh) + ht2.status);
   ok(h.notifications.some(n => n.userId === DV && /接手了 周敏/.test(n.title)), '接手人收到通知');
-  rej(TM.act(h, O, 'member.handover', { from: AX, to: DV }), '没有工作时提示无需交接');
+  { const z = TM.act(h, O, 'member.handover', { from: AX, to: DV }); ok(z.ok && z.tasks + z.reviews + z.works + z.ideas === 0, '没有工作时也成功（0 项），以服务器结果为准'); }
   // 跟进人交接给不是运营者的人：保留并说明
   const hi2 = must(TM.act(h, O, 'idea.create', { note: '换门禁' }), '建想法2'); must(TM.act(h, O, 'idea.submit', { id: hi2.id, path: 'direct' }), '提交2'); must(TM.act(h, OP, 'idea.claim', { id: hi2.id }), '认领2');
   const hk = must(TM.act(h, O, 'member.handover', { from: OP, to: DV }), '运营者的工作交给执行者');
@@ -830,6 +830,27 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   ok(nx && nx.date === '2026-10-14' && !nx.done && nx.repeat === 'weekly' && nx.title === '周会纪要', '自动生成下一次');
   must(TM.act(rp, O, 'todo.toggle', { id: r1.id }), '取消勾选'); must(TM.act(rp, O, 'todo.toggle', { id: r1.id }), '再勾上');
   ok(rp.todos.filter(x => x.title === '周会纪要').length === 2, '反复勾选不会重复生成'); }
+
+// ===== 第二轮审计修复 =====
+{ const g2 = fresh();
+  // 交接包含待验收任务的验收人
+  const sub = g2.tasks.find(t => t.status === 'submitted'); const rv = sub.reviewerId;
+  must(TM.act(g2, 'agent', 'member.active', { id: rv, active: false }), '停用验收人');
+  const to = [O, OP, LD, DV, DS].find(x => x !== rv && x !== sub.ownerId);
+  const hv = must(TM.act(g2, O, 'member.handover', { from: rv, to }), '交接');
+  ok(g2.tasks.find(t => t.id === sub.id).reviewerId === to && hv.reviews >= 1, '待验收任务的验收人也交接了');
+  rej(TM.act(g2, AD, 'member.handover', { from: O, to: DV }), '管理员不能交接老板的工作');
+  rej(TM.act(g2, O, 'member.handover', { from: DV, to: AD }), '不能交接给只做管理的成员');
+  rej(TM.act(g2, O, 'project.create', { title: 'x', desc: 'y', ptype: 'admin', operatorId: OP, reviewerId: rv, tasks: [{ title: 'a', ownerId: DV, expected: 'b', criteria: 'c' }] }), '建项目时验收人不能是已停用的人');
+  rej(TM.act(g2, DV, 'member.update', { id: DV, prefs: 'abc' }), '偏好不是对象被拒（不抛异常）');
+  ok(TM.ncat('陈验收 在任务里留言', '陈验收') === 'cmt' && TM.ncat('里程碑完成：验收标准') !== 'review', '通知分类不受人名和用户内容影响');
+  const dw = g2.workItems.find(w => w.status === 'done');
+  if (dw) rej(TM.act(g2, O, 'work.update', { id: dw.id, goal: '改' }), '已完成的项目不能改');
+  // 重复待办：很久以前的每日待办，下一次不早于今天
+  const td = must(TM.act(g2, O, 'todo.create', { title: '打卡', date: '2026-09-01', repeat: 'daily' }), '建旧的每日待办');
+  const tg = must(TM.act(g2, O, 'todo.toggle', { id: td.id }), '完成');
+  ok(tg.nextDate >= TM.todayStr(g2), '下一次不早于今天 ' + tg.nextDate);
+  rej(TM.act(g2, O, 'work.plan', { id: g2.workItems.find(w => w.status === 'active').id, tasks: [{ title: 'x', ownerId: DV, reviewerId: DV, expected: 'a', criteria: 'b' }] }), '派任务时验收人不能是执行人'); }
 
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);
