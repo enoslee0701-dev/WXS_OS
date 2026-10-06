@@ -3109,3 +3109,8 @@ body.has-actions .toast{bottom:calc(96px + var(--sab))}
 .s-hero > .s-pbar{position:absolute;flex:none;z-index:1;left:24px;right:24px;bottom:28px;height:10px;border-radius:5px;background:rgba(139,92,246,.15)}.s-pbar span{display:block;height:100%;border-radius:5px;background:#8B5CF6}
 .tag.soft{font-weight:500;background:#F2F4F7;color:#5B6475}
 .row .m .tag + .tag{margin-left:6px}
+/* 全局搜索 */
+.q-tip{font-size:12.5px;margin:6px 2px 0}.q-n{font-size:13px;margin:0 2px 6px}
+.q-g{display:flex;align-items:center;gap:6px;margin:14px 2px 6px;font-size:14px;color:#3E4A63}.q-g span{font:600 12px "Figtree",var(--font);color:#8A93A3;background:#F2F4F7;border-radius:999px;padding:1px 7px}
+.q-r{display:flex!important;flex-direction:column;align-items:flex-start!important;gap:3px}.q-r b{font-size:15px;font-weight:600}.q-r small{font-size:13px;color:#6B7586;line-height:1.5}
+.q-r mark{background:#FFF1B8;color:inherit;border-radius:3px;padding:0 1px}.q-more{font-size:12.5px;margin:6px 2px}

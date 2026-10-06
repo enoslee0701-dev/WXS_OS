@@ -459,6 +459,39 @@
       list(ts.map(function (t) { return taskRow(t); }), role() === 'admin' ? '管理员不参与任务。' : '这个分类下没有任务。');
   }
   function projSeg(on) { return '<div class="seg"><button class="' + (on === 'work' ? 'on' : '') + '" data-do="goWork">事项</button><button class="' + (on === 'ideas' ? 'on' : '') + '" data-do="goIdeas">想法</button></div>'; }
+  /* 全局搜索：在自己能看到的数据里找（S 已按身份裁剪）。多个词同时匹配、不分大小写；结果按类别分组、片段里高亮命中的词 */
+  function searchAll(raw) {
+    var ks = String(raw || '').toLowerCase().split(/\s+/).filter(Boolean); if (!ks.length) return [];
+    var vi = {}, vt = {}; vIdeas().forEach(function (d) { vi[d.id] = d; }); vTasks().forEach(function (t) { vt[t.id] = t; }); // 只在自己能看到的想法、任务里找留言和讨论
+    var out = [], hit = function (txt) { var l = String(txt || '').toLowerCase(); return ks.every(function (k) { return l.indexOf(k) >= 0; }); };
+    var add = function (g, title, text, href) { out.push({ g: g, title: title || '（未命名）', text: String(text || ''), href: href }); };
+    vIdeas().forEach(function (d) { var sm = TM.latestSummary(S, d.id, 'analysis'), full = [d.title, TM.noteOf ? TM.noteOf(d) : d.note, (d.tags || []).join(' '), sm && sm.payload ? (sm.payload.summary || '') + ' ' + (sm.payload.goal || '') : ''].join(' '); if (hit(full)) add('想法', d.title, full, '#/idea/' + d.id); });
+    S.suggestions.forEach(function (x) { var d = vi[x.ideaId]; if (d && hit(x.body)) add('讨论', d.title, nm(x.authorId) + '：' + x.body, '#/idea/' + d.id); });
+    vWork().forEach(function (w) { var full = [w.title, w.goal, w.keyResults, (w.tags || []).join(' ')].join(' '); if (hit(full)) add('项目', w.title, full, '#/work/' + w.id);
+      (w.files || []).forEach(function (f) { if (hit(f.name)) add('文件', f.name, '项目「' + w.title + '」的文件', '#/work/' + w.id); }); });
+    vTasks().forEach(function (t) { var full = [t.title, t.description, t.expected, t.criteria].join(' '); if (hit(full)) add('任务', t.title, full, '#/task/' + t.id); });
+    S.comments.forEach(function (c) { var t = vt[c.taskId]; if (t && hit(c.body)) add('留言', t.title, nm(c.authorId) + '：' + c.body, '#/task/' + t.id); });
+    (S.deliverables || []).forEach(function (f) { var t = vt[f.taskId]; if (!t) return; var full = [f.note, f.url, (f.media || []).map(function (m) { return m.name; }).join(' ')].join(' '); if (hit(full)) add('交付物', t.title, full, '#/task/' + t.id); });
+    TM.ensureTodos(S); S.todos.forEach(function (x) { if ((x.ownerId === me || x.people.indexOf(me) >= 0) && hit(x.title + ' ' + (x.note || ''))) add('待办', x.title, x.note || '', '#/tasks'); });
+    TM.activeUsers(S).forEach(function (u) { var full = [u.name, u.title, (u.skills || []).join(' '), u.group].join(' '); if (hit(full)) add('成员', u.name, [u.title, (u.skills || []).join('、')].filter(Boolean).join(' · '), '#/team'); });
+    if (TM.kbVisible) TM.kbVisible(S, me).forEach(function (k) { if (hit(k.title + ' ' + k.body)) add('知识库', k.title, k.body, '#/kb/' + k.id); });
+    return out;
+  }
+  // 片段：取第一个命中词前后各一段，命中的词高亮
+  function snip(text, ks) {
+    var t = String(text || '').replace(/\s+/g, ' '), l = t.toLowerCase(), at = -1;
+    ks.forEach(function (k) { var i = l.indexOf(k); if (i >= 0 && (at < 0 || i < at)) at = i; });
+    var a = Math.max(0, at - 18), part = (a ? '…' : '') + t.slice(a, a + 70) + (t.length > a + 70 ? '…' : '');
+    var h = esc(part); ks.forEach(function (k) { var e = esc(k).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); h = h.replace(new RegExp('(' + e + ')', 'gi'), '<mark>$1</mark>'); }); return h;
+  }
+  function searchHTML(raw) {
+    var ks = String(raw || '').toLowerCase().split(/\s+/).filter(Boolean); if (!ks.length) return '';
+    var rs = searchAll(raw); if (!rs.length) return emptyBox('没有找到「' + esc(raw.trim()) + '」相关的内容。');
+    var order = ['想法', '项目', '任务', '留言', '交付物', '文件', '讨论', '待办', '成员', '知识库'], h = '<p class="muted q-n">共 ' + rs.length + ' 条</p>';
+    order.forEach(function (g) { var xs = rs.filter(function (r) { return r.g === g; }); if (!xs.length) return;
+      h += '<h3 class="q-g">' + g + '<span>' + xs.length + '</span></h3><div class="list">' + xs.slice(0, 8).map(function (r) { return '<a class="row q-r" href="' + r.href + '"><b>' + snip(r.title, ks) + '</b>' + (r.text && r.text !== r.title ? '<small>' + snip(r.text, ks) + '</small>' : '') + '</a>'; }).join('') + (xs.length > 8 ? '<p class="muted q-more">还有 ' + (xs.length - 8) + ' 条，换个更具体的词试试</p>' : '') + '</div>'; });
+    return h;
+  }
   var QUICK = {
     quickIdea: function () { if (!TM.canInitiate(S, me)) return toast('只有老板和有发起权的负责人可以记录想法', true); DO.goNew(); },
     quickProject: function () { DO.goProject(); },
@@ -469,17 +502,9 @@
         (xs.length ? '<div class="list">' + xs.slice(0, 6).map(function (d) { var sm = TM.latestSummary(S, d.id, 'analysis'); return '<a class="row" href="#/idea/' + d.id + '"><div class="t"><span>' + esc(d.title || '未命名') + '</span>' + (d.aiStatus === 'failed' ? '<span class="pill t-bad">AI 失败</span>' : '<span class="tag sim">整理稿 v' + sm.version + '</span>') + '</div><div class="m"><span>' + (sm ? esc(L.route[sm.payload.suggested_route] ? 'AI 建议：' + L.route[sm.payload.suggested_route] : '') : '可重试或手写') + '</span></div></a>'; }).join('') + '</div>' : emptyBox('还没有 AI 整理过的想法。')), '知道了', function () { closeSheet(); });
     },
     search: function () {
-      openSheet('搜索', '<input type="text" id="q" placeholder="搜索想法、事项、任务" autocomplete="off"><div id="qr" class="mt"></div>', '关闭', function () { closeSheet(); });
-      var q = document.getElementById('q'); q.focus();
-      q.addEventListener('input', function () {
-        var k = q.value.trim(), r = [];
-        if (k) {
-          vIdeas().forEach(function (d) { if ((d.title + d.note).indexOf(k) >= 0) r.push(['想法', d.title || d.note.slice(0, 20), '#/idea/' + d.id]); });
-          vWork().forEach(function (w) { if (w.title.indexOf(k) >= 0) r.push(['事项', w.title, '#/work/' + w.id]); });
-          vTasks().forEach(function (t) { if (t.title.indexOf(k) >= 0) r.push(['任务', t.title, '#/task/' + t.id]); });
-        }
-        document.getElementById('qr').innerHTML = !k ? '' : r.length ? '<div class="list">' + r.slice(0, 20).map(function (x) { return '<a class="row" href="' + x[2] + '"><div class="t"><span>' + esc(x[1]) + '</span><span class="tag">' + x[0] + '</span></div></a>'; }).join('') + '</div>' : emptyBox('没有找到「' + k + '」');
-      });
+      openSheet('搜索', '<input type="search" id="q" placeholder="搜想法、项目、任务、留言、文件、成员…" autocomplete="off" enterkeyhint="search"><p class="muted q-tip">多个词用空格分开，会同时匹配。</p><div id="qr" class="mt"></div>', '关闭', function () { closeSheet(); });
+      var q = document.getElementById('q'); q.focus(); var t0 = null;
+      q.addEventListener('input', function () { clearTimeout(t0); t0 = setTimeout(function () { var r = document.getElementById('qr'); if (r) r.innerHTML = searchHTML(q.value); }, 120); });
     },
     tasksFilter: function (el) { filt.tasks = el.dataset.f; render(); },
     goWork: function () { location.hash = '#/work'; }, goIdeas: function () { location.hash = '#/ideas'; }
