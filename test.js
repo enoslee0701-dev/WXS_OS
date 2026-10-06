@@ -792,5 +792,17 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   ok(TM.viewFor(wc, w.leadId).comments.some(c => c.workId === w.id), '项目成员能看到讨论');
   if (outsider) ok(!TM.viewFor(wc, outsider).comments.some(c => c.workId === w.id), '非项目成员拿不到讨论'); }
 
+// ===== 通知设置：按类别静音（记下但已读、不推送）、免打扰格式、只能改自己的 =====
+{ const nt = fresh();
+  must(TM.act(nt, DV, 'member.update', { id: DV, prefs: { mute: ['cmt'], quietOn: true, quietFrom: '22:00', quietTo: '07:30' } }), '刘洋静音留言类、开免打扰');
+  rej(TM.act(nt, DV, 'member.update', { id: DV, prefs: { mute: ['nope'] } }), '不认识的类别被拒');
+  rej(TM.act(nt, DV, 'member.update', { id: DV, prefs: { quietFrom: '25:00' } }), '时间格式不对被拒');
+  rej(TM.act(nt, O, 'member.update', { id: DV, prefs: { notifyImportant: false } }), '老板不能改别人的通知设置');
+  const tk = nt.tasks.find(t => t.ownerId === DV && t.status !== 'cancelled'), n0 = nt.notifications.length;
+  must(TM.act(nt, O, 'task.comment', { id: tk.id, body: '辛苦了' }), '老板留言');
+  const got = nt.notifications.slice(n0).find(n => n.userId === DV);
+  ok(got && got.read && got.muted, '静音类别的通知照样记下，但已读、标记静音');
+  ok(TM.ncat('3 个任务等你验收') === 'review' && TM.ncat('任务已逾期') === 'remind' && TM.ncat('Enos 提到了你') === 'cmt' && TM.ncat('新任务派给你') === 'task', '通知分类正确'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

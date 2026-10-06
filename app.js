@@ -1937,7 +1937,7 @@
         '<label class="me-sel"><select data-set="ownerApprovalMode"' + dis + '><option value="exceptions_only"' + (cs.ownerApprovalMode === 'exceptions_only' ? ' selected' : '') + '>只送例外</option><option value="all"' + (cs.ownerApprovalMode === 'all' ? ' selected' : '') + '>每条都送</option></select>' + ai2('downc', 2) + '</label>') +
       row(hi('spark', 1.6).replace('<svg ', '<svg class="gold" '), 'AI 助理可直接送人', '打开后，在「每条都送」模式下 AI 整理完可直接发送到老板待决策；派发、立项由人点。', tog('data-set="agentDirectRoute"', cs.agentDirectRoute, dis)) +
       row('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.3l2.4 2.4 4.6-5"/></svg>', '行政任务老板终验', '负责人验收后，再进入老板终验。', tog('data-set="ownerFinalAdmin"', cs.ownerFinalAdmin, dis)) +
-      row(hi('bell', 1.7), '重要事项通知我', '当有需要我处理的事项时，立即推送通知。演示版只有 App 内通知。', tog('data-pref="notifyImportant"', pref.notifyImportant !== false)) + '</section>' : '<section class="me-sec"><div class="me-sh">' + ic(hi('bell', 1.7)).replace('me-ic', 'me-ic blue') + '<b>通知</b></div>' + row(hi('bell', 1.7), '重要事项通知我', '当有需要我处理的事项时，立即推送通知。演示版只有 App 内通知。', tog('data-pref="notifyImportant"', pref.notifyImportant !== false)) + '</section>') +
+      row(hi('bell', 1.7), '通知设置', notifSum(pref), '<button type="button" class="btn ghost me-nset" data-do="notifSet">设置</button>') + '</section>' : '<section class="me-sec"><div class="me-sh">' + ic(hi('bell', 1.7)).replace('me-ic', 'me-ic blue') + '<b>通知</b></div>' + row(hi('bell', 1.7), '通知设置', notifSum(pref), '<button type="button" class="btn ghost me-nset" data-do="notifSet">设置</button>') + '</section>') +
       '<section class="me-sec"><div class="me-sh">' + ic(ti('person', 1.8)).replace('me-ic', 'me-ic blue') + '<b>个人信息</b></div>' +
       info('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2"/><path d="M5.8 16c.6-1.6 1.8-2.4 3.2-2.4s2.6.8 3.2 2.4M14.5 10h4M14.5 13.5h3"/></svg>', '姓名', u.name, 'name', adm) +
       info('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="7" width="18" height="12.5" rx="2.5"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3 12.5h18"/></svg>', '职位', u.title, 'title', true) +
@@ -3381,6 +3381,19 @@
     var rows = [['项目', '类型', '状态', '负责人', '跟进运营', '验收人', '优先级', '截止日期', '任务总数', '已完成', '完成率', '目标', '创建时间']];
     vWork().forEach(function (w) { var p = TM.workProgress(S, w.id); rows.push([w.title, L.kind[w.kind], L.work[w.status], w.leadId ? nm(w.leadId) : '', nm(w.operatorId), nm(w.reviewerId), ({ hi: '高', mid: '中', lo: '低' })[w.priority || 'mid'], w.due || '', p.total, p.done, p.total ? Math.round(p.done / p.total * 100) + '%' : '', w.goal, dstr(w.createdAt)]); });
     csvSave('项目表-' + today() + '.csv', rows);
+  };
+  /* 通知设置：按类别开关、推送总开关、免打扰时段。关掉的类别仍记在通知列表里，只是不算未读、不推送 */
+  function notifSum(p) { p = p || {}; var m = (p.mute || []).length; return (p.notifyImportant === false ? '推送已关闭' : '推送开启') + (m ? '，' + m + ' 类已静音' : '') + (p.quietOn ? '，免打扰 ' + p.quietFrom + '–' + p.quietTo : ''); }
+  DO.notifSet = function () {
+    var u = TM.user(S, me), p = u.prefs || {}, mute = p.mute || [];
+    openSheet('通知设置', '<p class="muted" style="margin:0 0 8px;font-size:13.5px">关掉的类别仍会记在「通知」里，可以随时查看，只是不算未读、不推送到手机。</p>' +
+      Object.keys(TM.NCATS).map(function (k) { return '<label class="sw"><span><b>' + TM.NCATS[k] + '</b></span><input type="checkbox" name="c_' + k + '" value="1"' + (mute.indexOf(k) < 0 ? ' checked' : '') + '></label>'; }).join('') +
+      '<label class="sw mt"><span><b>推送到手机</b><small>' + (SRV ? '需要管理员配置推送（iPhone）' : '演示版只有 App 内通知') + '</small></span><input type="checkbox" name="push" value="1"' + (p.notifyImportant !== false ? ' checked' : '') + '></label>' +
+      '<label class="sw"><span><b>免打扰时段</b><small>这段时间只记在 App 里，不推送</small></span><input type="checkbox" name="quietOn" value="1"' + (p.quietOn ? ' checked' : '') + '></label>' +
+      '<div class="n-quiet"><input type="time" name="quietFrom" value="' + esc(p.quietFrom || '22:00') + '"><span>到</span><input type="time" name="quietTo" value="' + esc(p.quietTo || '08:00') + '"></div>', '保存', function (o) {
+        var m2 = Object.keys(TM.NCATS).filter(function (k) { return !o['c_' + k]; });
+        act('member.update', { id: me, prefs: { mute: m2, notifyImportant: !!o.push, quietOn: !!o.quietOn, quietFrom: o.quietFrom || '22:00', quietTo: o.quietTo || '08:00' } }, '通知设置已保存');
+      });
   };
   DO.srvUsage = function () {
     TMS.usage().then(function (u) {

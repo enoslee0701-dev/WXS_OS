@@ -99,11 +99,16 @@ var TM = (function () {
     activeUsers(s).slice().sort(function (a, b) { return b.name.length - a.name.length; }).forEach(function (u) { if (u.name && t.indexOf('@' + u.name) >= 0) { out.push(u.id); t = t.split('@' + u.name).join(''); } });
     return out;
   }
+  /* 通知分类（用于「通知设置」按类别开关）：决策、验收、任务、留言讨论、团队、提醒 */
+  var NCATS = { dec: '决策', review: '验收', task: '任务', cmt: '留言与讨论', team: '团队与成员', remind: '截止提醒与早报' };
+  function ncat(title) { var t = String(title || ''); return /决策|上报|老板确认|批准/.test(t) ? 'dec' : /验收|终验|提交了成果/.test(t) ? 'review' : /提到了你|留言|回复|建议|讨论|发言|评论/.test(t) ? 'cmt' : /逾期|截止|早报|提醒/.test(t) ? 'remind' : /成员|加入|停用|注销|角色/.test(t) ? 'team' : 'task'; }
   function notify(s, uids, actor, title, body, link) {
     var seen = {};
     (uids || []).forEach(function (u) {
       if (!u || u === actor || seen[u] || u === 'agent' || u === 'system') return; seen[u] = 1;
-      s.notifications.push({ id: nid(s, 'N'), userId: u, from: actor || null, title: title, body: body || '', link: link || '', at: now(s), read: false });
+      // 关掉的类别：仍记在通知列表里（可查），但直接标为已读、不推送
+      var uu = user(s, u), mute = uu && uu.prefs && Array.isArray(uu.prefs.mute) && uu.prefs.mute.indexOf(ncat(title)) >= 0;
+      s.notifications.push({ id: nid(s, 'N'), userId: u, from: actor || null, title: title, body: body || '', link: link || '', at: now(s), read: !!mute, muted: mute || undefined });
     });
   }
   function touchTask(s, t) { var n = now(s); t.lastActivity = n; var w = s.workItems.find(function (x) { return x.id === t.workId; }); if (w) touchWork(s, w); }
@@ -796,8 +801,11 @@ var TM = (function () {
     if ('avatar' in p) { var av = txt(p.avatar); need(!av || /^[A-Za-z0-9_-]{4,64}$/.test(av), '头像格式不对'); need(p.id === uid, '头像只能自己换'); u.avatar = av || null; }
     if ('prefs' in p) {
       // 偏好只收白名单里的布尔开关（防止往全局状态里塞任意数据）
-      var PREFS = ['notifyImportant'], np = Object.assign({}, u.prefs || {});
-      Object.keys(p.prefs || {}).forEach(function (k) { if (PREFS.indexOf(k) < 0) return; need(typeof p.prefs[k] === 'boolean', '偏好设置格式不对'); np[k] = p.prefs[k]; });
+      var PREFS = ['notifyImportant', 'quietOn'], np = Object.assign({}, u.prefs || {}), pp = p.prefs || {};
+      need(p.id === uid, '通知设置只能自己改');
+      Object.keys(pp).forEach(function (k) { if (PREFS.indexOf(k) < 0) return; need(typeof pp[k] === 'boolean', '偏好设置格式不对'); np[k] = pp[k]; });
+      if ('mute' in pp) { need(Array.isArray(pp.mute) && pp.mute.every(function (x) { return Object.prototype.hasOwnProperty.call(NCATS, x); }), '通知类别不正确'); np.mute = pp.mute.filter(function (x, i, a) { return a.indexOf(x) === i; }); }
+      ['quietFrom', 'quietTo'].forEach(function (k) { if (k in pp) { need(/^([01]\d|2[0-3]):[0-5]\d$/.test(pp[k]), '时间格式不对'); np[k] = pp[k]; } });
       u.prefs = np;
     }
     return {};
@@ -1461,7 +1469,7 @@ var TM = (function () {
 
   return {
     L: L, STAGES: STAGES, TONE: TONE, DAY: DAY, act: act, seed: seed, user: user, name: name, hasRole: hasRole, canInitiate: canInitiate, usersWith: usersWith,
-    primaryRole: primaryRole, activeUsers: activeUsers, live: live, openWorkOf: openWorkOf, followUsers: followUsers, canFollow: canFollow, leadUsers: leadUsers, briefStats: briefStats, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
+    primaryRole: primaryRole, NCATS: NCATS, ncat: ncat, activeUsers: activeUsers, live: live, openWorkOf: openWorkOf, followUsers: followUsers, canFollow: canFollow, leadUsers: leadUsers, briefStats: briefStats, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
     latestSummary: latestSummary, deriveAnalysis: deriveAnalysis, noteOf: noteOf, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, migrate: migrate, viewFor: viewFor, blank: blank, canCreateProject: canCreateProject, canAssign: canAssign, caps: caps, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
     nextForTask: nextForTask, PTYPE: PTYPE, GROUPS: GROUPS, seedTodos: seedTodos, ensureTodos: ensureTodos, nextForIdea: nextForIdea, ideaProgress: ideaProgress, workProgress: workProgress, TT: TT
   };

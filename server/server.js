@@ -119,10 +119,17 @@ function changed(nNotif) {
   version++; persist(); broadcast();
   if (typeof nNotif === 'number') pushNew(S.notifications.slice(nNotif));
 }
+// 免打扰：按服务器所在时区判断（团队一般在同一时区）；支持跨午夜，例如 22:00–08:00
+function inQuiet(p, at) {
+  if (!p || !p.quietOn || !p.quietFrom || !p.quietTo) return false;
+  const d = at ? new Date(at) : new Date(), m = d.getHours() * 60 + d.getMinutes(), f = (s) => +s.slice(0, 2) * 60 + +s.slice(3, 5), a = f(p.quietFrom), b = f(p.quietTo);
+  return a === b ? false : a < b ? m >= a && m < b : m >= a || m < b;
+}
 function pushNew(list) {
   if (!PUSH.enabled() || !list.length) return;
   list.forEach(n => {
-    const u = TM.user(S, n.userId); if (!u || (u.prefs && u.prefs.notifyImportant === false)) return;
+    const u = TM.user(S, n.userId); if (!u || n.muted || (u.prefs && u.prefs.notifyImportant === false)) return;
+    if (inQuiet(u.prefs)) return; // 免打扰时段：只记在 App 里，不推送
     const badge = S.notifications.filter(x => x.userId === n.userId && !x.read).length;
     // 只推给还登录着的设备（会话有效、账号没停用）
     q('SELECT d.token FROM devices d JOIN sessions s ON s.token = d.session JOIN creds c ON c.uid = d.uid WHERE d.uid=? AND c.disabled=0').all(n.userId).forEach(d => {
@@ -706,4 +713,4 @@ if (require.main === module) server.listen(PORT, HOST, () => {
   console.log(`团队协同服务器已启动：http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  数据目录：${DATA}`);
   if (SETUP_CODE) console.log(`还没有创建团队。创建团队时需要初始化码：${SETUP_CODE}`);
 });
-module.exports = { server, routes, db, get S() { return S; } };
+module.exports = { server, routes, db, inQuiet, get S() { return S; } };

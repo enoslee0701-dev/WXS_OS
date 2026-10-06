@@ -64,6 +64,13 @@ const wait = (ms) => new Promise(z => setTimeout(z, ms));
   await post('/api/act', { name: 'project.create', payload: { title: '第三个项目', ptype: 'tech', operatorId: wang, goal: 'x', tasks: [{ title: '第三张', ownerId: li, expected: '图', criteria: '好' }] } }, boss);
   await wait(400);
   ok(got.filter(x => x.h[':path'].endsWith(DEAD)).length === nDead, '失效设备已清理，不再推送');
+  // 小李静音「任务」类：派任务给她不推送；恢复后照常
+  await post('/api/act', { name: 'member.update', payload: { id: li, prefs: { mute: ['task'] } } }, liTok);
+  const nM = got.length;
+  await post('/api/act', { name: 'project.create', payload: { title: '第四个项目', ptype: 'tech', operatorId: wang, goal: 'x', tasks: [{ title: '第四张', ownerId: li, expected: '图', criteria: '好' }] } }, boss);
+  await wait(400);
+  ok(!got.slice(nM).some(x => x.h[':path'].endsWith(LI_DEV)), '静音的类别不推送');
+  await post('/api/act', { name: 'member.update', payload: { id: li, prefs: { mute: [] } } }, liTok);
   ok(got.filter(x => x.h[':path'].endsWith(LI_DEV)).length > toLi.length, '重新打开后继续推送');
   // 同一台手机换人登录：设备归属跟着换
   const bossDev = await post('/api/devices', { token: LI_DEV }, boss);
