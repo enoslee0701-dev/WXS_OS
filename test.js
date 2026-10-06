@@ -804,5 +804,14 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   ok(got && got.read && got.muted, '静音类别的通知照样记下，但已读、标记静音');
   ok(TM.ncat('3 个任务等你验收') === 'review' && TM.ncat('任务已逾期') === 'remind' && TM.ncat('Enos 提到了你') === 'cmt' && TM.ncat('新任务派给你') === 'task', '通知分类正确'); }
 
+// ===== 老板改派跟进人 =====
+{ const rf = fresh(); const op2 = must(TM.act(rf, O, 'member.add', { name: '小运', role: 'operator', group: '行政运营' }), '再加一位运营者');
+  const di = must(TM.act(rf, O, 'idea.create', { note: '换打印机' }), '建想法'); must(TM.act(rf, O, 'idea.submit', { id: di.id, path: 'direct' }), '提交'); must(TM.act(rf, OP, 'idea.claim', { id: di.id }), '林晓认领');
+  rej(TM.act(rf, OP, 'idea.reassignFollower', { id: di.id, to: op2.id }), '运营者不能改派');
+  rej(TM.act(rf, O, 'idea.reassignFollower', { id: di.id, to: DV }), '不能改派给不是运营者的人');
+  must(TM.act(rf, O, 'idea.reassignFollower', { id: di.id, to: op2.id }), '老板改派给小运');
+  ok(rf.ideas.find(d => d.id === di.id).followerId === op2.id && rf.notifications.some(n => n.userId === op2.id && /交给你跟进/.test(n.title)), '跟进人已换，新跟进人收到通知');
+  must(TM.act(rf, op2.id, 'idea.route', { id: di.id, kind: 'admin', title: '换打印机', tasks: [{ title: '买', ownerId: AX, expected: '发票', criteria: '能用' }] }), '新跟进人可以派发'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

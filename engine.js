@@ -504,6 +504,16 @@ var TM = (function () {
     d.title = pl.title; d.reviewed = true; if (d.aiStatus === 'failed') d.aiStatus = 'ready';
     ev(s, { ideaId: d.id, actor: uid, action: 'summary.save', text: '保存人工整理稿 v' + sm.version }); touchIdea(s, d); return {};
   };
+  /* 老板改派跟进人：待整理 / 等老板决策的想法，换给另一位在职的运营者（或没有运营者时老板自己） */
+  A['idea.reassignFollower'] = function (s, uid, p) {
+    var d = idea(s, p.id); need(hasRole(s, uid, 'owner'), '只有老板可以改派跟进人'); need(['triage', 'awaiting_owner'].indexOf(d.status) >= 0, '只有待整理或等决策的想法可以改派跟进人');
+    need(p.to && p.to !== d.followerId && live(s, p.to) && canFollow(s, p.to), '请选择在职的运营者');
+    var old = d.followerId; d.followerId = p.to; touchIdea(s, d);
+    ev(s, { ideaId: d.id, actor: uid, action: 'idea.reassignFollower', text: '跟进人：' + (old ? name(s, old) : '无') + ' → ' + name(s, p.to) });
+    notify(s, [p.to], uid, '老板把一条想法交给你跟进', d.title, '#/idea/' + d.id);
+    if (old) notify(s, [old], uid, '这条想法改由 ' + name(s, p.to) + ' 跟进', d.title, '#/idea/' + d.id);
+    return {};
+  };
   A['idea.tags'] = function (s, uid, p) {
     var d = idea(s, p.id); need(canViewIdea(s, uid, d), '找不到该想法'); need(d.creatorId === uid || d.followerId === uid || hasRole(s, uid, 'owner'), '只有发起人、跟进人或老板可以改标签');
     var tags = (p.tags || []).map(function (x) { return txt(x).replace(/^#/, ''); }).filter(function (x, i, a) { return x && a.indexOf(x) === i; });

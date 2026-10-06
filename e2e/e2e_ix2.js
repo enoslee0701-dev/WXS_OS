@@ -52,5 +52,10 @@ const URL=(require('./_env').URL);
   ok((await p.textContent('.ix2-main h2')).includes('更换会议室投影仪') && await p.locator('.ix2-ait').count()===1, '记录后自动 AI 拟题');
   await p.click('[data-do=ixTitle]'); await p.fill('.sheet input[name=title]','会议室换新投影仪'); await p.click('.sheet footer button[type=submit]'); await p.waitForTimeout(150);
   ok((await p.textContent('.ix2-main h2')).includes('会议室换新投影仪') && !(await p.locator('.ix2-ait').count()), '老板改标题后不再标 AI 拟题');
+  // 老板改派跟进人：先加一位运营者，再把一条待整理的想法改派给他
+  { const iid = await p.evaluate(() => { const S = window.__tm.S; S.users.push({ id: 'u_op2', name: '小运', title: '运营', tier: '', roles: [{ role: 'operator', dept: 'd_ops' }], group: '行政运营', presence: 'offline' }); const r = TM.act(S, 'u_owner', 'idea.create', { note: '换会议室门锁' }); TM.act(S, 'u_owner', 'idea.submit', { id: r.id, path: 'direct' }); const d0 = S.ideas.find(x => x.id === r.id); if (!d0.followerId) TM.act(S, 'u_op', 'idea.claim', { id: r.id }); return r.id; });
+    await p.goto(URL + '#/home'); await p.click('[data-do=switch]'); await p.click('.acct:has-text("Enos")'); await p.waitForTimeout(150);
+    if (iid) { await p.goto(URL + '#/idea/' + iid); await p.waitForTimeout(200); await p.click('.ix-dots'); await p.click('.sheet [data-do=ixFollow]'); await p.selectOption('.sheet select[name=to]', 'u_op2'); await p.click('.sheet footer button[type=submit]'); await p.waitForTimeout(150);
+      ok(await p.evaluate((id) => window.__tm.S.ideas.find(x => x.id === id).followerId === 'u_op2', iid), '老板改派跟进人'); } else ok(false, '找不到待整理的想法'); }
   ok(!errs.length,'无脚本错误 '+errs.join(';')); console.log('想法详情 E2E 通过',pass,'失败',fail); await b.close();
 })();
