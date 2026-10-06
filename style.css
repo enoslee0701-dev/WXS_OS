@@ -3156,3 +3156,7 @@ input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none}
 .fl-go{flex:none;display:grid;place-items:center;width:36px;height:36px;color:#8A93A3}.fl-go svg{width:18px;height:18px}
 .fl-top + .w-chips i{font-style:normal}
 .fl-top input[type=search]{background:#fff;box-shadow:0 1px 3px rgba(20,27,45,.06)}
+/* 密码显示 / 隐藏 */
+.pw-w{position:relative;display:block}.pw-w input{padding-right:48px!important}
+.pw-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:38px;height:38px;border:0;background:none;color:#8A93A3;display:grid;place-items:center;cursor:pointer;border-radius:10px}
+.pw-eye svg{width:20px;height:20px}.pw-eye.on{color:#2148C0}

@@ -3002,7 +3002,9 @@
   function fd(form) { var o = {}; new FormData(form).forEach(function (v, k) { if (o[k] !== undefined) { o[k] = [].concat(o[k], v); } else o[k] = v; }); return o; }
   function opt(name, val, title, desc, checked) { return '<label class="opt"><input type="radio" name="' + name + '" value="' + val + '"' + (checked ? ' checked' : '') + '><span><b>' + title + '</b>' + (desc ? '<small>' + desc + '</small>' : '') + '</span></label>'; }
   function userSelect(name, uids, sel) { return '<select name="' + name + '">' + uids.map(function (id) { return '<option value="' + id + '"' + (id === sel ? ' selected' : '') + '>' + esc(nm(id)) + '（' + esc(TM.user(S, id).title) + '）</option>'; }).join('') + '</select>'; }
-  function field(label, inner, help) { return '<label class="fld"><span>' + label + '</span>' + inner + (help ? '<small>' + help + '</small>' : '') + '</label>'; }
+  // 密码框自动带「显示 / 隐藏」按钮
+  var EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  function field(label, inner, help) { if (/<input type="password"/.test(inner)) inner = '<span class="pw-w">' + inner + '<button type="button" class="pw-eye" data-do="pwEye" aria-label="显示密码">' + EYE + '</button></span>'; return '<label class="fld"><span>' + label + '</span>' + inner + (help ? '<small>' + help + '</small>' : '') + '</label>'; }
   function taskFields(prefix, def) {
     def = def || {};
     var execs = TM.activeUsers(S).filter(function (u) { return u.roles.some(function (a) { return a.role === 'executor' || a.role === 'lead' || a.role === 'operator'; }); }).map(function (u) { return u.id; });
@@ -3450,6 +3452,7 @@
   DO.flKind = function (el) { fl.k = el.dataset.k; render(); };
   DO.flOpen = function (el) { var x = allFiles()[+el.dataset.i]; if (x) openMedia(x.m); };
   document.addEventListener('input', function (e) { if (e.target && e.target.id === 'flq') { fl.q = e.target.value; clearTimeout(fl.t); fl.t = setTimeout(function () { var pos = e.target.selectionStart; render(); var q2 = document.getElementById('flq'); if (q2) { q2.focus(); try { q2.setSelectionRange(pos, pos); } catch (x) {} } }, 200); } });
+  DO.pwEye = function (el) { var i = el.previousElementSibling; if (!i) return; var show = i.type === 'password'; i.type = show ? 'text' : 'password'; el.classList.toggle('on', show); el.setAttribute('aria-label', show ? '隐藏密码' : '显示密码'); };
   DO.meHelp = function () {
     var u = TM.user(S, me), sec2 = function (t, body) { return '<h3 class="hp-h">' + t + '</h3>' + body; }, li = function (xs) { return '<ul class="hp-l">' + xs.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>'; };
     openSheet('使用帮助', sec2('你的角色', u.roles.map(function (a) { return '<p class="hp-p"><b>' + L.role[a.role] + '</b>：' + HELP_ROLE[a.role] + '</p>'; }).join('')) +

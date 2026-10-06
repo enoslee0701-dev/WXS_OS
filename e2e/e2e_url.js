@@ -25,6 +25,8 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
   // 公网地址（临时公网通道等）：漏写协议时补 https，不改端口；局域网主机名 .local 仍是 http
   ok(await p.evaluate(() => [TMS.normUrl('auto-briefly-struct-legacy.trycloudflare.com'), TMS.normUrl('https://team.example.com/'), TMS.normUrl('macpro.local:8787'), TMS.normUrl('localhost:8787')].join(' ')) ===
     'https://auto-briefly-struct-legacy.trycloudflare.com https://team.example.com http://macpro.local:8787 http://localhost:8787', '公网域名默认 https，局域网仍 http');
+  // 密码框可以显示 / 隐藏
+  if (await p.locator('form[data-form=srvLogin] .pw-eye').count()) { await p.click('form[data-form=srvLogin] .pw-eye'); const t1 = await p.getAttribute('form[data-form=srvLogin] input[name=password]', 'type'); await p.click('form[data-form=srvLogin] .pw-eye'); const t2 = await p.getAttribute('form[data-form=srvLogin] input[name=password]', 'type'); ok(t1 === 'text' && t2 === 'password', '密码可以显示 / 隐藏'); } else ok(false, '登录页没有显示密码按钮');
   ok(errs.length === 0, '无报错 ' + errs.join('|'));
   console.log(`服务器地址 E2E 通过 ${pass}，失败 ${fail}`); await b.close(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
