@@ -893,5 +893,10 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   const pl = must(TM.act(z, O, 'work.plan', { id: w.id, tasks: [{ title: '无截止的任务', ownerId: DV, expected: 'a', criteria: 'b' }] }), '派没写截止的任务');
   ok(!!z.tasks.find(t => t.title === '无截止的任务').due, '没写截止时自动补上'); }
 
+{ const xl = fresh(); const w = xl.workItems.find(x => x.status === 'active');
+  rej(TM.act(xl, O, 'work.update', { id: w.id, externalLink: 'javascript:alert(1)' }), '研发工具链接必须是 http(s)');
+  must(TM.act(xl, O, 'work.update', { id: w.id, externalLink: 'https://github.com/team/app' }), '设置研发工具链接');
+  ok(xl.workItems.find(x => x.id === w.id).externalLink === 'https://github.com/team/app', '链接已保存'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

@@ -2683,6 +2683,7 @@
         '</div><div>' +
         row(IC('<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>'), '项目目标', w.goal ? esc(w.goal) : '<em>未填写</em>') +
         row(IC('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>'), '关键成果', w.keyResults ? esc(w.keyResults) : '<em>未填写</em>') +
+        (w.externalLink ? row(IC('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'), '研发工具', '<a href="' + esc(w.externalLink) + '" class="wx-xl">' + esc(w.externalLink.replace(/^https?:\/\//, '').slice(0, 28)) + '</a>') : '') +
         row(IC('<path d="M3.5 12.6V4.5a1 1 0 0 1 1-1h8.1l8 8a1.5 1.5 0 0 1 0 2.1l-7 7a1.5 1.5 0 0 1-2.1 0z"/><circle cx="8" cy="8" r="1.3"/>'), '标签', '<span class="wx-tags">' + tags.map(function (t) { return '<i>' + esc(t) + '</i>'; }).join('') + (mg ? '<button data-do="wInfo" aria-label="编辑标签">+</button>' : '') + '</span>') +
         '</div></div></section>' +
         '<section class="wx-card"><div class="wx-sh"><b>' + IC('<circle cx="9" cy="8" r="3.2"/><path d="M3 19c.8-3 3.2-4.5 6-4.5s5.2 1.5 6 4.5"/><circle cx="17" cy="9" r="2.4"/><path d="M16.5 14.6c2 .3 3.6 1.6 4.2 4"/>') + '项目成员（' + mem.length + '）</b><button class="wx-link" data-do="wTab" data-t="mem">管理' + hi('chev', 2) + '</button></div><div class="wx-mem">' +
@@ -3766,8 +3767,9 @@
       '<div class="fld"><span>优先级</span><div class="opts">' + opt('priority', 'hi', '高', '', w.priority === 'hi') + opt('priority', 'mid', '中', '', (w.priority || 'mid') === 'mid') + opt('priority', 'lo', '低', '', w.priority === 'lo') + '</div></div>' +
       field('项目目标', '<textarea name="goal" rows="2" maxlength="200" placeholder="这个项目要达成什么">' + esc(w.goal || '') + '</textarea>') +
       field('关键成果', '<textarea name="keyResults" rows="2" maxlength="200" placeholder="怎样算做成了">' + esc(w.keyResults || '') + '</textarea>') +
-      field('标签', '<input type="text" name="tags" value="' + esc((w.tags || []).join('、')) + '" placeholder="用顿号或逗号分开，最多 5 个">'), '保存',
-      function (o) { act('work.update', { id: w.id, due: o.due || null, priority: o.priority, goal: o.goal, keyResults: o.keyResults, tags: (o.tags || '').split(/[、,，\s]+/).filter(Boolean) }, '项目信息已更新'); }); };
+      field('标签', '<input type="text" name="tags" value="' + esc((w.tags || []).join('、')) + '" placeholder="用顿号或逗号分开，最多 5 个">') +
+      field('研发工具链接（可选）', '<input type="url" name="externalLink" value="' + esc(w.externalLink || '') + '" placeholder="例如 GitHub、Figma、禅道的项目地址">'), '保存',
+      function (o) { act('work.update', { id: w.id, due: o.due || null, priority: o.priority, goal: o.goal, keyResults: o.keyResults, tags: (o.tags || '').split(/[、,，\s]+/).filter(Boolean), externalLink: o.externalLink || '' }, '项目信息已更新'); }); };
   /* ---------- 演示向导：一键走完「想法 → 验收」 ---------- */
   var dm = null;
   var DM_ROLE = { u_owner: '老板', u_op: '运营者', u_lead: '项目负责人', u_dev: '执行者' };

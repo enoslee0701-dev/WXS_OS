@@ -770,6 +770,7 @@ var TM = (function () {
     if ('keyResults' in p) { w.keyResults = txt(p.keyResults).slice(0, 200); ch.push('关键成果'); }
     if ('tags' in p) { var tg = (p.tags || []).map(function (x) { return txt(x).replace(/^#/, ''); }).filter(function (x, i, a) { return x && a.indexOf(x) === i; }); need(tg.length <= 5, '标签最多 5 个'); need(tg.every(function (x) { return x.length <= 8; }), '每个标签不超过 8 个字'); w.tags = tg; ch.push('标签'); }
     if ('due' in p) { need(!p.due || /^\d{4}-\d{2}-\d{2}$/.test(p.due), '日期不正确'); w.due = p.due || null; ch.push('截止时间'); }
+    if ('externalLink' in p) { var xl = txt(p.externalLink); need(!xl || (/^https?:\/\/\S+\.\S+/.test(xl) && xl.length <= 500), '研发工具链接请填完整的 http(s) 地址'); if (xl !== (w.externalLink || '')) { w.externalLink = xl; ch.push('研发工具链接'); } } // 文档 2.1：专业阶段可链接现有研发工具
     need(ch.length, '没有要修改的内容');
     ev(s, { workId: w.id, ideaId: w.ideaId, actor: uid, action: 'work.update', text: '修改项目' + ch.join('、') }); touchWork(s, w); return {};
   };
