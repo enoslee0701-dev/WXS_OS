@@ -21,7 +21,8 @@ var TMS = (function () {
   api.normUrl = function (u) { return norm(u); };
   function norm(u) {
     u = String(u || '').trim().replace(/[：]/g, ':').replace(/[。．]/g, '.').replace(/[／]/g, '/').replace(/\s+/g, '').replace(/\/+$/, '');
-    if (u && !/^https?:\/\//i.test(u)) u = 'http://' + u.replace(/^\/+/, '');
+    // 没写协议：公网域名（例如临时公网地址 xxx.trycloudflare.com）用 https；IP、.local、localhost、带端口的用 http
+    if (u && !/^https?:\/\//i.test(u)) { u = u.replace(/^\/+/, ''); u = (/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}(\/.*)?$/i.test(u) && !/\.local(\/|$)/i.test(u) ? 'https://' : 'http://') + u; }
     var m = /^(https?):\/\/((?:10|127|172\.(?:1[6-9]|2\d|3[01])|192\.168)(?:\.\d{1,3}){2,3})(:\d+)?(\/.*)?$/i.exec(u);
     if (m) u = 'http://' + m[2] + (m[3] || ':8787') + (m[4] || '');
     return u;

@@ -25,6 +25,18 @@ scripts/server-mac.sh logs        # 看日志
 
 注意：这台 Mac 要一直开着、不要睡眠（系统设置 → 电池 / 节能 → 防止自动睡眠），并建议在路由器里给它固定 IP。
 
+## 方式一·补充：临时公网地址（同事不在同一个 Wi-Fi）
+
+不想买服务器、只是先用起来或测试时，可以给办公室这台 Mac 开一个 Cloudflare 免费通道（不用注册，全程 https 加密）：
+
+```bash
+scripts/tunnel-mac.sh install     # 开通道（常驻、开机自启），显示公网地址，例如 https://xxxx.trycloudflare.com
+scripts/tunnel-mac.sh url         # 查看当前地址
+scripts/tunnel-mac.sh uninstall   # 关闭（之后只有同一个 Wi-Fi 能连）
+```
+
+App 登录页的服务器地址填这个 https 地址即可，手机用 4G/5G 或任何 Wi-Fi 都能连。限制：Mac 要开着；通道重启（重启电脑等）后**地址会变**，要把新地址告诉同事；没有可用性保证，正式使用请用方式二或 Cloudflare 账号的固定域名。
+
 ## 方式二：云服务器（在外面也能用）
 
 ```bash

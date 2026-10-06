@@ -87,7 +87,10 @@ function auth(req, url, mode) {
 }
 /* 登录限流：同一 IP+账号 15 分钟最多 10 次失败，同一 IP 最多 50 次；账号不存在也算一次哈希（防止按耗时猜账号） */
 const fails = new Map(), WIN = 15 * 60e3;
-const clientIp = (req) => (process.env.TRUST_PROXY === '1' && req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim() : req.socket.remoteAddress) || '?';
+// 公网通道（cloudflared）在本机转发：来自本机的请求按通道给的真实 IP 限流，否则所有外网用户共用一个 127.0.0.1
+const isLoop = (a) => /^(127\.|::1$|::ffff:127\.)/.test(a || '');
+const clientIp = (req) => (process.env.TRUST_PROXY === '1' && req.headers['x-forwarded-for'] ? String(req.headers['x-forwarded-for']).split(',')[0].trim()
+  : isLoop(req.socket.remoteAddress) && req.headers['cf-connecting-ip'] ? String(req.headers['cf-connecting-ip']).trim().slice(0, 64) : req.socket.remoteAddress) || '?';
 function limited(key, max) { const f = fails.get(key); return !!f && f.n >= max && f.t > Date.now() - WIN; }
 function failed(key) { const f = fails.get(key); if (!f || f.t < Date.now() - WIN) fails.set(key, { n: 1, t: Date.now() }); else f.n++; }
 setInterval(() => { const t = Date.now() - WIN; for (const [k, f] of fails) if (f.t < t) fails.delete(k); }, 5 * 60e3).unref();

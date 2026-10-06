@@ -102,6 +102,8 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   // 8. 登录限流
   for (let i = 0; i < 10; i++) await post('/api/login', { login: 'xiaowang', password: 'x' + i });
   ok((await post('/api/login', { login: 'xiaowang', password: 'wang654321' })).status === 429, '连续输错 10 次后暂时锁定');
+  { const viaTunnel = (ip) => fetch(B + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip }, body: JSON.stringify({ login: 'xiaowang', password: 'wang654321' }) });
+    ok((await viaTunnel('203.0.113.9')).status === 200, '公网通道：别的外网 IP 不受这个锁定影响'); }
 
   // 8.5 附件
   const up = (id, body, tok, type) => fetch(B + '/api/files/' + id, { method: 'PUT', headers: { 'Content-Type': type || 'text/plain', 'X-File-Name': encodeURIComponent('会议记录.txt'), ...(tok ? { Authorization: 'Bearer ' + tok } : {}) }, body });

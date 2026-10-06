@@ -22,6 +22,9 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
   await p.waitForFunction(() => document.querySelector('input[name=server]').value === 'http://192.168.1.108:8787', null, { timeout: 30000 }).catch(() => {});
   ok(await p.inputValue('input[name=server]') === 'http://192.168.1.108:8787', '自动查找：找到同一 Wi-Fi 里的团队服务器并填好 ' + await p.inputValue('input[name=server]'));
   ok(!(await p.textContent('#app')).includes('连不上服务器'), '找到后不再显示「连不上」');
+  // 公网地址（临时公网通道等）：漏写协议时补 https，不改端口；局域网主机名 .local 仍是 http
+  ok(await p.evaluate(() => [TMS.normUrl('auto-briefly-struct-legacy.trycloudflare.com'), TMS.normUrl('https://team.example.com/'), TMS.normUrl('macpro.local:8787'), TMS.normUrl('localhost:8787')].join(' ')) ===
+    'https://auto-briefly-struct-legacy.trycloudflare.com https://team.example.com http://macpro.local:8787 http://localhost:8787', '公网域名默认 https，局域网仍 http');
   ok(errs.length === 0, '无报错 ' + errs.join('|'));
   console.log(`服务器地址 E2E 通过 ${pass}，失败 ${fail}`); await b.close(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

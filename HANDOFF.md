@@ -197,10 +197,13 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
 
 67. 2.2 在用户手机上：本地网络权限已允许，但 App 记着旧的错误地址 192.168.1.20 → 连不上 → 诊断 → 「已允许，重新连接」→ 整页重绘 → 再失败，死循环，输入被清掉、自动查找被打断；查找按钮图标巨大。修（2.3）：探测结果只更新错误提示（`srvRefresh`，不重绘整页）；每个地址只诊断一次、权限只申请一次（有的系统不认 ACCESS_LOCAL_NETWORK，状态一直是 prompt）；连不上时自动在 Wi-Fi 里查找一次，找到就换成正确地址，找不到才显示诊断；`.srv-scan svg` 限定尺寸。e2e_android（49）。安卓 2.3（versionCode 14）。
 
+68. 用户手机在局域网始终连不上 Mac（疑似路由器隔离 / 不在同一网络），且员工将来不在同一网络：先用 **Cloudflare 临时公网通道** 绕开局域网（用户已同意对外开放）。`scripts/tunnel-mac.sh install | uninstall | status | url | logs`：下载 cloudflared 到 ~/Library/TeamOps/bin，装成 launchd 常驻（com.teamops.tunnel），日志在 ~/Library/TeamOps/tunnel.log（不能放桌面：macOS 不让后台程序写桌面，launchd 报 78）。**通道重启后地址会变**，用 `scripts/tunnel-mac.sh url` 查。服务器：来自本机（通道）的请求按 `CF-Connecting-IP` 限流（以前所有外网用户共用 127.0.0.1，一个人输错会锁住所有人）；test_server 补测试。App：地址漏写协议时公网域名补 https、IP / .local / localhost 仍补 http（e2e_url 8）。安卓 2.4（versionCode 15）。当前地址：https://auto-briefly-struct-legacy.trycloudflare.com 。
+
 测试现状：业务 418 + 同步一致性 254 次操作 + 随机操作 2×3000 + 服务器 90 + AI 代理 50 + 推送 19；端到端 25 组；界面爬虫另跑。提交前看 `npm run check` 的退出码。
 
 
 ## 待办
+0. 正式上线：把临时公网通道换成云服务器或固定域名（Cloudflare 账号 + 命名通道，地址不再变化），见 DEPLOY.md
 1. **需要老板提供**：`ANTHROPIC_API_KEY`（真实 AI）；Apple 开发者账号（真机安装、TestFlight、推送）
 2. 推送：代码已就绪，拿到开发者账号后按 DEPLOY.md 配 APNS_* 并在 Xcode 开 Push 能力
 3. 想法整理（deriveAnalysis）、AI 拟题、讨论总结等引擎内同步的「AI」仍是规则：要接真实 AI 需改成异步（服务器在 act 后补写 AI 结果）
