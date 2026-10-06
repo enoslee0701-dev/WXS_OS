@@ -438,12 +438,12 @@ var TM = (function () {
       ev(s, { ideaId: d.id, actor: uid, action: 'idea.submit', from: 'draft', to: 'triage', text: '直接推进' });
       runAnalysis(s, d);
     } else {
-      var ids = (Array.isArray(p.shares) ? p.shares : []).filter(function (x) { return x !== uid && live(s, x); });
+      var ids = (Array.isArray(p.shares) ? p.shares : []).filter(function (x) { return x !== uid && live(s, x) && !onlyAdmin(s, x); });
       need(p.shareAll || ids.length, '共创请选择分享范围');
       if (p.deadline) need(typeof p.deadline === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.deadline) && p.deadline >= todayStr(s), '截止日期不正确（不能早于今天）');
       d.shareAll = !!p.shareAll; d.shares = ids; d.deadline = p.deadline || null; d.status = 'discussing';
       ev(s, { ideaId: d.id, actor: uid, action: 'idea.submit', from: 'draft', to: 'discussing', text: '开启团队共创（' + (d.shareAll ? '全体' : ids.length + ' 人') + (d.deadline ? '，有截止时间' : '，发起人手动结束') + '）' });
-      notify(s, d.shareAll ? activeUsers(s).map(function (u) { return u.id; }) : ids, uid, '邀请你参与共创', d.title || d.note.slice(0, 20), '#/idea/' + d.id);
+      notify(s, (d.shareAll ? activeUsers(s).map(function (u) { return u.id; }) : ids).filter(function (x) { return !onlyAdmin(s, x); }), uid, '邀请你参与共创', d.title || d.note.slice(0, 20), '#/idea/' + d.id);
     }
     return {};
   };
@@ -847,7 +847,7 @@ var TM = (function () {
       motto: '', skills: (p.skills || []).map(txt).filter(Boolean).slice(0, 3), presence: 'offline', group: p.group, contact: txt(p.contact), invited: true, joinedAt: now(s) };
     s.users.push(u);
     ev(s, { actor: uid, action: 'member.add', text: '添加成员 ' + nm2 + '（' + u.title + '）' });
-    notify(s, usersWith(s, 'owner').concat(usersWith(s, 'admin')), uid, '新成员加入：' + nm2, u.title, '#/team');
+    notify(s, usersWith(s, 'owner').concat(usersWith(s, 'admin')).filter(function (x) { return x !== u.id; }), uid, '新成员加入：' + nm2, u.title, '#/team');
     return { id: u.id };
   };
   A['member.update'] = function (s, uid, p) {
@@ -1044,6 +1044,7 @@ var TM = (function () {
     ev(s, { taskId: t.id, workId: w.id, actor: uid, action: 'task.' + p.action, from: from, to: tr.to, reason: (p.action === 'block' || p.action === 'cancel') ? note : null, text: tr.label + (note ? '：' + note : '') });
     if (p.action === 'submit') notify(s, [t.reviewerId], uid, '任务待你验收', t.title, '#/task/' + t.id);
     if (p.action === 'block') notify(s, [w.operatorId, w.leadId], uid, '任务受阻', t.title + '：' + note, '#/task/' + t.id);
+    if (p.action === 'unblock') notify(s, [t.ownerId], uid, '阻碍已解除，可以继续了', t.title + (note ? '：' + note : ''), '#/task/' + t.id);
     if (p.action === 'cancel') notify(s, [t.ownerId].concat(t.collabs), uid, '任务已取消', t.title + '：' + note, '#/task/' + t.id);
     touchTask(s, t); syncWork(s, w, uid); return {};
   };

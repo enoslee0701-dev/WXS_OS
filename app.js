@@ -231,7 +231,7 @@
         field('初始化码', '<input type="text" name="code" inputmode="numeric" autocomplete="off" required>', '开启团队服务器时显示的 6 位数字（只在第一次建团队时需要）') +
         field('你的姓名', '<input type="text" name="name" maxlength="20" required>') + field('职位（可选）', '<input type="text" name="title" maxlength="20" placeholder="例如：创始人">') +
         field('登录账号', '<input type="text" name="login" autocapitalize="off" autocorrect="off" autocomplete="username" required>', '3–32 位字母、数字或 _ . @ -') +
-        field('密码', '<input type="password" name="password" minlength="8" autocomplete="new-password" required>', '至少 8 位') +
+        field('密码', '<input type="password" name="password" autocomplete="new-password" required>', '至少 8 位') +
         '<label class="sw"><span><b>带上演示数据</b><small>先看看完整的样子；以后可以在设置里一键清理</small></span><input type="checkbox" name="demo" value="1"></label>' +
         '<button class="btn pri block" type="submit"' + (srvL.busy ? ' disabled' : '') + '>' + (srvL.busy ? '正在创建…' : '创建团队') + '</button></form>';
     } else {
@@ -281,6 +281,7 @@
     [/演示版的输出由规则模拟，正式版接入真实大模型。/g, '这部分目前由规则生成，结果请核对。'],
     [/演示版：整理由规则模拟完成，不调用真实大模型。/g, '这部分目前由规则整理，结果请核对。'],
     [/演示版：解析由规则模拟完成，不调用真实大模型。/g, '这部分目前由规则解析，结果请核对。'],
+    [/AI 模拟输出/g, '规则整理'], [/AI 模拟建议/g, '规则建议'], [/（AI 模拟）/g, '（规则整理）'],
     [/（演示版为模拟整理）/g, '（规则整理）'], [/演示版为模拟整理/g, '规则整理'],
     [/（演示版为规则模拟）/g, ''], [/（演示：规则模拟）/g, '（规则生成）'], [/演示：规则模拟/g, '规则生成'],
     [/演示版只有 App 内通知。/g, '目前只有 App 内通知。'],
@@ -371,7 +372,7 @@
   function todoItems() {
     var out = [];
     vTasks().forEach(function (t) {
-      var nx = TM.nextForTask(S, t), w = W(t.workId);
+      var nx = TM.nextForTask(S, t), w = W(t.workId); if (w && w.status === 'paused') return; // 项目暂停中：不算「待你处理」
       if (nx && nx.who === me) out.push({ title: (nx.what === '执行' ? '' : nx.what + '：') + t.title, tag: [L.kind[w.kind], w.kind === 'product' ? 'tg-blue' : 'tg-green'], prio: prioOf(t.due, t.status === 'blocked'), who: t.ownerId, due: dueLabel(t.due), href: '#/task/' + t.id, at: t.createdAt, date: actDate(t.due), comments: S.comments.filter(function (c) { return c.taskId === t.id; }).length, mine: t.ownerId === me, people: t.ownerId === me ? [] : [t.ownerId], kind: '任务' });
       // 我负责但受阻（下一步等别人解除）：仍出现在我的待办里，不然首页会说「都处理完了」、任务页看不到自己逾期的任务
       else if (nx && t.ownerId === me && t.status === 'blocked') out.push({ title: '受阻，等 ' + nm(nx.who) + ' 处理：' + t.title, tag: [L.kind[w.kind], w.kind === 'product' ? 'tg-blue' : 'tg-green'], prio: prioOf(t.due, true), who: t.ownerId, due: dueLabel(t.due), href: '#/task/' + t.id, at: t.createdAt, date: actDate(t.due), comments: S.comments.filter(function (c) { return c.taskId === t.id; }).length, mine: true, people: [], kind: '任务' });
@@ -1163,7 +1164,7 @@
     return '<span class="cx-ait-l">' + hi('spark', 1.6) + 'AI 拟题</span><b>' + esc(TM.aiTitle(d)) + '</b><button type="button" data-do="aitEdit" data-k="' + k + '">' + ai2('edit', 1.7) + '改一改</button>';
   }
   function aitBar(k) { return '<div class="cx-ait" id="cx-ait-' + k + '">' + aitInner(k) + '</div>'; }
-  function cxNext(k, label, hint) { return aitBar(k) + '<button class="vr-next" data-do="capNext" data-k="' + k + '">' + hi('spark', 1.6) + label + ni('arrow', 2) + '</button><p class="c-hint">' + hint + '</p>'; }
+  function cxNext(k, label, hint) { return aitBar(k) + '<button class="vr-next" data-do="capNext" data-k="' + k + '">' + hi('spark', 1.6) + label + ni('arrow', 2) + '</button><p class="c-hint">' + hint + ' <button type="button" class="cx-draft" data-do="capSave" data-k="' + k + '">存为私人草稿</button></p>'; } // 先不提交，只存草稿（只有自己能看到）
   function fmtSize(n) { return n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : Math.round(n / 1048576 * 10) / 10 + ' MB'; }
   var CLOUD = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18.5a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 8.2a4.2 4.2 0 0 1-.5 10.3"/><path d="M12 12v8M9 15l3-3 3 3"/></svg>';
   /* 上传视频 */
@@ -1301,7 +1302,7 @@
 
   function afterRender() {
     markChecked(); flexGapFix(document.getElementById('app'));
-    if (SRV && me && TMS.mustChange && !mustAsked && !document.querySelector('#layer .sheet')) { mustAsked = true; setTimeout(function () { DO.srvPassword(); }, 300); }
+    if (SRV && me && TMS.mustChange && !mustAsked && !document.querySelector('#layer .sheet')) { mustAsked = true; setTimeout(function () { mustAsked = false; if (TMS.mustChange && !document.querySelector('#layer .sheet')) DO.srvPassword(); }, 300); } // 没改完初始密码，面板被关掉也会再弹
     if (SRV && me && isOwner() && S.real && !S.loading && cur().name === 'home' && !onboardAsked && !document.querySelector('#layer .sheet') && !onboardDone()) { onboardAsked = true; setTimeout(function () { DO.onboard(); }, 400); }
     // 新成员第一次进来（改完初始密码后）：按角色欢迎一次，说清楚在哪里做事
     if (SRV && me && !isOwner() && !TMS.mustChange && !S.loading && cur().name === 'home' && !welcomeAsked && !document.querySelector('#layer .sheet') && !welcomed()) { welcomeAsked = true; setTimeout(function () { DO.welcome(); }, 400); }
@@ -1678,6 +1679,10 @@
       '<label class="as-switch"><span>设为里程碑任务<button type="button" class="as-q" data-do="asMsHelp" aria-label="什么是里程碑">' + ai2('q', 1.7) + '</button></span><input type="checkbox" data-as="milestone"' + (asg.milestone ? ' checked' : '') + '></label>' +
       '<div class="p-fld"><span>负责人 <em>*</em></span><div class="as-owner">' + (asg.ownerId ? '<span class="as-chip">' + av(asg.ownerId) + '<b>' + esc(nm(asg.ownerId)) + '（' + esc(pRole(asg.ownerId)) + '）</b><button data-do="asClearOwner" aria-label="移除负责人">' + ai2('x', 2) + '</button></span>' : '<button class="as-chip empty" data-do="asPickOwner">选择负责人</button>') + '<button class="as-plus" data-do="asPickOwner" aria-label="选择负责人">' + ti('plus2', 2.2) + '</button></div></div>' +
       '<div class="as-collab"><span>协作者</span><span class="h-stack">' + asg.collabs.map(function (u) { return av(u); }).join('') + '</span><button class="as-plus sm" data-do="asPickCollab" aria-label="添加协作者">' + ti('plus2', 2.2) + '</button></div>' +
+      // 验收人（默认项目验收人）和验收标准：以前只能建完再去「编辑任务」改
+      (function () { var w0 = W(asg.workId), revs = TM.activeUsers(S).filter(function (u) { return u.id !== asg.ownerId && !u.roles.every(function (a) { return a.role === 'admin'; }); }).map(function (u) { return u.id; }), dv = asg.reviewerId || (w0 && w0.reviewerId !== asg.ownerId ? w0.reviewerId : w0 && (w0.leadId !== asg.ownerId ? w0.leadId : w0.operatorId));
+        return '<label class="p-fld"><span>验收人</span><select data-as="reviewerId">' + revs.map(function (id) { return '<option value="' + id + '"' + (id === dv ? ' selected' : '') + '>' + esc(nm(id)) + '（' + esc(pRole(id)) + '）</option>'; }).join('') + '</select></label>' +
+          '<label class="p-fld"><span>验收标准（可选）</span><input type="text" data-as="criteria" maxlength="200" value="' + esc(asg.criteria || '') + '" placeholder="怎样算做完，例如：能正常投屏、发票已上传"></label>'; })() +
       '</section><button class="n-next" data-do="asCreate">创建任务</button>';
   }
   function viewAsgAI() {
@@ -1703,7 +1708,7 @@
     var w = W(asg.workId); if (!w) return toast('请选择所属项目', true);
     if (!asg.title.trim()) return fieldErr('[data-as="title"]', '请填写任务标题');
     if (!ownerId) return toast('请选择负责人', true);
-    var r = TM.act(S, me, 'work.plan', { id: w.id, tasks: [{ title: asg.title, description: asg.desc, ttype: asg.ttype, priority: asg.priority, milestone: asg.milestone, ownerId: ownerId, collabs: collabs, due: due, expected: asg.desc.trim() ? '按任务描述交付成果' : '完成「' + asg.title.trim() + '」并提交成果', criteria: asg.desc.trim() || '由验收人确认达到任务要求', assignedBy: by }] });
+    var r = TM.act(S, me, 'work.plan', { id: w.id, tasks: [{ title: asg.title, description: asg.desc, ttype: asg.ttype, priority: asg.priority, milestone: asg.milestone, ownerId: ownerId, collabs: collabs, due: due, reviewerId: (function () { var sel = document.querySelector('[data-as="reviewerId"]'), v = asg.reviewerId || (sel && sel.value); return v && v !== ownerId ? v : undefined; })(), expected: '完成「' + asg.title.trim() + '」并提交成果说明', criteria: (asg.criteria || '').trim() || '验收人确认达到任务要求', assignedBy: by }] });
     if (!r.ok) return toast(r.error, true);
     save(); var wid = w.id; asg = null; navFinish('#/work/' + wid); toast('任务已派出，' + nm(ownerId) + ' 已收到通知');
   }
@@ -1899,8 +1904,8 @@
     var canInvite = isOwner() || TM.hasRole(S, me, 'admin');
     return stdHero({ back: true, title: '团队', bg: 'var(--hero)', pos: '40% 70%', sub: '不同的恩赐，同一个使命。', verse: ['两个人总比一个人好，<br>因为二人劳碌同得美好的果效。', '传道书 4:9'], script: 'Better<br>&nbsp;Together',
       actions: '<button class="tk-ic w-ic" data-do="tmSearch" aria-label="搜索成员">' + hi('search', 1.8) + '</button>' + (canInvite ? '<button class="w-plus" data-do="tmInvite" aria-label="邀请新成员">' + ti('plus2', 2.4) + '</button>' : ''),
-      pill: '<button class="tk-month tm-count" data-do="tmMembers">' + ai2('team', 1.6) + '<b>' + us.length + '</b> 位伙伴' + ai2('downc', 1.8) + '</button>' }) +
-      '<div class="w-chips tm-chips"><button class="' + (sel === 'all' ? 'on' : '') + '" data-do="tmGroup" data-g="all">全部 <i>' + us.length + '</i></button>' + G.slice(1).concat(G.slice(0, 1)).map(function (g) { var n = us.filter(function (u) { return u.group === g; }).length; return n ? '<button class="' + (sel === g ? 'on' : '') + '" data-do="tmGroup" data-g="' + g + '">' + g + ' <i>' + n + '</i></button>' : ''; }).join('') + '</div>' +
+      pill: '<button class="tk-month tm-count" data-do="tmMembers">' + ai2('team', 1.6) + '<b>' + us.length + '</b> 位伙伴' + (S.users.length > us.length ? '<small class="tm-offn">· 已停用 ' + (S.users.length - us.length) + '</small>' : '') + ai2('downc', 1.8) + '</button>' }) +
+      '<div class="w-chips tm-chips"><button class="' + (sel === 'all' ? 'on' : '') + '" data-do="tmGroup" data-g="all">全部 <i>' + S.users.length + '</i></button>' + G.slice(1).concat(G.slice(0, 1)).map(function (g) { var n = us.filter(function (u) { return u.group === g; }).length; return n ? '<button class="' + (sel === g ? 'on' : '') + '" data-do="tmGroup" data-g="' + g + '">' + g + ' <i>' + n + '</i></button>' : ''; }).join('') + '</div>' +
       rows.map(memberCard).join('') +
       (canInvite ? '<button class="tm-invite" data-do="tmInvite"><span class="tm-ip">' + ti('plus2', 2.4) + '</span><span><b>邀请新成员</b><small>' + (canInvite ? '一起打造更好的团队' : '由老板或管理员添加成员') + '</small></span><svg class="tm-ppl" viewBox="0 0 120 60" aria-hidden="true"><g fill="#C9D8FB"><circle cx="30" cy="22" r="10"/><path d="M12 60c1-14 8-22 18-22s17 8 18 22z"/><circle cx="90" cy="22" r="10"/><path d="M72 60c1-14 8-22 18-22s17 8 18 22z"/></g><g fill="#B3C8F8"><circle cx="60" cy="16" r="13"/><path d="M36 60c1-17 10-27 24-27s23 10 24 27z"/></g></svg>' + hi('chev', 2) + '</button>' : '');
   }
@@ -2538,6 +2543,8 @@
     var sm = TM.latestSummary(S, d.id, 'cocreate'), sumHTML = sm && d.status !== 'summary_ready' ? '<div class="dz-more">' + cocreateHTML(d, true) + '</div>' : '';
     var hidden = Math.max(0, tops.length - 2);
     return '<section class="ix2-card ix2-fold dz-card" id="ix-disc"><div class="ix2-sh"><b>' + ti('cmt', 1.7) + '讨论与建议（' + sug.length + '）</b>' + (ichatCan(d) ? '<button class="ic-open' + (ichatOpen[d.id] ? ' on' : '') + '" data-do="icOpen" aria-label="问 AI">' + hi('spark', 1.6) + '<span>问 AI</span></button>' : '<span class="ix2-date">' + (d.shareAll ? '分享给全体' : d.shares && d.shares.length ? '分享给 ' + d.shares.map(nm).join('、') : '') + '</span>') + '</div>' + ichatHTML(d) +
+      // 讨论中：说明分享给谁、什么时候截止（截止日过后自动汇总）
+      (d.status === 'discussing' ? '<p class="dz-meta">分享给' + (d.shareAll ? '全体成员' : ' ' + (d.shares || []).length + ' 位同事') + ' · ' + (d.deadline ? (d.deadline === TM.todayStr(S) ? '今天截止' : mdTxt(d.deadline) + ' 截止') + '，之后自动汇总' : '由发起人手动结束') + '</p>' : '') +
       digestHTML(d) + (tops.length ? '<div class="dz-list">' + threads + '</div>' : '<p class="ix2-empty">还没有人提建议。</p>') + sumHTML +
       (hidden || sumHTML ? '<button class="ix2-more" data-do="ixFold" aria-expanded="false"><span>' + (hidden ? '展开其余 ' + hidden + ' 条讨论' : '展开讨论汇总') + '</span>' + hi('chev', 2) + '</button>' : '') +
       (can ? '<form data-form="suggest" class="dz-form"><input type="hidden" name="replyTo" value=""><div id="replyHint" class="muted" style="font-size:13.5px"></div><textarea name="body" rows="2" placeholder="写下你的建议。讨论中的建议不等于已批准的需求。"></textarea><button class="ix2-btn blue" type="submit">发送</button></form>' : '') + '</section>';
@@ -2902,7 +2909,7 @@
     var steps = '<section class="ix-steps ix2-steps">' + ['想法', '整理', '项目', '执行', '验收'].map(function (n, i) { var href = i === 0 && d && TM.canViewIdea(S, me, d) ? '#/idea/' + d.id : i === 2 ? '#/work/' + w.id : null; return '<div ' + (href ? 'role="link" tabindex="0" data-do="goH" data-h="' + href + '" style="cursor:pointer" ' : '') + 'class="' + (i < stp ? 'done' : i === stp ? 'cur' : '') + '"><i>' + (i < stp ? ni('check', 2.6) : '') + '</i><span>' + n + '</span></div>'; }).join('') + '</section>';
     var od = TM.isOverdue(S, t), st = TM.isStale(S, t), nx = TM.nextForTask(S, t), mine = t.ownerId === me;
     var IC = function (path, c) { return '<svg viewBox="0 0 24 24" fill="none" stroke="' + (c || 'currentColor') + '" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + path + '</svg>'; };
-    var h = ixHead('任务详情', '把事情做完、做好') + steps +
+    var h = ixHead('任务详情', '把事情做完、做好') + steps + (w.status === 'paused' ? '<div class="callout warn" style="margin:0 0 12px">老板暂停了这个项目，恢复前任务不能操作。</div>' : w.status === 'cancelled' ? '<div class="callout" style="margin:0 0 12px">这个项目已取消。</div>' : '') +
       '<section class="ix2-card ix2-main"><div class="tx-chips">' + pill('task', t.status) + '<i>' + esc(L.kind[w.kind]) + '</i>' + (t.priority === 'hi' ? '<i class="r">高优先级</i>' : '') + (od ? '<i class="r">已逾期</i>' : '') + (st ? '<i class="r">' + S.settings.staleDays + ' 天以上无动态</i>' : '') + '</div>' +
       '<h2>' + esc(t.title) + '</h2>' + ((w.leadId === me || w.operatorId === me || isOwner()) && ['done', 'cancelled'].indexOf(t.status) < 0 && w.status !== 'paused' ? '<button type="button" class="wx-edit tx-edit" data-do="taskEdit">' + ai2('edit', 1.8) + '编辑</button>' : '') + '<a class="tx-work" href="#/work/' + w.id + '">' + IC('<path d="M3.8 8.2a2.7 2.7 0 0 1 2.7-2.7h3l2 2.2h6a2.7 2.7 0 0 1 2.7 2.7v6.9a2.7 2.7 0 0 1-2.7 2.7h-11a2.7 2.7 0 0 1-2.7-2.7z"/>') + '<span>属于项目</span><b>' + esc(w.title) + '</b>' + hi('chev', 2) + '</a>' +
       (t.status === 'blocked' ? '<div class="callout bad" style="margin-top:10px">受阻：' + esc(t.blockedReason) + '</div>' : '') +
@@ -2993,7 +3000,7 @@
       sw('showTiers', '显示一级、二级标签', '只是界面分组标签，不影响权限：运营者、负责人为一级，执行者为二级。') + '</div>';
     h += sec('公司与提醒') + '<div class="card"><label class="fld"><span>公司方向与长期目标</span><textarea data-set="direction" rows="3"' + (isOwner() ? '' : ' disabled') + '>' + esc(cs.direction) + '</textarea><small>AI 整理时用来判断新想法是否与现有业务形成闭环。由老板填写。</small></label>' +
       '<div class="row2"><label class="fld"><span>无动态提醒（天）</span><input type="number" min="1" max="30" data-set="staleDays" value="' + cs.staleDays + '"' + dis + '></label><label class="fld"><span>超预算阈值（元）</span><input type="number" min="0" step="1000" data-set="budgetThreshold" value="' + (cs.budgetThreshold || '') + '"' + dis + '></label></div></div>';
-    h += sec('报表') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">导出成表格，用 Excel、WPS 或 Numbers 打开。</p><button class="btn block" data-do="csvTasks">导出任务表</button><button class="btn block mt" data-do="csvWorks">导出项目表</button></div>';
+    if (!myCaps().tasks && !isOwner()) {} else h += sec('报表') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">导出成表格，用 Excel、WPS 或 Numbers 打开。</p><button class="btn block" data-do="csvTasks">导出任务表</button><button class="btn block mt" data-do="csvWorks">导出项目表</button></div>';
     h += SRV ? sec('数据') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">服务器：' + esc(TMS.serverUrl()) + '</p><button class="btn block" data-do="srvUsage">使用情况（AI 费用、设备、空间）</button><button class="btn block mt" data-do="srvOps">操作日志（谁做了什么）</button>' + (isOwner() ? '<button class="btn block mt" data-do="srvExportFull">完整备份（含全部附件，压缩包）</button><button class="btn block mt" data-do="srvExport">只导出团队数据（JSON）</button>' : '') + '<div class="mt"></div>' + (isOwner() && !S.real ? '<button class="btn danger block" data-do="clearDemo">清空示例内容（保留成员和设置）</button>' : '<p class="muted" style="margin:0;font-size:13.5px">数据每天自动备份在服务器的 backups 目录。</p>') + '</div>' :
       sec('演示工具') + '<div class="card">' + sw('demoAiFail', '模拟 AI 失败', '用来演示「AI 失败后运营者手写整理稿继续推进」。') +
       '<div class="callout">演示版里：账号是预设的；AI 整理和共创汇总由规则模拟生成，界面都标了「AI 模拟输出」；录音只在本机，不上传、不转写；通知只在 App 内。</div>' +
@@ -3269,7 +3276,7 @@
     else if (c.name === 'kb' && c.id === 'voice' && !cp.kbEdit) to = '#/kb';
     else if ((c.name === 'ideas' || c.name === 'idea') && !cp.ideas) to = '#/home';
     else if (c.name === 'work' && !cp.work) to = '#/home';
-    if (to) { history.replaceState(null, '', to); if (typeof navStack !== 'undefined' && navStack.length) navStack[navStack.length - 1] = to; return render(); }
+    if (to) { if ((c.name === 'idea' || c.name === 'work' || c.name === 'task') && c.id) setTimeout(function () { toast('你没有权限查看这个内容', true); }, 50); /* 打开某条看不到的想法 / 项目 / 任务（例如点了通知）时说明原因 */ history.replaceState(null, '', to); if (typeof navStack !== 'undefined' && navStack.length) navStack[navStack.length - 1] = to; return render(); }
     var body = '', acts = [], title = TITLES[c.name] || '首页', back = false;
     switch (c.name) {
       case 'ideas': body = viewIdeas(); break;
@@ -3338,7 +3345,7 @@
   var WELCOME = { operator: [['想法页 → 待整理', '新想法提交后先到这里，点「认领」后由你跟进'], ['整理稿', 'AI 先整理一版，你核对、修改'], ['派发', '普通事项直接派任务；超预算、人事等例外送老板决策']],
     lead: [['项目页', '交给你的产品项目在这里：拆任务、派人、推进阶段'], ['任务验收', '执行者提交成果后，由你验收或退回'], ['记录想法', '有发起权时，首页可以直接记想法']],
     executor: [['任务页', '派给你的任务都在这里：先「接收」，再「开始」，做完「提交成果」'], ['遇到问题', '在任务里点「报阻碍」，跟进人会来处理'], ['记一条待办', '自己的小事也可以记在待办里，能设重复']],
-    admin: [['成员与账号', '添加成员、分派登录账号、重置密码、停用离职的人'], ['AI 知识库', '维护公司资料，AI 回答问题时会参考'], ['更多设置', '流程开关、操作日志、报表导出']] };
+    admin: [['成员与账号', '添加成员、分派登录账号、重置密码、停用离职的人'], ['AI 知识库', '维护公司资料，AI 回答问题时会参考'], ['更多设置', '流程开关、操作日志']] };
   DO.welcome = function () {
     try { localStorage.setItem('tm_welcomed_' + me, '1'); } catch (e) {}
     var r = TM.primaryRole(S, me), xs = WELCOME[r] || WELCOME.executor;
@@ -3364,10 +3371,14 @@
   DO.srvLogout = function () { var n = TMS.outbox.length; openSheet('退出登录', '<p style="margin:0">' + (n ? '还有 <b>' + n + '</b> 项改动没同步到服务器，退出后会丢失。建议联网同步完再退出。' : '退出后需要重新输入账号密码。') + '</p>', '退出登录', function () { TMS.logout(); }, true); };
   DO.srvPassword = function (el) { var must = TMS.mustChange;
     openSheet(must ? '请先修改初始密码' : '修改密码', (must ? '<p class="muted" style="margin:0 0 10px;font-size:14px">你正在使用别人帮你设置的初始密码，改成只有你知道的密码。</p>' : field('原密码', '<input type="password" name="old" autocomplete="current-password" required>')) +
-      field('新密码', '<input type="password" name="password" minlength="8" autocomplete="new-password" required>', '至少 8 位，别用生日、连续数字') + field('再输一次', '<input type="password" name="again" minlength="6" autocomplete="new-password" required>'), '保存', function (o) {
-      if (o.password !== o.again) return toast('两次输入的新密码不一样', true);
+      field('新密码', '<input type="password" name="password" autocomplete="new-password" required>', '至少 8 位，别用生日、连续数字') + field('再输一次', '<input type="password" name="again" autocomplete="new-password" required>'), '保存', function (o) {
+      if (String(o.password || '').length < 8) return fieldErr('.sheet input[name=password]', '新密码至少 8 位');
+      if (o.password !== o.again) return fieldErr('.sheet input[name=again]', '两次输入的新密码不一样');
       TMS.changePassword(o.old || '', o.password).then(function () { closeSheet(); toast('密码已修改'); render(); /* 改完初始密码后重新检查要不要显示欢迎说明 */ }, function (e) { toast(e.error || '修改失败', true); });
-    }); };
+    });
+    // 初始密码必须先改：不能点遮罩或 × 关掉（以前关掉后操作会卡在同步里）
+    if (must) { var ly = document.getElementById('layer'); var sc = ly.querySelector('.scrim'); if (sc) sc.removeAttribute('data-do'); ly.querySelectorAll('.sheet header .circle, .sheet footer [data-do=closeSheet]').forEach(function (x) { x.remove(); }); }
+  };
   /* 安卓 App 更新：团队服务器上放着最新的安装包（npm run android 发布），App 启动时比较版本号，有新版就提示下载 */
   var appUpd = { meta: null, info: null, newer: false };
   function isAndroidApp() { return typeof TMN !== 'undefined' && TMN.native && TMN.platform === 'android'; }
@@ -3427,7 +3438,7 @@
   var OPN = { 'idea.create': '记录想法', 'idea.submit': '提交想法', 'idea.claim': '认领想法', 'idea.route': '派发', 'idea.delete': '删除想法', 'idea.suggest': '提建议', 'idea.saveSummary': '保存整理稿', 'decision.request': '上报决策', 'decision.decide': '老板决策',
     'project.create': '新建项目', 'work.plan': '安排任务', 'work.update': '修改项目', 'work.close': '确认项目完成', 'work.pause': '暂停项目', 'work.resume': '恢复项目', 'work.cancel': '取消项目', 'work.reassign': '更换项目人员', 'work.attach': '上传项目文件',
     'task.transition': '任务状态', 'task.submit': '提交成果', 'task.review': '验收', 'task.update': '修改任务', 'task.comment': '任务留言', 'owner.override': '老板纠偏',
-    'member.add': '添加成员', 'member.update': '修改资料', 'member.role': '调整角色', 'member.handover': '交接工作', 'settings.update': '修改设置', 'todo.create': '新建待办', 'todo.update': '修改待办', 'notif.read': '已读通知' };
+    'work.comment': '项目讨论发言', 'work.requestDecision': '项目上报老板', 'task.reviewComment': '老板复核意见', 'idea.reassignFollower': '改派跟进人', 'work.attach': '上传项目文件', 'work.detach': '删除项目文件', 'idea.close': '结束共创讨论', 'idea.confirm': '确认方向', 'member.active': '账号停用 / 恢复', 'member.add': '添加成员', 'member.update': '修改资料', 'member.role': '调整角色', 'member.handover': '交接工作', 'settings.update': '修改设置', 'todo.create': '新建待办', 'todo.update': '修改待办', 'notif.read': '已读通知' };
   var opsS = { uid: '', fail: false, rows: [], more: false };
   function opsHTML() {
     var ppl = S.users.map(function (u) { return '<option value="' + u.id + '"' + (opsS.uid === u.id ? ' selected' : '') + '>' + esc(u.name) + '</option>'; }).join('');
@@ -3925,6 +3936,7 @@
     if (el.dataset && el.dataset.speriod) { st.period = +el.value; render(); return; }
     if (el.dataset && el.dataset.wdue) { act('work.update', { id: el.dataset.wdue, due: el.value }, '已更新截止时间'); return; }
     if (el.dataset && el.dataset.as === 'milestone' && asg) { asg.milestone = el.checked; return; }
+    if (el.dataset && el.dataset.as === 'reviewerId' && asg) { asg.reviewerId = el.value; return; }
     if (el.dataset && el.dataset.as === 'due' && asg) { asg.due = el.value; asg.dueSet = true; render(); return; }
     if (el.dataset && el.dataset.tf === 'date' && tf) { tf.date = el.value; render(); return; }
     if (el.dataset && el.dataset.ta === 'lang') { ta.lang = el.value; return; }

@@ -56,7 +56,7 @@ const mock = http.createServer((req, res) => { let b = ''; req.on('data', d => b
   const dId = await p.evaluate(() => { const d = window.__tm.S.decisions.find(x => x.status === 'pending'); return d && d.ideaId; });
   await p.goto(URL + '#/idea/' + dId); await p.waitForTimeout(300);
   await p.locator('[data-do=decide]').first().click(); await p.waitForSelector('.sheet [data-do=advAI]');
-  ok((await p.textContent('.sheet .ix2-advf')).includes('模拟'), '先显示规则版建议，并有「让 Claude 分析」');
+  ok(/规则|模拟/.test(await p.textContent('.sheet .ix2-advf')), '先显示规则版建议，并有「让 Claude 分析」');
   const n3 = calls; await p.click('.sheet [data-do=advAI]');
   ok(await until(async () => (await p.locator('.sheet .ix2-advf').textContent().catch(() => '')).includes('Claude 建议')), '弹窗里换成 Claude 建议');
   ok(calls === n3 + 1 && (await p.textContent('.sheet .ix2-advh b')).includes('建议先补充信息') && await p.locator('.sheet [data-do=advAI]').count() === 0, '显示 Claude 的结论，按钮消失');

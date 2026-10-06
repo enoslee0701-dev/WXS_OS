@@ -87,4 +87,10 @@ ok(await p.locator('.actions .btn:has-text("更多操作")').count()===0 || !(aw
   const nr=await p.evaluate(()=>{const s=document.querySelector('.sheet select[name=reviewerId]');const o=[...s.options].find(x=>!x.selected);return o&&o.value;});
   await p.selectOption('.sheet select[name=reviewerId]',nr);await sub();await p.waitForTimeout(150);
   ok(await p.evaluate(([w,r])=>window.__tm.S.workItems.find(x=>x.id===w).reviewerId===r,[wid,nr]),'更换验收人成功'); }
+// 暂停的项目：任务页说明原因；分配任务页有验收人
+{ await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Enos")');
+  const ids=await p.evaluate(()=>{const S=window.__tm.S;const w=S.workItems.find(x=>x.status==='active');const t=S.tasks.find(x=>x.workId===(w&&w.id)&&!['done','cancelled'].includes(x.status));return w&&t?[w.id,t.id]:null;});
+  if(ids){await p.evaluate((w)=>{window.__tm.S.workItems.find(x=>x.id===w).status='paused';},ids[0]);await p.goto(URL+'#/task/'+ids[1]);await p.waitForTimeout(150);
+    ok((await p.textContent('main')).includes('老板暂停了这个项目'),'暂停的项目：任务页说明原因');await p.evaluate((w)=>{window.__tm.S.workItems.find(x=>x.id===w).status='active';},ids[0]);
+    await p.goto(URL+'#/assign/'+ids[0]);await p.waitForTimeout(150);ok(await p.locator('select[data-as=reviewerId]').count()===1&&await p.locator('input[data-as=criteria]').count()===1,'分配任务页可以选验收人、写验收标准');} }
 console.log(`项目页 E2E 通过 ${pass}，失败 ${fail}`);await b.close();process.exit(fail?1:0);})().catch(e=>{console.error(e);process.exit(1)});

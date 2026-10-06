@@ -898,5 +898,16 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   must(TM.act(xl, O, 'work.update', { id: w.id, externalLink: 'https://github.com/team/app' }), '设置研发工具链接');
   ok(xl.workItems.find(x => x.id === w.id).externalLink === 'https://github.com/team/app', '链接已保存'); }
 
+// ===== 场景验收修复：共创邀请不发给只做管理的人；解除阻碍通知执行人；新管理员不收到关于自己的通知 =====
+{ const sv = fresh();
+  const ci = must(TM.act(sv, O, 'idea.create', { note: '团建去哪' }), '建想法'); must(TM.act(sv, O, 'idea.submit', { id: ci.id, path: 'cocreate', shareAll: true }), '全体共创');
+  ok(!sv.notifications.some(n => n.userId === AD && /共创/.test(n.title)), '只做管理的成员不收到共创邀请');
+  const bt = sv.tasks.find(t => ['accepted', 'in_progress'].includes(t.status) && sv.workItems.find(w => w.id === t.workId).status === 'active');
+  must(TM.act(sv, bt.ownerId, 'task.transition', { id: bt.id, action: 'block', note: '缺材料' }), '报阻碍'); const n0 = sv.notifications.length;
+  must(TM.act(sv, O, 'task.transition', { id: bt.id, action: 'unblock', note: '材料到了' }), '老板解除');
+  ok(sv.notifications.slice(n0).some(n => n.userId === bt.ownerId && /阻碍已解除/.test(n.title)), '解除阻碍通知执行人');
+  const na = must(TM.act(sv, O, 'member.add', { name: '新管理', role: 'admin', group: '管理层' }), '加管理员');
+  ok(!sv.notifications.some(n => n.userId === na.id && /新成员加入/.test(n.title)), '新管理员不收到关于自己的加入通知'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);
