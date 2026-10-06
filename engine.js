@@ -377,12 +377,32 @@ var TM = (function () {
   /* ---------- 动作（对应文档第 12 节 RPC） ---------- */
   var A = {};
 
+  /* 附件清洗：客户端传来的附件只保留已知字段并校验类型和长度——坏数据（字符串、null、对象）以前会让下发数据和后台转写抛异常 */
+  var MKINDS = ['audio', 'video', 'image', 'file', 'link', 'doc'], TRS = ['intext', 'pending', 'done', 'failed'];
+  function cleanMedia(list) {
+    return (Array.isArray(list) ? list : []).filter(function (x) { return x && typeof x === 'object' && !Array.isArray(x); }).map(function (x) {
+      var k = MKINDS.indexOf(x.kind) >= 0 ? x.kind : 'file', m = { kind: k, name: txt(x.name).slice(0, 80) || (k === 'audio' ? '录音' : k === 'video' ? '视频' : k === 'link' ? '链接' : '文件') };
+      if (typeof x.id === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(x.id)) m.id = x.id;
+      if (typeof x.localId === 'string' && /^[A-Za-z0-9_-]{4,64}$/.test(x.localId)) m.localId = x.localId;
+      if (k === 'link') m.url = /^https?:\/\/\S+\.\S+/.test(txt(x.url)) ? txt(x.url).slice(0, 500) : '';
+      if (typeof x.size === 'string' || typeof x.size === 'number') m.size = String(x.size).slice(0, 20);
+      if (typeof x.fname === 'string') m.fname = x.fname.slice(0, 120);
+      if (typeof x.durationSec === 'number' && isFinite(x.durationSec)) m.durationSec = Math.max(0, Math.round(x.durationSec));
+      if (TRS.indexOf(x.transcriptStatus) >= 0) m.transcriptStatus = x.transcriptStatus;
+      if (typeof x.transcript === 'string') m.transcript = x.transcript.slice(0, 20000);
+      if (typeof x.transcriptAt === 'number') m.transcriptAt = x.transcriptAt;
+      if (typeof x.hidden === 'boolean') m.hidden = x.hidden;
+      if (typeof x.at === 'number') m.at = x.at;
+      if (typeof x.by === 'string') m.by = x.by.slice(0, 40);
+      return m;
+    }).slice(0, 30);
+  }
   A['idea.create'] = function (s, uid, p) {
     need(canInitiate(s, uid), '只有老板和有发起权的负责人可以创建想法');
-    need(txt(p.note) || txt(p.title) || (p.media && p.media.length), '请至少写一句话或附上录音');
+    p.media = cleanMedia(p.media); need(txt(p.note) || txt(p.title) || p.media.length, '请至少写一句话或附上录音');
     var d = { id: nid(s, 'I'), creatorId: uid, dept: p.dept || null, path: null, status: 'draft', aiStatus: 'none', title: txt(p.title).slice(0, 30), titleSource: txt(p.title) ? 'user' : 'ai', note: txt(p.note),
       followerId: null, shareAll: false, shares: [], deadline: null, directionConfirmedAt: null, ownerApproved: false, reviewed: false,
-      media: p.media || [], tags: (p.tags || []).map(txt).filter(Boolean).slice(0, 5), submittedAt: null, lastActivity: now(s), createdAt: now(s) };
+      media: p.media, tags: (Array.isArray(p.tags) ? p.tags : []).map(txt).filter(Boolean).slice(0, 5), submittedAt: null, lastActivity: now(s), createdAt: now(s) };
     if (!d.title) d.title = aiTitle(d);
     s.ideas.push(d);
     ev(s, { ideaId: d.id, actor: uid, action: 'idea.create', to: 'draft', text: '保存为私人草稿' });
@@ -463,7 +483,7 @@ var TM = (function () {
     ev(s, { ideaId: d.id, actor: uid, action: 'summary.save', text: '保存人工整理稿 v' + sm.version }); touchIdea(s, d); return {};
   };
   A['idea.tags'] = function (s, uid, p) {
-    var d = idea(s, p.id); need(d.creatorId === uid || d.followerId === uid || hasRole(s, uid, 'owner'), '只有发起人、跟进人或老板可以改标签');
+    var d = idea(s, p.id); need(canViewIdea(s, uid, d), '找不到该想法'); need(d.creatorId === uid || d.followerId === uid || hasRole(s, uid, 'owner'), '只有发起人、跟进人或老板可以改标签');
     var tags = (p.tags || []).map(function (x) { return txt(x).replace(/^#/, ''); }).filter(function (x, i, a) { return x && a.indexOf(x) === i; });
     need(tags.length <= 5, '标签最多 5 个'); need(tags.every(function (x) { return x.length <= 8; }), '每个标签不超过 8 个字');
     d.tags = tags; ev(s, { ideaId: d.id, actor: uid, action: 'idea.tags', text: '标签改为：' + (tags.length ? tags.join('、') : '无') }); touchIdea(s, d); return {};
@@ -572,7 +592,7 @@ var TM = (function () {
     var leadDept = leadId && (user(s, leadId).roles.find(function (a) { return a.role === 'lead'; }) || {}).dept;
     var d = { id: nid(s, 'I'), creatorId: uid, dept: leadDept || null, path: 'direct', status: 'planned', aiStatus: p.source === 'ai' ? 'ready' : 'none', title: title, note: txt(p.note),
       followerId: opId, shareAll: false, shares: [], deadline: null, directionConfirmedAt: null, ownerApproved: owner, reviewed: true,
-      media: p.media || [], submittedAt: now(s), lastActivity: now(s), createdAt: now(s) };
+      media: cleanMedia(p.media), submittedAt: now(s), lastActivity: now(s), createdAt: now(s) };
     s.ideas.push(d);
     addSummary(s, d, 'analysis', { simulated: p.source === 'ai', title: title, summary: txt(p.note).slice(0, 80), background: txt(p.note), category: kind, ptype: pt[0], options: [], open_questions: [], exception_flags: [], suggested_route: kind === 'product' ? 'to_lead' : 'operator_direct', suggested_tasks: [] }, 'human', uid);
     var w = { id: nid(s, 'W'), ideaId: d.id, dept: leadDept || null, kind: kind, ptype: pt[0], title: title, goal: txt(p.goal), status: 'planning', stage: 'clarify',
@@ -639,7 +659,7 @@ var TM = (function () {
   /* 项目文件：项目成员可上传；上传人、负责人、跟进运营者、老板可删除 */
   A['work.attach'] = function (s, uid, p) {
     var w = work(s, p.id); need(canViewWork(s, uid, w), '只有项目成员可以上传文件'); need(w.status !== 'cancelled', '项目已取消，不能再上传');
-    var m = (p.media || []).filter(function (x) { return x && txt(x.name); }); need(m.length, '请选择文件');
+    var m = cleanMedia(p.media).filter(function (x) { return txt(x.name); }); need(m.length, '请选择文件');
     w.files = w.files || []; need(w.files.length + m.length <= 50, '每个项目最多 50 个文件');
     m.forEach(function (x) { if (x.kind === 'link') need(/^https?:\/\/\S+\.\S+/.test(txt(x.url)), '请填写以 http:// 或 https:// 开头的链接'); });
     m.forEach(function (x) { w.files.push({ id: nid(s, 'P'), kind: x.kind || 'file', name: txt(x.name).slice(0, 80), url: x.kind === 'link' ? txt(x.url) : undefined, size: x.size || '', at: now(s), by: uid, localId: x.localId }); });
@@ -728,9 +748,9 @@ var TM = (function () {
   };
   function ideaLocked(d) { return ['planned', 'declined'].indexOf(d.status) >= 0 || !!d.deleted; }
   A['idea.attach'] = function (s, uid, p) {
-    var d = get(s.ideas, p.id, '想法'); need(d.creatorId === uid || d.followerId === uid || hasRole(s, uid, 'owner'), '只有发起人、跟进人或老板可以添加附件');
+    var d = idea(s, p.id); need(canViewIdea(s, uid, d), '找不到该想法'); need(d.creatorId === uid || d.followerId === uid || hasRole(s, uid, 'owner'), '只有发起人、跟进人或老板可以添加附件');
     need(!ideaLocked(d), '这个想法已形成项目，附件已锁定。新资料请加到项目或任务里');
-    var m = (p.media || []).filter(function (x) { return x && txt(x.name); }); need(m.length, '请选择文件');
+    var m = cleanMedia(p.media).filter(function (x) { return txt(x.name); }); need(m.length, '请选择文件');
     need(d.media.length + m.length <= 30, '每个想法最多 30 个附件');
     m.forEach(function (x) { if (x.kind === 'link') need(/^https?:\/\/\S+\.\S+/.test(txt(x.url)), '请填写以 http:// 或 https:// 开头的链接'); });
     m.forEach(function (x) { d.media.push({ id: nid(s, 'M'), kind: x.kind || 'file', name: txt(x.name).slice(0, 80), url: x.kind === 'link' ? txt(x.url) : undefined, size: x.size || '', at: now(s), by: uid, localId: x.localId }); });
@@ -762,20 +782,20 @@ var TM = (function () {
     ev(s, { ideaId: d.id, actor: uid, action: 'ai.digest', text: '让 AI 总结讨论（第 ' + sm.version + ' 版）' }); return { id: sm.id };
   };
   A['idea.retitle'] = function (s, uid, p) {
-    var d = idea(s, p.id); need(d.creatorId === uid || d.followerId === uid || hasRole(s, uid, 'owner'), '只有发起人、跟进人或老板可以改标题');
+    var d = idea(s, p.id); need(canViewIdea(s, uid, d), '找不到该想法'); need(d.creatorId === uid || d.followerId === uid || hasRole(s, uid, 'owner'), '只有发起人、跟进人或老板可以改标题');
     var old = d.title, nt = p.ai ? aiTitle(d) : txt(p.title); need(nt, '标题不能为空'); need(nt.length <= 30, '标题不超过 30 个字');
     d.title = nt; d.titleSource = p.ai ? 'ai' : 'user';
     ev(s, { ideaId: d.id, actor: uid, action: 'idea.retitle', text: (p.ai ? 'AI 重新拟题' : '修改标题') + '：「' + old + '」→「' + nt + '」' }); touchIdea(s, d); return {};
   };
   A['idea.mediaShow'] = function (s, uid, p) {
-    var d = get(s.ideas, p.id, '想法'); var m = d.media[+p.index];
+    var d = idea(s, p.id); need(canViewIdea(s, uid, d), '找不到该想法'); var m = d.media[+p.index];
     need(m && (!p.mid || m.id === p.mid), '附件不存在，可能已被删除');
     need(d.creatorId === uid || m.by === uid || hasRole(s, uid, 'owner'), '只有发起人、上传人或老板可以设置是否呈现');
     m.hidden = !p.show;
     ev(s, { ideaId: d.id, actor: uid, action: 'idea.mediaShow', text: (p.show ? '呈现' : '不呈现') + '附件「' + m.name + '」' }); d.lastActivity = now(s); return {};
   };
   A['idea.detach'] = function (s, uid, p) {
-    var d = get(s.ideas, p.id, '想法'); var i = +p.index, m = d.media[i];
+    var d = idea(s, p.id); need(canViewIdea(s, uid, d), '找不到该想法'); var i = +p.index, m = d.media[i];
     need(m && (!p.mid || m.id === p.mid), '附件不存在，可能已被删除');
     need(m.by === uid || d.creatorId === uid || hasRole(s, uid, 'owner'), '只有上传人、发起人或老板可以删除附件');
     need(!ideaLocked(d), '这个想法已形成项目，附件已锁定，不能删除');
@@ -790,7 +810,7 @@ var TM = (function () {
     return {};
   };
   A['work.stage'] = function (s, uid, p) {
-    var w = work(s, p.id); need(w.leadId === uid || hasRole(s, uid, 'owner') || (w.kind !== 'product' && w.operatorId === uid), '只有项目负责人可以推进阶段');
+    var w = work(s, p.id); need(w.status !== 'paused', '项目已暂停，恢复后才能操作'); need(w.leadId === uid || hasRole(s, uid, 'owner') || (w.kind !== 'product' && w.operatorId === uid), '只有项目负责人可以推进阶段');
     var st = STAGES[w.kind].map(function (x) { return x[0]; }); need(st.indexOf(p.stage) >= 0, '阶段不存在'); need(p.stage !== w.stage, '已经在该阶段');
     var from = w.stage; w.stage = p.stage; touchWork(s, w);
     ev(s, { workId: w.id, ideaId: w.ideaId, actor: uid, action: 'work.stage', from: stageName(w.kind, from), to: stageName(w.kind, p.stage), reason: txt(p.note), text: '阶段：' + stageName(w.kind, from) + ' 到 ' + stageName(w.kind, p.stage) });
@@ -814,7 +834,7 @@ var TM = (function () {
   };
   A['work.resume'] = function (s, uid, p) {
     var w = work(s, p.id); need(hasRole(s, uid, 'owner'), '只有老板可以恢复'); need(w.status === 'paused', '事项未暂停');
-    w.status = w.pausedFrom || 'active'; ev(s, { workId: w.id, actor: uid, action: 'work.resume', from: 'paused', to: w.status, text: '恢复事项' });
+    w.status = w.pausedFrom || 'active'; ev(s, { workId: w.id, actor: uid, action: 'work.resume', from: 'paused', to: w.status, text: '恢复事项' }); syncWork(s, w, uid); // 暂停期间任务状态可能变了：按任务重新算项目状态
     notify(s, relatedOfWork(s, w), uid, '事项已恢复', w.title, '#/work/' + w.id); touchWork(s, w); return {};
   };
   /* 取消项目：老板、项目负责人或跟进运营者，必须写原因；未结束的任务一并取消；来源想法没有别的进行中项目时回到「暂缓」（之后可恢复或删除） */
@@ -880,18 +900,18 @@ var TM = (function () {
     touchTask(s, t); syncWork(s, w, uid); return {};
   };
   A['task.check'] = function (s, uid, p) {
-    var t = task(s, p.id); need(t.ownerId === uid || t.collabs.indexOf(uid) >= 0, '只有主负责人或协作者可以勾选');
+    var t = task(s, p.id); need(work(s, t.workId).status !== 'paused', '项目已暂停，恢复后才能操作'); need(t.ownerId === uid || t.collabs.indexOf(uid) >= 0, '只有主负责人或协作者可以勾选');
     need(['accepted', 'in_progress', 'blocked'].indexOf(t.status) >= 0, '接收任务后才能更新进度');
-    var c = get(s.checklist, p.itemId, '清单项'); c.done = !c.done;
+    var c = get(s.checklist, p.itemId, '清单项'); need(c.taskId === t.id, '清单项不属于这个任务'); c.done = !c.done;
     ev(s, { taskId: t.id, workId: t.workId, actor: uid, action: 'task.check', text: (c.done ? '完成：' : '取消勾选：') + c.title }); touchTask(s, t); return {};
   };
   A['task.addCheck'] = function (s, uid, p) {
-    var t = task(s, p.id); var w = work(s, t.workId); need(t.ownerId === uid || t.collabs.indexOf(uid) >= 0 || w.leadId === uid || w.operatorId === uid, '无权添加子任务');
+    var t = task(s, p.id); var w = work(s, t.workId); need(w.status !== 'paused', '项目已暂停，恢复后才能操作'); need(t.ownerId === uid || t.collabs.indexOf(uid) >= 0 || w.leadId === uid || w.operatorId === uid, '无权添加子任务');
     need(t.status !== 'done' && t.status !== 'cancelled', '任务已结束'); var ti = txt(p.title); need(ti, '子任务不能为空');
     s.checklist.push({ id: nid(s, 'C'), taskId: t.id, title: ti, done: false }); touchTask(s, t); return {};
   };
   A['task.review'] = function (s, uid, p) {
-    var t = task(s, p.id); var w = work(s, t.workId); need(t.reviewerId === uid, '只有该任务的验收人可以验收'); need(t.status === 'submitted', '当前状态为「' + L.task[t.status] + '」，只有待验收任务可以验收');
+    var t = task(s, p.id); var w = work(s, t.workId); need(w.status !== 'paused', '项目已暂停，恢复后才能操作'); need(t.reviewerId === uid, '只有该任务的验收人可以验收'); need(t.status === 'submitted', '当前状态为「' + L.task[t.status] + '」，只有待验收任务可以验收');
     var note = txt(p.note); need(note, '验收通过或退回都需要留意见');
     need(p.verdict === 'pass' || p.verdict === 'return', '请选择通过或退回');
     s.reviews.push({ id: nid(s, 'R'), taskId: t.id, workId: w.id, reviewerId: uid, verdict: p.verdict, note: note, at: now(s) });
@@ -909,7 +929,7 @@ var TM = (function () {
     touchTask(s, t); syncWork(s, w, uid); return {};
   };
   A['task.ownerReview'] = function (s, uid, p) {
-    var t = task(s, p.id); var w = work(s, t.workId); need(hasRole(s, uid, 'owner'), '只有老板可以终验'); need(t.status === 'owner_review', '任务不在老板终验状态');
+    var t = task(s, p.id); var w = work(s, t.workId); need(w.status !== 'paused', '项目已暂停，恢复后才能操作'); need(hasRole(s, uid, 'owner'), '只有老板可以终验'); need(t.status === 'owner_review', '任务不在老板终验状态');
     var note = txt(p.note); if (p.verdict === 'owner_return') need(note, '退回请写原因');
     need(p.verdict === 'owner_pass' || p.verdict === 'owner_return', '请选择通过或退回');
     s.reviews.push({ id: nid(s, 'R'), taskId: t.id, workId: w.id, reviewerId: uid, verdict: p.verdict, note: note, at: now(s) });
@@ -926,7 +946,7 @@ var TM = (function () {
   };
   A['owner.override'] = function (s, uid, p) {
     need(hasRole(s, uid, 'owner'), '只有老板可以纠偏'); var r = txt(p.reason); need(r, '纠偏必须填写原因');
-    var t = task(s, p.id); var w = work(s, t.workId); var from = t.status;
+    var t = task(s, p.id); var w = work(s, t.workId); need(w.status !== 'paused', '项目已暂停，请先恢复再纠偏'); var from = t.status;
     if (p.action === 'revoke') {
       need(t.status === 'done', '只有已完成的任务可以撤销验收');
       s.reviews.push({ id: nid(s, 'R'), taskId: t.id, workId: w.id, reviewerId: uid, verdict: 'owner_revoke', note: r, at: now(s) });
@@ -979,6 +999,9 @@ var TM = (function () {
 
   /* ---------- 数据迁移（客户端缓存与服务器共用，幂等） ---------- */
   function migrate(s) {
+    // 清洗历史数据里的坏附件（以前没校验，坏数据会让下发和转写抛异常）
+    (s.ideas || []).forEach(function (d) { if (!Array.isArray(d.media) || d.media.some(function (x) { return !x || typeof x !== 'object' || MKINDS.indexOf(x.kind) < 0; })) d.media = cleanMedia(d.media); });
+    (s.workItems || []).forEach(function (w) { if (w.files && !Array.isArray(w.files)) w.files = []; else if (w.files) w.files = w.files.filter(function (x) { return x && typeof x === 'object'; }); });
     // 演示数据的历史迁移（改名、补演示待办、补演示资料）只作用于演示数据；真实团队（blank 创建，real=true）不动
     if (s.real) { if (!s.todos) s.todos = []; if (!s.knowledge) s.knowledge = []; } else
     (function () { var o = user(s, 'u_owner'); if (o && o.name === '王建国') { o.name = 'Enos'; } if (!s.todos) seedTodos(s, Date.now()); if (s.users.some(function (u) { return !u.group; })) { var fr = seed(); s.users.forEach(function (u) { var f = fr.users.find(function (x) { return x.id === u.id; }); if (f && !u.group) { u.motto = f.motto; u.skills = f.skills; u.presence = f.presence; u.group = f.group; if (u.id === 'u_owner') u.title = f.title; } else if (!u.group) { u.group = '行政运营'; u.presence = 'offline'; u.skills = []; u.motto = ''; } }); } })();

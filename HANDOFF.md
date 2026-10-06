@@ -219,10 +219,11 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
   - [ ] A9/A10 @提及通知、讨论回复通知；A11 老板可解除阻碍、代验收；A12 待接收任务算无动静、验收积压提醒
   - [ ] A17 成员联系方式和团队设置按权限下发
   - [ ] C 文档校正（测试数量、Node 版本、README 目录、HANDOFF 标题）
-  - [ ] 引擎审计 P0：畸形 media 让 viewFor 抛异常、trScan 崩溃循环（清洗输入、防御性读取、处理器异常回 500、uncaughtException 兜底、act 后试算 viewFor）
-  - [ ] P1：发件箱幂等（opId）；换服务器清发件箱；老板能改别人私人草稿（tags/attach/retitle/mediaShow/detach）；task.check 校验清单归属；暂停期间禁止验收等、resume 重算
+  - [x] 引擎审计 P0（cleanMedia 清洗输入 + migrate 清历史坏数据；处理器异常回 500；uncaughtException 兜底；trScan try/catch；act 后试算下发失败则回滚）：畸形 media 让 viewFor 抛异常、trScan 崩溃循环（清洗输入、防御性读取、处理器异常回 500、uncaughtException 兜底、act 后试算 viewFor）
+  - [x] P1：发件箱操作 ID（ops.op_id 唯一，重发返回当时结果，也解决多标签页重复）；发件箱绑定服务器、换服务器清空；私人草稿五个动作加 canViewIdea；task.check 校验归属；暂停期间禁止验收/勾选/阶段/纠偏，resume 后 syncWork
   - [ ] P2：原型链枚举、文本长度上限、saveSummary 清洗、addTasks reviewerId/due 校验、附件字段校验、删除想法 mediaShow、claim 泄露姓名、删除事件老板可见、会话清理、ops 清理
-  - [ ] 等界面/设备两路审计结果
+  - [ ] 界面审计（27 条）：高 1 统计趋势口径；2 执行者逾期/受阻任务在首页和任务页不见；3「回复 s1」露 ID；4 选人弹窗头像拉成椭圆。中 5 textarea resize 点；6 演示提示卡切断录音区；7 项目类型横滑无暗示；8 完成率图表误导；9 空的更多操作；10 日期条残角；11/12 弹窗按钮文案；13 统计空状态；14「阶段 3」术语；15 文字页示例像已输入。低 16–27 见审计
+  - [ ] 等设备审计结果
 - 不做（被安全策略拦下，待用户决定）：免密码老板快速入口（补丁 ~/Library/TeamOps/quick-login.patch，`git apply` 即可）、重置老板密码
 
 ## 待办

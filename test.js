@@ -677,5 +677,29 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   ok(hk.skipped.some(x => /不是运营者/.test(x)) && h.ideas.find(d => d.id === hi2.id).followerId === OP, '对方没有运营者角色：跟进的想法保留并说明');
   must(TM.act(h, 'agent', 'member.active', { id: AX, active: true }), '恢复账号'); ok(!h.users.find(u => u.id === AX).inactive, '恢复后在职'); }
 
+// ===== 坏附件：创建时清洗；历史坏数据加载时清洗，下发不抛异常 =====
+{ const m = fresh();
+  const r1 = must(TM.act(m, O, 'idea.create', { note: 'x', media: [null, 'a', { kind: 'evil', name: { a: 1 }, localId: '../x', url: 'javascript:1' }, { kind: 'audio', name: '录音', localId: 'b_aud_77', durationSec: 12 }] }), '带坏附件的想法也能建');
+  const md = m.ideas.find(d => d.id === r1.id).media;
+  ok(md.length === 2 && md[0].kind === 'file' && !md[0].localId && md[1].localId === 'b_aud_77' && md[1].durationSec === 12, '坏附件被清洗、好附件保留 ' + JSON.stringify(md));
+  rej(TM.act(m, O, 'idea.create', { media: 'abc' }), '只有坏附件、没有文字时不能建');
+  m.ideas[0].media = 'abc'; m.ideas[1].media = [null, { kind: 'audio' }];
+  const mm = TM.migrate(m); ok(Array.isArray(mm.ideas[0].media) && mm.ideas[1].media.length === 1, '历史坏附件加载时清洗');
+  let thrown = null; try { TM.viewFor(mm, O); TM.viewFor(mm, DV); } catch (e) { thrown = e; } ok(!thrown, '清洗后下发不抛异常 ' + (thrown && thrown.message)); }
+
+// ===== 权限收紧：老板不能改别人的私人草稿；清单项必须属于该任务；暂停期间不能验收 =====
+{ const g = fresh();
+  const dr = must(TM.act(g, LD, 'idea.create', { note: '负责人的私人草稿', media: [{ kind: 'audio', name: '录音', localId: 'b_aud_88' }] }), '负责人建私人草稿');
+  for (const [a, pl] of [['idea.tags', { tags: ['x'] }], ['idea.attach', { media: [{ kind: 'link', name: 'l', url: 'https://a.cn' }] }], ['idea.retitle', { title: '改' }], ['idea.mediaShow', { index: 0, show: true }], ['idea.detach', { index: 0 }]])
+    rej(TM.act(g, O, a, Object.assign({ id: dr.id }, pl)), '老板不能对别人的私人草稿做 ' + a);
+  const t1 = g.tasks.find(t => t.ownerId === DV && ['accepted', 'in_progress'].includes(t.status));
+  const foreign = g.checklist.find(c => c.taskId !== (t1 && t1.id));
+  if (t1 && foreign) rej(TM.act(g, DV, 'task.check', { id: t1.id, itemId: foreign.id }), '不能勾选别的任务的清单项');
+  const sub = g.tasks.find(t => t.status === 'submitted');
+  if (sub) { const w = g.workItems.find(x => x.id === sub.workId); must(TM.act(g, O, 'work.pause', { id: w.id, reason: '先停一下' }), '老板暂停项目');
+    rej(TM.act(g, sub.reviewerId, 'task.review', { id: sub.id, verdict: 'pass', note: '好' }), '暂停期间不能验收');
+    must(TM.act(g, O, 'work.resume', { id: w.id }), '恢复'); must(TM.act(g, sub.reviewerId, 'task.review', { id: sub.id, verdict: 'pass', note: '好' }), '恢复后可以验收'); }
+  else ok(false, '演示数据里没有待验收任务'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

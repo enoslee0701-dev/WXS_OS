@@ -34,6 +34,9 @@ CREATE TABLE IF NOT EXISTS devices(token TEXT PRIMARY KEY, uid TEXT, platform TE
 CREATE TABLE IF NOT EXISTS ai_jobs(summary_id TEXT PRIMARY KEY, at INTEGER);
 CREATE TABLE IF NOT EXISTS transcripts(file_id TEXT PRIMARY KEY, status TEXT, at INTEGER);
 CREATE TABLE IF NOT EXISTS ops(seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, uid TEXT, action TEXT, payload TEXT, ok INTEGER, error TEXT);`);
+// 操作 ID：手机重发同一条操作（超时、断线后重试）时不重复执行
+if (!db.prepare('PRAGMA table_info(ops)').all().some(c => c.name === 'op_id')) { db.exec('ALTER TABLE ops ADD COLUMN op_id TEXT'); db.exec('ALTER TABLE ops ADD COLUMN r TEXT'); }
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS ops_op_id ON ops(op_id) WHERE op_id IS NOT NULL');
 if (!db.prepare('PRAGMA table_info(sessions)').all().some(c => c.name === 'ft')) db.exec('ALTER TABLE sessions ADD COLUMN ft TEXT');
 if (!db.prepare('PRAGMA table_info(devices)').all().some(c => c.name === 'session')) db.exec('ALTER TABLE devices ADD COLUMN session TEXT');
 const q = (sql) => db.prepare(sql);
@@ -137,7 +140,7 @@ function send(res, code, obj) {
 }
 function body(req, limit) {
   const max = limit || MAX_BODY;
-  return new Promise((ok, bad) => { let n = 0; const ch = []; req.on('data', d => { n += d.length; if (n > max) { bad(new Error('too large')); req.destroy(); } else ch.push(d); }); req.on('end', () => { try { const v = ch.length ? JSON.parse(Buffer.concat(ch).toString('utf8')) : {}; ok(v && typeof v === 'object' ? v : {}); } catch (e) { bad(e); } }); req.on('error', bad); });
+  return new Promise((ok, bad) => { let n = 0; const ch = []; req.on('data', d => { n += d.length; if (n > max) { bad(new Error('too large')); req.destroy(); } else ch.push(d); }); req.on('end', () => { try { const v = ch.length ? JSON.parse(Buffer.concat(ch).toString('utf8')) : {}; ok(v && typeof v === 'object' ? v : {}); } catch (e) { e.badRequest = true; bad(e); } }); req.on('error', bad); });
 }
 const stateFor = (uid) => ({ version, state: TM.viewFor(S, uid) });
 // 操作结果只回传简单字段（新建记录的 ID 等），绝不回传对象
@@ -194,14 +197,19 @@ const routes = {
   /* 执行业务操作：权限全部由 engine.js 按登录身份判断 */
   'POST /api/act': async (req, url, b, me) => {
     const name = String(b.name || '').slice(0, 64), payload = b.payload && typeof b.payload === 'object' && !Array.isArray(b.payload) ? b.payload : {};
+    const opId = typeof b.op === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(b.op) ? me.uid + ':' + b.op : null;
+    if (opId) { const prev = q('SELECT ok,error,r FROM ops WHERE op_id=?').get(opId); if (prev) { let pr = {}; try { pr = JSON.parse(prev.r || '{}'); } catch (e) {} return [200, { ok: !!prev.ok, dup: true, error: prev.ok ? undefined : prev.error, r: pr, ...stateFor(me.uid) }]; } }
     const snap = JSON.stringify(S), nSum = S.summaries.length, nNotif = S.notifications.length; let r;
     // 清理数据前留一份完整备份
     if (name === 'data.clearDemo' && isOwner(me.uid)) fs.writeFileSync(path.join(DATA, 'backups', 'before-clear-' + Date.now() + '.json'), snap);
     try { r = TM.act(S, me.uid, name, payload); }
     catch (e) { S = JSON.parse(snap); console.error('act 异常', name, e); r = { ok: false, error: '服务器处理出错，已回滚' }; }
-    q('INSERT INTO ops(at,uid,action,payload,ok,error) VALUES(?,?,?,?,?,?)').run(Date.now(), me.uid, name, JSON.stringify(payload).slice(0, 20000), r.ok ? 1 : 0, r.ok ? null : String(r.error || '').slice(0, 200));
-    if (r.ok) { changed(nNotif); autoAnalyze(S.summaries.slice(nSum)); if (/^idea\.(create|attach|update|submit)$/.test(name)) setTimeout(trScan, 50); }
-    return [200, { ok: !!r.ok, error: r.ok ? undefined : r.error, r: pickR(r), ...stateFor(me.uid) }];
+    // 操作成功后先试算一次下发数据：算不出来（坏数据）就回滚，避免「操作已存下但谁都读不出来」
+    let st = null;
+    if (r.ok) { try { st = stateFor(me.uid); } catch (e) { S = JSON.parse(snap); console.error('act 后数据无法下发，已回滚', name, e); r = { ok: false, error: '这次操作的数据有问题，已撤销' }; } }
+    q('INSERT INTO ops(at,uid,action,payload,ok,error,op_id,r) VALUES(?,?,?,?,?,?,?,?)').run(Date.now(), me.uid, name, JSON.stringify(payload).slice(0, 20000), r.ok ? 1 : 0, r.ok ? null : String(r.error || '').slice(0, 200), opId, JSON.stringify(pickR(r)));
+    if (r.ok) { changed(nNotif); if (st) st.version = version; autoAnalyze(S.summaries.slice(nSum)); if (/^idea\.(create|attach|update|submit)$/.test(name)) setTimeout(trScan, 50); }
+    return [200, { ok: !!r.ok, error: r.ok ? undefined : r.error, r: pickR(r), ...(st || stateFor(me.uid)) }];
   },
   'POST /api/password': async (req, url, b, me) => {
     const c = q('SELECT * FROM creds WHERE uid=?').get(me.uid), pk = 'pw|' + me.uid;
@@ -549,10 +557,15 @@ const server = http.createServer(async (req, res) => {
     }
     send(res, 404, { error: '没有这个地址' });
   } catch (e) {
-    console.error(e); send(res, e.message === 'too large' ? 413 : 400, { error: e.message === 'too large' ? '内容太大' : '请求格式不对' });
+    // 请求本身有问题（太大、不是 JSON）回 4xx；服务器处理时出错回 500，不再伪装成「请求格式不对」
+    if (e.message === 'too large') return send(res, 413, { error: '内容太大' });
+    if (e.badRequest) return send(res, 400, { error: '请求格式不对' });
+    console.error('处理请求出错', req.method, req.url && req.url.split('?')[0], e); send(res, 500, { error: '服务器出错，请稍后再试' });
   }
 });
 process.on('unhandledRejection', (e) => console.error('未处理的异步错误（已忽略，服务继续运行）', e));
+// 后台任务（转写扫描、早报、清理）里的意外错误：记下来，服务继续运行（以前会让进程退出，launchd 下反复崩溃）
+process.on('uncaughtException', (e) => console.error('未捕获的错误（已忽略，服务继续运行）', e));
 /* 重启后补做：只补「发起过、但因为重启没做完」的后台任务（记录在 ai_jobs 里），不会去动其他规则版内容 */
 /* 录音 / 视频转文字（server/transcribe.js，本机 whisper 离线转写）：想法里的音视频附件上传到服务器后自动转写，
    写回想法（idea.transcript），整理稿按「原文 + 转写」重新生成。转过或失败的记在 transcripts 表，重启后不重做 */
@@ -563,12 +576,13 @@ function trPrompt() {
   const works = S.workItems.filter(w => w.status !== 'done').slice(-12).map(w => w.title).filter(Boolean).join('、');
   return '以下是团队工作想法和会议的普通话录音，用简体中文和中文标点。团队成员：' + S.users.map(u => u.name).join('、') + '。' + (works ? '正在做的项目：' + works + '。' : '') + '常用词：' + TR_WORDS + '。';
 }
-function trScan() {
+function trScan() { try { trScan0(); } catch (e) { console.error('转写扫描出错（已跳过）', e); } }
+function trScan0() {
   if (!S || !TR.enabled()) return;
   S.ideas.forEach(d => {
     if (d.deleted) return;
-    (d.media || []).forEach(m => {
-      if (!(m.kind === 'audio' || m.kind === 'video') || !m.localId || ['done', 'failed', 'intext'].includes(m.transcriptStatus) || trQueued.has(m.localId)) return; // intext：App 已经让服务器转过、写进了正文
+    (Array.isArray(d.media) ? d.media : []).forEach(m => {
+      if (!m || !(m.kind === 'audio' || m.kind === 'video') || !m.localId || ['done', 'failed', 'intext'].includes(m.transcriptStatus) || trQueued.has(m.localId)) return; // intext：App 已经让服务器转过、写进了正文
       if (!FILE_ID.test(m.localId) || !fs.existsSync(path.join(FILES, m.localId))) return; // 文件还没传上来
       const row = q('SELECT status FROM transcripts WHERE file_id=?').get(m.localId); if (row && row.status !== 'queued') return;
       trQueued.add(m.localId); q('INSERT OR REPLACE INTO transcripts VALUES(?,?,?)').run(m.localId, 'queued', Date.now());

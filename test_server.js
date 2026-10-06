@@ -107,6 +107,20 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   { const viaTunnel = (ip) => fetch(B + '/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': ip }, body: JSON.stringify({ login: 'xiaowang', password: 'wang654321' }) });
     ok((await viaTunnel('203.0.113.9')).status === 200, '公网通道：别的外网 IP 不受这个锁定影响'); }
 
+  // 8.4 坏附件数据：以前会让所有人拿不到数据、甚至登录失败；现在被清洗，数据照常下发
+  for (const bad of ['abc', [null], {}, [{ kind: { x: 1 }, name: ['a'], localId: '../../etc' }]]) {
+    const rb = await post('/api/act', { name: 'idea.create', payload: { title: '坏附件', note: 'x', media: bad } }, boss);
+    ok(rb.status === 200, '坏附件不会让操作报 400：' + JSON.stringify(bad) + ' → ' + rb.status);
+  }
+  { const st = await get('/api/state', boss); ok(st.status === 200 && st.state.ideas.filter(d => d.title === '坏附件').every(d => Array.isArray(d.media) && d.media.every(m => m && typeof m.kind === 'string' && !m.localId)), '坏附件被清洗（非法 localId 丢弃），数据照常下发');
+    ok((await post('/api/login', { login: 'boss', password: 'boss123' })).status === 200, '有坏附件数据后仍能登录'); }
+  // 8.45 同一条操作重发（手机超时后重试）：只执行一次，返回当时的结果
+  { const a1 = await post('/api/act', { name: 'idea.create', payload: { note: '重发测试' }, op: 'op_abcdef123456' }, boss);
+    const a2 = await post('/api/act', { name: 'idea.create', payload: { note: '重发测试' }, op: 'op_abcdef123456' }, boss);
+    const n = (await get('/api/state', boss)).state.ideas.filter(d => d.note === '重发测试').length;
+    ok(a1.ok && a2.ok && a2.dup && a2.r.id === a1.r.id && n === 1, '同一操作 ID 重发只执行一次 ' + n);
+    const a3 = await post('/api/act', { name: 'idea.create', payload: { note: '重发测试' }, op: 'op_abcdef999999' }, boss);
+    ok(a3.ok && !a3.dup, '不同操作 ID 正常执行'); }
   // 8.5 附件
   const up = (id, body, tok, type) => fetch(B + '/api/files/' + id, { method: 'PUT', headers: { 'Content-Type': type || 'text/plain', 'X-File-Name': encodeURIComponent('会议记录.txt'), ...(tok ? { Authorization: 'Bearer ' + tok } : {}) }, body });
   const liTok2 = (await post('/api/login', { login: 'xiaoli', password: 'li123456' })).token;

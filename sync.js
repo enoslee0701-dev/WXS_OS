@@ -66,7 +66,9 @@ var TMS = (function () {
 
   /* ---------- 发件箱 ---------- */
   var busy = false, retryT = null, delay = 2000;
-  function saveBox() { put('tm_outbox', api.outbox.length ? JSON.stringify(api.outbox) : null); if (api.outbox.length) put('tm_outbox_uid', g(KU)); }
+  // 发件箱记下属于哪个账号、哪台服务器：换人或换服务器后不能把旧操作发出去
+  function saveBox() { put('tm_outbox', api.outbox.length ? JSON.stringify(api.outbox) : null); if (api.outbox.length) { put('tm_outbox_uid', g(KU)); put('tm_outbox_srv', g('tm_server') || ''); } }
+  function opId() { var a = ''; try { var b = new Uint8Array(12); crypto.getRandomValues(b); for (var i = 0; i < b.length; i++) a += ('0' + b[i].toString(16)).slice(-2); } catch (e) { a = Date.now().toString(36) + Math.random().toString(36).slice(2, 12); } return a; }
   function ids(r) { var o = {}; Object.keys(r || {}).forEach(function (k) { if (k !== 'ok' && (typeof r[k] === 'string' || typeof r[k] === 'number')) o[k] = r[k]; }); return o; }
   function swapIds(o, map) { if (typeof o === 'string') return map[o] || o; if (Array.isArray(o)) return o.map(function (x) { return swapIds(x, map); }); if (o && typeof o === 'object') { var r = {}; Object.keys(o).forEach(function (k) { r[k] = swapIds(o[k], map); }); return r; } return o; }
   function remap(a, b) {
@@ -79,10 +81,11 @@ var TMS = (function () {
   function flush() {
     if (busy || !api.outbox.length || !api.loggedIn()) return;
     // 发件箱是别人留下的（换了人登录）：不能用当前账号发出去
-    var ou = g('tm_outbox_uid'); if (ou && ou !== g(KU)) { api.outbox = []; saveBox(); put('tm_outbox_uid', null); return; }
+    var ou = g('tm_outbox_uid'), os = g('tm_outbox_srv'); if ((ou && ou !== g(KU)) || (os != null && os !== (g('tm_server') || ''))) { api.outbox = []; saveBox(); put('tm_outbox_uid', null); put('tm_outbox_srv', null); return; }
     busy = true; setStatus(api.status === 'offline' ? 'offline' : 'syncing');
     var op = api.outbox[0];
-    req('POST', '/api/act', { name: op.n, payload: op.p, base: api.version }).then(function (res) {
+    if (!op.id) { op.id = opId(); saveBox(); } // 旧版本留下的操作没有 ID：补上，重发也只执行一次
+    req('POST', '/api/act', { name: op.n, payload: op.p, base: api.version, op: op.id }).then(function (res) {
       busy = false; delay = 2000; api.outbox.shift(); saveBox();
       if (!res.ok) toast('这一步没能同步到服务器：' + (res.error || '未知原因'), true);
       remap(op.r, res.r && ids(res.r));
@@ -99,7 +102,7 @@ var TMS = (function () {
   }
   function enqueue(name, p, r) {
     var c; try { c = JSON.parse(JSON.stringify(p || {})); } catch (e) { c = {}; }
-    api.outbox.push({ n: name, p: c, r: ids(r), t: Date.now() }); saveBox(); setStatus(api.status); setTimeout(flush, 0);
+    api.outbox.push({ n: name, p: c, r: ids(r), t: Date.now(), id: opId() }); saveBox(); setStatus(api.status); setTimeout(flush, 0);
   }
 
   /* ---------- 应用服务器数据 ---------- */
@@ -214,17 +217,17 @@ var TMS = (function () {
       });
     }).then(function () { return hits.filter(function (x, i, a) { return a.indexOf(x) === i; }); });
   };
-  api.useServer = function (server) { clearBig(); put('tm_server', norm(server) || 'http://'); put(K, null); put(KU, null); location.hash = '#/login'; reloadSafe(); };
-  api.useLocal = function () { clearBig(); ['tm_server', 'tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; reloadSafe(); };
+  api.useServer = function (server) { clearBig(); if (norm(server) !== g('tm_server')) ['tm_outbox', 'tm_outbox_uid', 'tm_outbox_srv', 'tm_token', 'tm_ft', 'tm_ver'].forEach(function (k) { put(k, null); }); put('tm_server', norm(server) || 'http://'); put(K, null); put(KU, null); location.hash = '#/login'; reloadSafe(); };
+  api.useLocal = function () { clearBig(); ['tm_server', 'tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_outbox_srv', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; reloadSafe(); };
   api.logout = function () {
-    var done = function () { clearBig(); ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; reloadSafe(); };
+    var done = function () { clearBig(); ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_outbox_srv', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); location.hash = '#/login'; reloadSafe(); };
     var out = function () { req('POST', '/api/logout').then(done, done); };
     // 先注销这台手机的推送（退出后会话就失效了），再退出
     var pt = g('tm_push_token'); if (pt) req('POST', '/api/devices/remove', { token: pt }).then(out, out); else out();
   };
   api.changePassword = function (old, pw) { return req('POST', '/api/password', { old: old, password: pw }).then(function (r) { api.mustChange = false; put('tm_must', null); flush(); pump(); return r; }); };
   api.registerDevice = function (t) { if (api.loggedIn() && t) req('POST', '/api/devices', { token: t, platform: 'ios' }).catch(function () {}); };
-  api.deactivate = function (pw) { return req('POST', '/api/account/deactivate', { password: pw }).then(function (r) { clearBig(); ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); return r; }); };
+  api.deactivate = function (pw) { return req('POST', '/api/account/deactivate', { password: pw }).then(function (r) { clearBig(); ['tm_token', 'tm_ft', 'tm_ver', 'tm_outbox', 'tm_outbox_uid', 'tm_outbox_srv', 'tm_must', 'tm_boot', K, KU].forEach(function (k) { put(k, null); }); return r; }); };
   api.usage = function () { return req('GET', '/api/usage'); };
   api.exportAll = function () { return req('GET', '/api/export'); };
   api.accounts = function () { return req('GET', '/api/accounts'); };
