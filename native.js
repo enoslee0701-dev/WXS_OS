@@ -174,13 +174,15 @@ var TMN = (function () {
     if (/^https?:\/\//i.test(h) && !/^https?:\/\/localhost(\/|$)/i.test(h)) { e.preventDefault(); api.openUrl(h); }
   }, true);
   api.canShareFile = !!(Fs && Shr);
+  var sharing = false; // 系统分享面板还开着时再点一次：忽略（否则系统报「正在分享」）
   api.shareFile = function (blob, name) {
     if (!Fs || !Shr) return Promise.reject(new Error('unsupported'));
+    if (sharing) return Promise.resolve(); sharing = true; var done = function (v) { sharing = false; return v; }, fail = function (e) { sharing = false; throw e; };
     var safe = String(name || 'file').replace(/[\\/:*?"<>|]+/g, '_').slice(0, 80);
     return new Promise(function (ok, no) { var r = new FileReader(); r.onload = function () { ok(String(r.result).split(',')[1] || ''); }; r.onerror = no; r.readAsDataURL(blob); })
       .then(function (b64) { return Fs.writeFile({ path: safe, data: b64, directory: 'CACHE' }); })
       .then(function (w) { return Shr.share({ title: safe, files: [w.uri] }); })
-      .catch(function (e) { if (/cancel/i.test(String(e && e.message))) return; throw e; });
+      .catch(function (e) { if (/cancel|in progress/i.test(String(e && e.message))) return; throw e; }).then(done, fail);
   };
   // 安装的 App 版本（versionName / versionCode），用于检查更新
   api.appInfo = function () { return App && App.getInfo ? App.getInfo().catch(function () { return null; }) : Promise.resolve(null); };
