@@ -80,7 +80,7 @@ const EXPECT = {
     // 「我的」统计块：执行者看自己的（待接收、已逾期），其他角色看团队的
     await shut(); await p.goto(URL + '#/me'); await p.waitForTimeout(120);
     const st = await p.$$eval('.me-stats .tm-stat small', xs => xs.map(x => x.textContent));
-    ok(['周敏', '何静', '刘洋'].includes(n) ? st[0] === '待接收' && st[3] === '已逾期' : st[0] === '团队成员' && st[3] === '团队效率', `${n} 我的统计块 ${st.join(',')}`);
+    ok(['周敏', '何静', '刘洋'].includes(n) ? st[0] === '待接收' && st[3] === '已逾期' : st[0] === '团队成员' && st[3] === '已逾期', `${n} 我的统计块 ${st.join(',')}`);
     // 设置与重置入口
     await shut(); await p.goto(URL + '#/me'); await p.waitForTimeout(80);
     const canSet = n === 'Enos' || n === '孙磊';

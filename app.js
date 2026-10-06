@@ -488,7 +488,8 @@
   function membersHTML() {
     return sec('成员', S.users.length) + '<div class="list">' + S.users.map(function (u) {
       return '<div class="row" style="cursor:default"><div class="t" style="justify-content:flex-start;align-items:center">' + av(u.id) + '<span>' + esc(u.name) + ' <span class="muted" style="font-weight:400;font-size:14px">' + esc(u.title) + '</span></span></div><div class="m">' +
-        u.roles.map(function (a) { var d = (S.depts || []).find(function (x) { return x.id === a.dept; }); return '<span class="tag">' + L.role[a.role] + (d ? '·' + d.name : '') + (a.canInitiate ? '·可发起' : '') + '</span>'; }).join('') +
+        // 角色、部门、可发起分成几个标签（以前用中点连成一串，加粗不好读）
+        u.roles.map(function (a) { var d = (S.depts || []).find(function (x) { return x.id === a.dept; }); return '<span class="tag">' + L.role[a.role] + '</span>' + (d ? '<span class="tag soft">' + esc(d.name) + '</span>' : '') + (a.canInitiate ? '<span class="tag soft">可发起想法</span>' : ''); }).join('') + (u.inactive ? '<span class="tag soft">已停用</span>' : '') +
         (S.settings.showTiers && u.tier ? '<span class="tag">' + esc(u.tier) + '</span>' : '') + '</div></div>';
     }).join('') + '</div>';
   }
@@ -1750,7 +1751,7 @@
     var cnt = function (a, b) { return sc.filter(function (t) { return t.status === 'done' && passAt[t.id] >= a && passAt[t.id] < b; }).length; };
     var d0 = cnt(ws0, we0), d1 = cnt(ws0 - 7 * 864e5, ws0);
     var r0 = d0 + open ? Math.round(d0 / (d0 + open) * 100) : null, r1 = d1 + open ? Math.round(d1 / (d1 + open) * 100) : null;
-    return { rate: r0, prev: r1 };
+    return { rate: r0, prev: r1, done: d0, open: open };
   }
   function viewRate() {
     var sc = scopeTasks(), off = st.period, ws0 = weekStart(off).getTime(), we0 = ws0 + 7 * 864e5;
@@ -1762,9 +1763,11 @@
     var prevS = weekStart(off + 1).getTime(), prevDone = sc.filter(function (t) { return t.status === 'done' && passAt[t.id] >= prevS && passAt[t.id] < ws0; }).length;
     var prevRate = prevDone + open.length ? Math.round(prevDone / (prevDone + open.length) * 100) : 0, dlt = rate - prevRate;
     var pts = []; for (var i = 0; i < 7; i++) { var end = ws0 + (i + 1) * 864e5; if (off === 0 && ws0 + i * 864e5 > Date.now()) break; var c = doneW.filter(function (t) { return passAt[t.id] < end; }).length; pts.push(total ? c / total : 0); }
+    if (pts.length < 3 || pts.every(function (v) { return v === pts[0]; })) pts = []; // 点太少或一条平线时不画（以前三个点像一个滑块）
     var W2 = 300, H2 = 80, line = pts.map(function (v, i) { return [10 + i * (W2 - 20) / 6, H2 - 8 - v * (H2 - 20)]; });
     var path = line.map(function (p, i) { return (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join(' ');
     var chart = '<svg class="s-line" viewBox="0 0 ' + W2 + ' ' + H2 + '" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="slg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8B5CF6" stop-opacity=".35"/><stop offset="1" stop-color="#8B5CF6" stop-opacity="0"/></linearGradient></defs>' + (line.length > 1 ? '<path d="' + path + ' L' + line[line.length - 1][0] + ' ' + H2 + ' L10 ' + H2 + 'Z" fill="url(#slg)"/><path d="' + path + '" fill="none" stroke="#7C4DEB" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>' : '') + line.map(function (p, i) { return '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="' + (i === line.length - 1 ? 5 : 3.5) + '" fill="' + (i === line.length - 1 ? '#fff' : '#7C4DEB') + '" stroke="#7C4DEB" stroke-width="2"/>'; }).join('') + '</svg>';
+    if (!pts.length) chart = '<div class="s-pbar" aria-hidden="true"><span style="width:' + rate + '%"></span></div>'; // 没有变化曲线时：给一条进度条
     var days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
     var perDay = days.map(function (_, i) { var ds = new Date(ws0 + i * 864e5), key = ds.getFullYear() + '-' + ('0' + (ds.getMonth() + 1)).slice(-2) + '-' + ('0' + ds.getDate()).slice(-2); var xs = sc.filter(function (t) { return t.due === key && t.status !== 'cancelled'; }); return { d: xs.filter(function (t) { return t.status === 'done'; }).length, p: xs.filter(function (t) { return inprog.indexOf(t) >= 0; }).length, n: xs.filter(function (t) { return t.status === 'assigned'; }).length }; });
     var mx = Math.max(1, Math.max.apply(null, perDay.map(function (x) { return x.d + x.p + x.n; })));
@@ -1773,9 +1776,9 @@
     var tip = (dlt > 0 ? '本周完成率较上周提升 ' + dlt + '%，继续保持！' : dlt < 0 ? '本周完成率较上周下降 ' + (-dlt) + '%，留意卡住的任务。' : '本周完成率与上周持平。') + (hiOpen ? '建议优先完成高优先级、逾期或受阻的 ' + hiOpen + ' 个任务。' : '目前没有高优先级积压。');
     return sHead('本周完成率', '<label class="s-period"><select data-speriod="1"><option value="0"' + (off === 0 ? ' selected' : '') + '>本周</option><option value="1"' + (off === 1 ? ' selected' : '') + '>上周</option></select>' + ai2('downc', 2) + '</label>') +
       sHero('s-purple', '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3.1A9 9 0 1 0 20.9 13H11z" fill="currentColor"/><path d="M13 2.1V11h8.9A9 9 0 0 0 13 2.1z" fill="currentColor" opacity=".55"/></svg>', rate + '%', off ? '上周完成率' : '本周完成率', deltaHTML(dlt, '%', false), '', '<span class="s-frac">' + doneW.length + ' / ' + total + '</span>').replace('</section>', chart + '</section>') +
-      '<section class="wd-card"><div class="wd-ph"><b>任务完成情况</b></div><div class="s-legend"><span><i class="d-green"></i>已完成 <b>' + doneW.length + '</b></span><span><i class="d-blue"></i>进行中 <b>' + inprog.length + '</b></span><span><i class="d-gray"></i>未开始 <b>' + notyet.length + '</b></span></div>' +
-      '<div class="s-bars">' + perDay.map(function (x, i) { var h3 = function (v) { return Math.round(v / mx * 86); }; return '<div><span class="s-col"><i class="g" style="height:' + h3(x.d) + 'px"></i><i class="b" style="height:' + h3(x.p) + 'px"></i><i class="n" style="height:' + Math.max(x.d + x.p + x.n ? 0 : 6, h3(x.n)) + 'px"></i></span><small>' + days[i] + '</small></div>'; }).join('') + '</div><p class="s-note">按任务截止日分布</p></section>' +
-      '<section class="wd-card"><div class="wd-ph"><b>按项目统计</b><a class="wd-link" href="#/work">查看全部</a></div>' + projs.map(function (x) { return '<a class="s-prow" href="#/work/' + x.w.id + '">' + wIcon(x.w) + '<span class="s-pn">' + esc(x.w.title) + '<i><em class="' + (x.pct >= 75 ? 'g' : '') + '" style="width:' + x.pct + '%"></em></i></span><span class="s-pp">' + x.pct + '%</span><span class="s-pf">' + x.p.done + '/' + x.p.total + '</span></a>'; }).join('') + '</section>' +
+      '<section class="wd-card"><div class="wd-ph"><b>任务完成情况</b><small class="muted" style="font-size:12.5px">按截止日</small></div><div class="s-legend"><span><i class="d-green"></i>已完成 <b>' + doneW.length + '</b></span><span><i class="d-blue"></i>进行中 <b>' + inprog.length + '</b></span><span><i class="d-gray"></i>未开始 <b>' + notyet.length + '</b></span></div>' +
+      (perDay.every(function (x) { return !(x.d + x.p + x.n); }) ? '<p class="muted s-empty">这一周没有到截止日的任务。</p>' : '<div class="s-bars">' + perDay.map(function (x, i) { var h3 = function (v) { return Math.round(v / mx * 86); }; return '<div><span class="s-col"><i class="g" style="height:' + h3(x.d) + 'px"></i><i class="b" style="height:' + h3(x.p) + 'px"></i><i class="n" style="height:' + Math.max(x.d + x.p + x.n ? 0 : 6, h3(x.n)) + 'px"></i></span><small>' + days[i] + '</small></div>'; }).join('') + '</div>') + '</section>' +
+      '<section class="wd-card"><div class="wd-ph"><b>按项目统计</b><a class="wd-link" href="#/work">查看全部</a></div>' + (projs.length ? '' : '<p class="muted s-empty">还没有项目。<a href="#/project">去新建一个</a></p>') + projs.map(function (x) { return '<a class="s-prow" href="#/work/' + x.w.id + '">' + wIcon(x.w) + '<span class="s-pn">' + esc(x.w.title) + '<i><em class="' + (x.pct >= 75 ? 'g' : '') + '" style="width:' + x.pct + '%"></em></i></span><span class="s-pp">' + x.pct + '%</span><span class="s-pf">' + x.p.done + '/' + x.p.total + '</span></a>'; }).join('') + '</section>' +
       '<section class="s-tip">' + ti('bulb', 1.7) + '<div><b>效率建议</b><p>' + esc(tip) + '</p></div><button class="t-link s-blue" data-do="quickAI">AI 建议' + hi('chev', 2) + '</button></section>';
   }
   var SD = {
@@ -1883,7 +1886,7 @@
     var tiles = [['tm-blue', '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4" fill="currentColor"/><path d="M2.8 19.5c.6-3.6 3.2-5.6 6.2-5.6s5.6 2 6.2 5.6z" fill="currentColor"/><circle cx="16.8" cy="8.6" r="2.7" fill="currentColor" opacity=".7"/><path d="M15.6 13.9c2.9.2 4.9 2.1 5.6 5.6h-4.3" fill="currentColor" opacity=".7"/></svg>', S.users.length, '团队成员', '#/team'],
       ['tm-green', '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M8 12.3l2.8 2.8 5.2-5.6" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>', open, '进行中任务', '#/tasks'],
       ['tm-orange', '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="currentColor"/><path d="M12 7.5V12l3 2" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg>', Object.keys(weekDone).length, '本周完成', '#/stat/rate'],
-      ['tm-purple', '<svg viewBox="0 0 24 24"><rect x="4" y="13" width="4" height="7" rx="1.5" fill="currentColor" opacity=".55"/><rect x="10" y="9" width="4" height="11" rx="1.5" fill="currentColor" opacity=".8"/><rect x="16" y="5" width="4" height="15" rx="1.5" fill="currentColor"/></svg>', wr.rate == null ? '—' : wr.rate + '%', '团队效率', '#/stat/rate']];
+      ['tm-purple', '<svg viewBox="0 0 24 24"><rect x="4" y="13" width="4" height="7" rx="1.5" fill="currentColor" opacity=".55"/><rect x="10" y="9" width="4" height="11" rx="1.5" fill="currentColor" opacity=".8"/><rect x="16" y="5" width="4" height="15" rx="1.5" fill="currentColor"/></svg>', scopeTasks().filter(function (t) { return TM.isOverdue(S, t); }).length, '已逾期', '#/stat/due'] /* 完成率在下面「工作概览」里已有，这里不重复，改看逾期 */];
     // 执行者看自己的：待接收、已逾期（团队规模、团队效率是管理者关心的）
     var cpM = myCaps(); if (!cpM.recordIdea && !cpM.claimIdeas && !cpM.decide && !cpM.members) { var mineT = sc.filter(function (t) { return t.ownerId === me; }); tiles[0] = [tiles[0][0], tiles[0][1], mineT.filter(function (t) { return t.status === 'assigned'; }).length, '待接收', '#/tasks']; tiles[3] = [tiles[3][0], tiles[3][1], mineT.filter(function (t) { return TM.isOverdue(S, t); }).length, '已逾期', '#/stat/due']; }
     var ic = function (k) { return '<span class="me-ic">' + k + '</span>'; };
@@ -2252,7 +2255,7 @@
   function fileKind(m) { var n = (m.name || '').toLowerCase(); return m.kind === 'audio' ? ['ix-a', 'mic'] : m.kind === 'video' ? ['ix-v', 'vcam'] : m.kind === 'image' || /\.(png|jpe?g|gif|webp)/.test(n) ? ['ix-i', 'img'] : /\.pdf/.test(n) ? ['ix-p', 'doc2'] : /\.(xlsx?|csv)/.test(n) ? ['ix-x', 'doc2'] : ['ix-d', 'doc2']; }
   function ixHead(t, sub, more) { return '<header class="ix-hd ix2-hd"><button class="circle" data-do="back" aria-label="返回">' + hi('chev', 2.2).replace('M9 6l6 6-6 6', 'M15 6l-6 6 6 6') + '</button><div><h1>' + t + '</h1><p>' + sub + '</p></div>' + (more ? '<button class="circle ix-dots" data-do="ixMore" aria-label="更多">' + ti('more', 1.6) + '</button>' : '<span></span>') + '</header>'; }
   function ixSteps(d) { var st = ideaStep(d); return '<section class="ix-steps ix2-steps">' + ['想法', '整理', '事项', '执行', '验收'].map(function (t, i) { return '<div class="' + (i < st ? 'done' : i === st ? 'cur' : '') + '"><i>' + (i < st ? ni('check', 2.6) : '') + '</i><span>' + t + '</span></div>'; }).join('') + '</section>'; }
-  function ixDate(ts) { return new Date(ts).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).replace(/-/g, '/'); }
+  function ixDate(ts) { var d = new Date(ts), y = d.getFullYear() !== new Date().getFullYear(); return (y ? d.getFullYear() + '年' : '') + (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2); } // 和全站「10月6日」写法一致
   function ixSource(d) { var k = (d.media || []).map(function (m) { return m.kind; }); return k.indexOf('audio') >= 0 ? '语音记录' : k.indexOf('video') >= 0 ? '视频记录' : k.length ? '文件导入' : '想法记录'; }
   function ixDenied() { return ixHead('想法详情', '把想法变成行动') + emptyBox('这个想法不存在，或你没有查看权限。'); }
   function viewIdea(id, sub) {

@@ -3103,3 +3103,9 @@ body.is-home .dock{background:none}
 .ops-r{display:grid;grid-template-columns:auto 1fr auto;gap:8px;align-items:baseline;padding:10px 2px;border-bottom:1px solid #EEF0F3;font-size:14px}
 .ops-r b{font-weight:600}.ops-r span{color:#3E4A63;min-width:0;overflow-wrap:anywhere}.ops-r small{color:#8A93A3;font-size:12.5px}
 .ops-r.bad span{color:#C0392B}
+/* 有底部操作栏时，提示条显示在操作栏上方，不盖住按钮 */
+body.has-actions .toast{bottom:calc(96px + var(--sab))}
+.s-empty{margin:10px 2px 4px;font-size:14px}
+.s-hero > .s-pbar{position:absolute;flex:none;z-index:1;left:24px;right:24px;bottom:28px;height:10px;border-radius:5px;background:rgba(139,92,246,.15)}.s-pbar span{display:block;height:100%;border-radius:5px;background:#8B5CF6}
+.tag.soft{font-weight:500;background:#F2F4F7;color:#5B6475}
+.row .m .tag + .tag{margin-left:6px}

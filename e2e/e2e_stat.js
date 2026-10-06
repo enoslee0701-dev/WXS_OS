@@ -38,7 +38,7 @@ await p.click('[data-do=sDueNew]');ok(p.url().includes('#/assign'),'新建任务
 await p.goto(URL+'#/me');await p.waitForTimeout(100);const rN=(await p.textContent('a.me-ov[href="#/stat/rate"] strong')).trim();
 await p.click('a.me-ov[href="#/stat/rate"]');await p.waitForTimeout(150);
 ok((await p.textContent('.s-hero b')).trim()===rN,'完成率与首页一致 '+rN);
-ok(await p.locator('.s-bars > div').count()===7 && await p.locator('.s-prow').count()>=3 && await p.locator('.s-line circle').count()>=1,'柱图、项目统计、折线');
+ok(await p.locator('.s-bars > div').count()===7 && await p.locator('.s-prow').count()>=3,'柱图、项目统计（折线只在有变化时显示）');
 await p.screenshot({path:'s4.png',fullPage:true});
 await p.selectOption('[data-speriod]','1');await p.waitForTimeout(120);ok((await p.textContent('.s-hero > div > span'))==='上周完成率','切换上周');
 // 非老板
