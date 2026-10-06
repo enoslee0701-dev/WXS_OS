@@ -11,10 +11,11 @@ const FAKE = (opts) => {
   const M = (n, ms) => ({ name: n, methods: ms.map(x => ({ name: x, rtype: 'promise' })).concat([{ name: 'addListener', rtype: 'callback' }, { name: 'removeListener', rtype: 'promise' }, { name: 'removeAllListeners', rtype: 'promise' }]) });
   window.androidBridge = { postMessage() {} };
   window.Capacitor = {
-    PluginHeaders: [M('Preferences', ['get', 'set', 'remove', 'keys']), M('Clipboard', ['write', 'read']), M('App', ['exitApp', 'getInfo']), M('StatusBar', ['setStyle']), M('Keyboard', ['setAccessoryBarVisible']), M('SplashScreen', ['hide', 'show']), M('Speech', ['available', 'checkPermissions', 'requestPermissions', 'start', 'stop']), M('PushNotifications', ['checkPermissions', 'requestPermissions', 'register']), M('Haptics', ['impact', 'notification']), M('Diag', ['lastCrash', 'simulate', 'netInfo', 'netState', 'httpGet', 'checkPermissions', 'requestPermissions']), M('CapacitorHttp', ['request']), M('Filesystem', ['writeFile']), M('Share', ['share'])],
+    PluginHeaders: (o.ln ? [M('LocalNotifications', ['schedule', 'checkPermissions', 'requestPermissions'])] : []).concat([M('Preferences', ['get', 'set', 'remove', 'keys']), M('Clipboard', ['write', 'read']), M('App', ['exitApp', 'getInfo']), M('StatusBar', ['setStyle']), M('Keyboard', ['setAccessoryBarVisible']), M('SplashScreen', ['hide', 'show']), M('Speech', ['available', 'checkPermissions', 'requestPermissions', 'start', 'stop']), M('PushNotifications', ['checkPermissions', 'requestPermissions', 'register']), M('Haptics', ['impact', 'notification']), M('Diag', ['lastCrash', 'simulate', 'netInfo', 'netState', 'httpGet', 'checkPermissions', 'requestPermissions']), M('CapacitorHttp', ['request']), M('Filesystem', ['writeFile']), M('Share', ['share'])]),
     nativeCallback(pl, m, a, cb) { const k = pl + ':' + a.eventName; (subs[k] = subs[k] || []).push(cb); return String(++cid); },
     nativePromise(pl, m, a) {
       F.calls.push(pl + '.' + m); F.args[pl + '.' + m] = a;
+      if (pl === 'LocalNotifications') { if (m === 'checkPermissions') return Promise.resolve({ display: 'prompt' }); if (m === 'requestPermissions') return Promise.resolve({ display: 'granted' }); if (m === 'schedule') { F.ln = (F.ln || []).concat(a.notifications); return Promise.resolve({}); } }
       if (pl === 'Preferences') { if (m === 'get') return Promise.resolve({ value: null }); if (m === 'keys') return Promise.resolve({ keys: [] }); return Promise.resolve({}); }
       if (pl === 'Speech' && m === 'available') return Promise.resolve({ available: !o.noSpeech });
       // 模拟「一启动就出错」的语音服务（某些手机）
@@ -200,6 +201,16 @@ const FAKE = (opts) => {
   await p.waitForFunction(() => /诊断：/.test(document.body.textContent), null, { timeout: 20000 }).catch(() => {});
   ok(/同一个 Wi-Fi/.test(await p.textContent('#app')) && /诊断：Vendor X1/.test(await p.textContent('#app')), '系统网络也不通：提示检查 Wi-Fi，并附诊断');
   await p.context().close();
+  // 安卓：App 在后台时新通知进手机通知栏；点通知打开对应页面
+  { const q = await mk({ ln: true }); await q.waitForTimeout(300);
+    await q.evaluate(() => TMN.localNotify([{ title: '新任务派给你', body: '买投影', link: '#/inbox' }])); await q.waitForTimeout(150);
+    const ln = await q.evaluate(() => window.__fake.ln || []);
+    ok(ln.length === 1 && ln[0].extra.link === '#/inbox', '安卓：新通知进通知栏（先申请权限）');
+    await q.evaluate(() => TMN.localNotify([1, 2, 3, 4].map(i => ({ title: '通知' + i, link: '#/inbox' })))); await q.waitForTimeout(100);
+    ok(/4 条新通知/.test((await q.evaluate(() => window.__fake.ln))[1].title), '安卓：很多条合成一条');
+    await q.evaluate(() => window.__fake.emit && window.__fake.emit('LocalNotifications', 'localNotificationActionPerformed', { notification: { extra: { link: '#/tasks' } } })); await q.waitForTimeout(150);
+    if (await q.evaluate(() => !!window.__fake.emit)) ok(await q.evaluate(() => location.hash) === '#/tasks', '安卓：点通知打开对应页面');
+    await q.context().close(); }
   console.log(`Android 原生层 E2E 通过 ${pass}，失败 ${fail}`);
   await b.close(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

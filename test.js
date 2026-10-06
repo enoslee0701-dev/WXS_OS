@@ -909,5 +909,27 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   const na = must(TM.act(sv, O, 'member.add', { name: '新管理', role: 'admin', group: '管理层' }), '加管理员');
   ok(!sv.notifications.some(n => n.userId === na.id && /新成员加入/.test(n.title)), '新管理员不收到关于自己的加入通知'); }
 
+// ===== 第三轮修复：重新讨论不再被自动结束；空的 AI 汇总不覆盖；暂停项目不催；默认截止不早于今天 =====
+{ let tt = Date.UTC(2026, 9, 1, 3); const ck = () => tt; const r3 = TM.seed(ck), day = 864e5;
+  const ci = must(TM.act(r3, LD, 'idea.create', { note: '团契春游' }), '建想法'); must(TM.act(r3, LD, 'idea.submit', { id: ci.id, path: 'cocreate', shareAll: true, deadline: TM.todayStr(r3) }), '今天截止的共创');
+  must(TM.act(r3, DV, 'idea.suggest', { id: ci.id, body: '去海边' }), '提建议');
+  tt += 2 * day; must(TM.act(r3, 'agent', 'system.discussionDue', {}), '过期自动结束');
+  must(TM.act(r3, LD, 'idea.reopen', { id: ci.id }), '发起人重新讨论');
+  tt += 20 * 60e3; ok(TM.act(r3, 'agent', 'system.discussionDue', {}).closed === 0 && r3.ideas.find(d => d.id === ci.id).status === 'discussing', '重新讨论后不会被系统再次自动结束');
+  must(TM.act(r3, LD, 'idea.close', { id: ci.id }), '发起人手动结束');
+  const sm = TM.latestSummary(r3, ci.id, 'cocreate');
+  rej(TM.act(r3, 'agent', 'idea.cocreateResult', { id: ci.id, summaryId: sm.id, payload: { consensus: [{ point: 'x', src: ['nope'] }], divergences: [], risks: [], open_questions: [], proposed_direction: 'y' } }), 'AI 汇总没有可追溯结论时不覆盖规则版');
+  must(TM.act(r3, LD, 'idea.confirm', { id: ci.id, direction: '去海边' }), '确认方向');
+  TM.act(r3, 'agent', 'system.triageNudge', {}); ok(!r3.ideas.find(d => d.id === ci.id).nudged, '确认方向后不会立刻催认领');
+  // 暂停的项目不催逾期
+  const w = r3.workItems.find(x => x.status === 'active'), t = r3.tasks.find(x => x.workId === w.id && !['done', 'cancelled'].includes(x.status));
+  t.due = '2026-09-20'; t.remindedOn = null; w.status = 'paused'; const n0 = r3.notifications.length;
+  must(TM.act(r3, 'agent', 'system.dueReminders', {}), '提醒');
+  ok(!r3.notifications.slice(n0).some(n => /逾期/.test(n.title) && n.link === '#/task/' + t.id), '暂停的项目不催逾期');
+  // 默认截止不早于今天
+  w.status = 'active'; w.due = '2020-01-01';
+  must(TM.act(r3, O, 'work.plan', { id: w.id, tasks: [{ title: '新任务', ownerId: DV, expected: 'a', criteria: 'b' }] }), '派任务');
+  ok(r3.tasks.find(x => x.title === '新任务').due >= TM.todayStr(r3), '项目截止已过时，任务默认截止不早于今天'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

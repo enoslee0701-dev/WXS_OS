@@ -177,7 +177,8 @@ var TMN = (function () {
   var sharing = false; // 系统分享面板还开着时再点一次：忽略（否则系统报「正在分享」）
   /* 系统通知（App 在后台还没被系统关掉时）：新通知出现在手机通知栏，点一下打开对应页面。Android 没有推送时靠它提醒 */
   // 只在原生壳里真的装了这个插件时才用（老版本安装包没有，调用会报「插件没实现」）
-  var LN = C.isPluginAvailable && !C.isPluginAvailable('LocalNotifications') ? null : plug('LocalNotifications'), lnAsked = false, lnOk = null, lnSeq = 1;
+  // iOS 用苹果推送，不再另弹本地通知（避免同一条弹两次）
+  var LN = api.platform !== 'android' || (C.isPluginAvailable && !C.isPluginAvailable('LocalNotifications')) ? null : plug('LocalNotifications'), lnAsked = false, lnOk = null, lnSeq = 1;
   if (LN && LN.addListener) try { var lp = LN.addListener('localNotificationActionPerformed', function (e) { var l = e && e.notification && e.notification.extra && e.notification.extra.link; if (l && /^#\//.test(l)) location.hash = l; }); if (lp && lp.catch) lp.catch(function () { LN = null; api.canLocalNotify = false; }); } catch (e) { LN = null; }
   api.canLocalNotify = !!LN;
   api.localNotify = function (list) {

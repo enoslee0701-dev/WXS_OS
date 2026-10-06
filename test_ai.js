@@ -9,6 +9,7 @@ const mock = http.createServer((req, res) => {
   let b = ''; req.on('data', d => b += d); req.on('end', () => {
     const body = JSON.parse(b || '{}'); seen.push({ url: req.url, headers: req.headers, body });
     const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
+    if (mode === 'drop') return req.socket.destroy(); // 模拟连不上 AI 服务
     if (mode === '500') return reply(500, { type: 'error', error: { type: 'api_error', message: 'boom' } });
     { const f0 = body.output_config && body.output_config.format; if (f0 && f0.schema.properties.proposed_direction) { const txt0 = JSON.stringify(body.messages || []); const id = (txt0.match(/\[(s\d+)\]/) || [])[1] || 'none';
       return reply(200, { id: 'msg_c', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ consensus: [{ point: 'Claude：大家同意先试点', src: [id] }, { point: '没有来源的结论', src: ['s_fake'] }], divergences: [], risks: [], open_questions: [{ point: '预算多少？', src: [] }], proposed_direction: 'Claude 建议：先做两周试点' }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 } }); } }
@@ -181,6 +182,10 @@ async function team(api) {
     mode = 'ok';
     const calls = seen.slice(n0).filter(x => x.body.output_config && x.body.output_config.format && x.body.output_config.format.schema.properties.suggested_route).length;
     ok(fail6 && calls >= 4, 'AI 失败后重试 3 次（共调用 ' + calls + ' 次），然后记录失败并通知');
+    // 连不上 AI 服务（网络断）也要重试并最终通知（以前被当成配置问题直接放弃）
+    mode = 'drop'; const id7 = await api6('POST', '/api/act', { name: 'idea.create', payload: { note: '换打印纸' } }, t6.boss); await api6('POST', '/api/act', { name: 'idea.submit', payload: { id: id7.r.id, path: 'direct' } }, t6.boss);
+    let fail7 = null; for (let i = 0; i < 150 && !fail7; i++) { await new Promise(r => setTimeout(r, 200)); const st = (await api6('GET', '/api/state', null, t6.boss)).state; fail7 = st.events.find(e => e.ideaId === id7.r.id && e.action === 'ai.failed'); }
+    mode = 'ok'; ok(!!fail7, '连不上 AI 服务时也会重试，最后通知');
     s6.kill(); }
   const s5 = await start({ ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: MOCK }); const api5 = mkApi(s5.B), t5 = await team(api5);
   { let r; const st = (await api5('GET', '/api/state', null, t5.boss)).state, d = st.ideas.find(x => x.status !== 'draft' && x.note), w = st.workItems[0];

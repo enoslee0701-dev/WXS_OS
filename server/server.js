@@ -264,7 +264,7 @@ const routes = {
     let st = null;
     if (r.ok) { try { st = stateFor(me.uid); } catch (e) { S = JSON.parse(snap); console.error('act 后数据无法下发，已回滚', name, e); r = { ok: false, error: '这次操作的数据有问题，已撤销' }; } }
     q('INSERT INTO ops(at,uid,action,payload,ok,error,op_id,r) VALUES(?,?,?,?,?,?,?,?)').run(Date.now(), me.uid, name, JSON.stringify(payload).slice(0, 20000), r.ok ? 1 : 0, r.ok ? null : String(r.error || '').slice(0, 200), opId, JSON.stringify(pickR(r)));
-    if (r.ok) { changed(nNotif); if (st) st.version = version; autoAnalyze(S.summaries.slice(nSum)); if (/^idea\.(create|attach|update|submit)$/.test(name)) setTimeout(trScan, 50); }
+    if (r.ok) { changed(nNotif); if (st) st.version = version; autoAnalyze(S.summaries.slice(nSum), name === 'idea.reanalyze' || name === 'idea.retryAi'); /* 手动「重新整理」不受 10 分钟限制 */ if (/^idea\.(create|attach|update|submit)$/.test(name)) setTimeout(trScan, 50); }
     return [200, { ok: !!r.ok, error: r.ok ? undefined : r.error, r: pickR(r), ...(st || stateFor(me.uid)) }];
   },
   'POST /api/password': async (req, url, b, me) => {
@@ -474,11 +474,14 @@ function putChunk(req, res, url, id, me) {
   const used = q('SELECT COALESCE(SUM(size),0) AS n FROM files WHERE uid=? AND id<>?').get(me.uid, id).n;
   if (used + total > QUOTA) return send(res, 413, { error: '你的附件空间已用完（' + Math.round(QUOTA / 1048576) + 'MB），请联系老板' });
   const pp = partPath(id, me.uid); let have = 0; try { have = fs.statSync(pp).size; } catch (e) {}
+  if (have >= total) { fs.rmSync(pp, { force: true }); have = 0; } // 分段文件已经不对（比如上次合成失败）：清掉从头传
   if (offset !== have) { req.resume(); return send(res, 409, { error: '位置不对', size: have }); } // 告诉手机从哪里接着传
   const chunks = []; let n = 0, bad = false;
   req.on('data', d => { n += d.length; if (n > len || n > 8 * 1048576) { bad = true; req.destroy(); } else chunks.push(d); });
   req.on('end', () => {
     if (bad || n !== len) return send(res, 400, { error: '这一段不完整' });
+    let now0 = 0; try { now0 = fs.statSync(pp).size; } catch (e) {}
+    if (now0 !== offset) return send(res, 409, { error: '位置不对', size: now0 }); // 同时有两段在传：以先写进去的为准
     try { fs.appendFileSync(pp, Buffer.concat(chunks)); } catch (e) { return send(res, 500, { error: '保存失败' }); }
     const size = have + n; if (size < total) return send(res, 200, { done: false, size });
     try { fs.renameSync(pp, path.join(FILES, id)); } catch (e) { return send(res, 500, { error: '保存失败' }); }
@@ -521,18 +524,20 @@ function autoAnalyze(added, retry) {
   added.filter(x => (x.kind === 'analysis' || x.kind === 'digest' || x.kind === 'cocreate') && x.authorType === 'agent' && x.payload && x.payload.simulated).forEach(sm => {
     if (analyzing.has(sm.id)) return;
     // 同一个想法 10 分钟内只自动跑一次（防止反复「重新整理」刷掉全队的 AI 额度）
-    const k = sm.kind + '|' + sm.ideaId; if (!retry && lastAuto.get(k) > Date.now() - 10 * 60e3) return; lastAuto.set(k, Date.now());
+    // 重试不刷新这个时间（不然放弃后 10 分钟内手动「重新整理」会被挡住）
+    const k = sm.kind + '|' + sm.ideaId; if (!retry) { if (lastAuto.get(k) > Date.now() - 10 * 60e3) return; lastAuto.set(k, Date.now()); }
     analyzing.add(sm.id); q('INSERT OR REPLACE INTO ai_jobs VALUES(?,?)').run(sm.id, Date.now());
     const dig = sm.kind === 'digest', co = sm.kind === 'cocreate';
     aiRun({ uid: 'agent' }, dig ? 'digest' : co ? 'cocreate' : 'analyze', () => dig ? AI.digestDiscussion(S, sm.ideaId) : co ? AI.cocreateSummary(S, sm.ideaId) : AI.analyzeIdea(S, sm.ideaId), true).then(([code, out]) => {
       analyzing.delete(sm.id); q('DELETE FROM ai_jobs WHERE summary_id=?').run(sm.id);
       if (!S) return;
       if (code !== 200) {
-        // 配置问题（没开 AI、没权限、额度用完）不重试；网络 / 服务出错才重试
-        if ([403, 404, 429, 503].includes(code)) return;
+        // 没权限、不存在、没配置 AI（503 且不可重试）不重试；连不上、太忙、服务出错都重试
+        if (code === 403 || code === 404 || (code === 503 && !(out && out.retryable))) return;
         const n = (aiTries.get(sm.id) || 0) + 1; aiTries.set(sm.id, n);
         const cur = S.summaries.find(x => x.id === sm.id); if (!cur || !cur.payload.simulated) return;
-        if (n <= RETRY_MS.length) setTimeout(() => autoAnalyze([cur], true), RETRY_MS[n - 1]).unref(); else { aiTries.delete(sm.id); aiGiveUp(cur); }
+        // 等重试期间也留着待办记录：服务器重启后由 sweepAi 接着补做
+        if (n <= RETRY_MS.length) { q('INSERT OR REPLACE INTO ai_jobs VALUES(?,?)').run(sm.id, Date.now()); setTimeout(() => autoAnalyze([cur], true), RETRY_MS[n - 1]).unref(); } else { aiTries.delete(sm.id); aiGiveUp(cur); }
         return;
       }
       aiTries.delete(sm.id);
@@ -559,7 +564,7 @@ async function aiRun(me, kind, fn, system) {
     delete r.usage; return [200, r];
   } catch (e) {
     q('UPDATE ai_log SET ok=0 WHERE rowid=?').run(row);
-    if (e && e.status && e.error) return [e.status, { error: e.error }];
+    if (e && e.status && e.error) return [e.status, { error: e.error, retryable: !!e.retryable }];
     console.error('AI 出错', e); return [500, { error: 'AI 处理出错' }];
   }
 }

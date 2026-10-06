@@ -180,17 +180,10 @@ const c0route = (p) => p.context().route('http://join.test:8787/**', r => r.fulf
     ok(await p.locator('form[data-form=srvLogin]').count() === 1, '退出后停在登录页');
     ok(p.errs.length === 0, '推送流程无报错 ' + p.errs.join('|'));
     await c3.close(); }
-  // 系统通知（App 在后台时）：先申请权限，再发；超过 3 条合成一条；点通知打开对应页面
+  // iOS 用苹果推送，不弹本地通知（避免重复）
   { const q = await mk(); await q.waitForTimeout(300);
-    await q.evaluate(() => TMN.localNotify([{ title: '新任务派给你', body: '买投影', link: '#/task/T1' }]));
-    await q.waitForTimeout(100);
-    const ln = await q.evaluate(() => window.__fake.ln || []);
-    ok(ln.length === 1 && ln[0].title === '新任务派给你' && ln[0].extra.link === '#/task/T1' && (await q.evaluate(() => window.__fake.calls.includes('LocalNotifications.requestPermissions'))), '后台收到新通知：申请权限后发到通知栏');
-    await q.evaluate(() => TMN.localNotify([1, 2, 3, 4].map(i => ({ title: '通知' + i, body: '', link: '#/inbox' }))));
-    await q.waitForTimeout(100); const ln2 = await q.evaluate(() => window.__fake.ln);
-    ok(ln2.length === 2 && /4 条新通知/.test(ln2[1].title), '一次很多条时合成一条');
-    await q.evaluate(() => window.__fake.emit('LocalNotifications', 'localNotificationActionPerformed', { notification: { extra: { link: '#/inbox' } } })); await q.waitForTimeout(150);
-    ok(await q.evaluate(() => location.hash) === '#/inbox', '点通知打开对应页面');
+    await q.evaluate(() => TMN.localNotify([{ title: 'x', body: '', link: '#/inbox' }])); await q.waitForTimeout(100);
+    ok(await q.evaluate(() => TMN.canLocalNotify === false && !(window.__fake.ln || []).length), 'iOS 不弹本地通知（用苹果推送）');
     await q.context().close(); }
   console.log(`原生桥接 E2E 通过 ${pass}，失败 ${fail}`); await b.close(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

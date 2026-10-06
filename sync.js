@@ -269,7 +269,7 @@ var TMS = (function () {
         if (st.done) return fake(200, st);
         var off = st.size || 0, total = it.blob.size;
         var next = function () {
-          if (off >= total) return fake(200, { done: true });
+          if (off >= total) return fetch(u + '/upload', { headers: H }).then(function (r3) { return r3.json().then(function (j3) { if (j3.done) return fake(200, j3); off = j3.size || 0; return off >= total ? fake(500, {}) : next(); }); }); // 以服务器确认为准
           var part = it.blob.slice(off, Math.min(off + CHUNK, total));
           return fetch(u + '/chunk?offset=' + off + '&total=' + total, { method: 'PUT', headers: Object.assign({ 'Content-Type': it.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(it.name || '') }, H), body: part }).then(function (r2) {
             if (r2.status === 409) return r2.json().then(function (j) { if (typeof j.size === 'number') { off = j.size; return next(); } return r2; });

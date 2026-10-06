@@ -64,9 +64,9 @@ async function call({ system, messages, schema, effort, maxTokens }) {
   let res;
   try { res = await cli().beta.messages.create(req); }
   catch (e) {
-    if (e instanceof Anthropic.RateLimitError) throw { status: 429, error: 'AI 现在太忙，请稍后再试' };
+    if (e instanceof Anthropic.RateLimitError) throw { status: 429, error: 'AI 现在太忙，请稍后再试', retryable: true };
     if (e instanceof Anthropic.AuthenticationError) throw { status: 503, error: 'AI 的密钥无效，请老板检查服务器配置' };
-    if (e instanceof Anthropic.APIConnectionError) throw { status: 503, error: '服务器连不上 AI 服务' };
+    if (e instanceof Anthropic.APIConnectionError) throw { status: 503, error: '服务器连不上 AI 服务', retryable: true };
     if (e instanceof Anthropic.APIError) throw { status: 502, error: 'AI 服务出错（' + e.status + '）' };
     throw e;
   }
