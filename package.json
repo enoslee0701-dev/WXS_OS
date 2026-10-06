@@ -25,7 +25,7 @@
     "playwright": "1.56.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.5"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
