@@ -2921,6 +2921,7 @@
       sw('showTiers', '显示一级、二级标签', '只是界面分组标签，不影响权限：运营者、负责人为一级，执行者为二级。') + '</div>';
     h += sec('公司与提醒') + '<div class="card"><label class="fld"><span>公司方向与长期目标</span><textarea data-set="direction" rows="3"' + (isOwner() ? '' : ' disabled') + '>' + esc(cs.direction) + '</textarea><small>AI 整理时用来判断新想法是否与现有业务形成闭环。由老板填写。</small></label>' +
       '<div class="row2"><label class="fld"><span>无动态提醒（天）</span><input type="number" min="1" max="30" data-set="staleDays" value="' + cs.staleDays + '"' + dis + '></label><label class="fld"><span>超预算阈值（元）</span><input type="number" min="0" step="1000" data-set="budgetThreshold" value="' + (cs.budgetThreshold || '') + '"' + dis + '></label></div></div>';
+    h += sec('报表') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">导出成表格，用 Excel、WPS 或 Numbers 打开。</p><button class="btn block" data-do="csvTasks">导出任务表</button><button class="btn block mt" data-do="csvWorks">导出项目表</button></div>';
     h += SRV ? sec('数据') + '<div class="card"><p class="muted" style="margin:0 0 10px;font-size:14px">服务器：' + esc(TMS.serverUrl()) + '</p><button class="btn block" data-do="srvUsage">使用情况（AI 费用、设备、空间）</button><button class="btn block mt" data-do="srvOps">操作日志（谁做了什么）</button>' + (isOwner() ? '<button class="btn block mt" data-do="srvExportFull">完整备份（含全部附件，压缩包）</button><button class="btn block mt" data-do="srvExport">只导出团队数据（JSON）</button>' : '') + '<div class="mt"></div>' + (isOwner() && !S.real ? '<button class="btn danger block" data-do="clearDemo">清理演示数据</button>' : '<p class="muted" style="margin:0;font-size:13.5px">数据每天自动备份在服务器的 backups 目录。</p>') + '</div>' :
       sec('演示工具') + '<div class="card">' + sw('demoAiFail', '模拟 AI 失败', '用来演示「AI 失败后运营者手写整理稿继续推进」。') +
       '<div class="callout">演示版里：账号是预设的；AI 整理和共创汇总由规则模拟生成，界面都标了「AI 模拟输出」；录音只在本机，不上传、不转写；通知只在 App 内。</div>' +
@@ -3363,6 +3364,24 @@
   };
   DO.sesOut = function (el) { TMS.revokeSession(el.dataset.id).then(function () { toast('已让那台设备退出登录'); DO.srvSessions(); }, function (e) { toast(e.error || '操作失败', true); }); };
   DO.sesOutAll = function () { TMS.revokeSession(null, true).then(function (r) { toast('已退出其他 ' + (r.n || 0) + ' 台设备'); DO.srvSessions(); }, function (e) { toast(e.error || '操作失败', true); }); };
+  /* 报表导出：CSV（带 BOM，Excel 打开中文不乱码），只含自己能看到的数据 */
+  function csvSave(name, rows) {
+    var q = function (v) { v = v == null ? '' : String(v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var blob = new Blob(['\ufeff' + rows.map(function (r) { return r.map(q).join(','); }).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    if (typeof TMN !== 'undefined' && TMN.native && TMN.canShareFile) { TMN.shareFile(blob, name).then(function () {}, function () { toast('导出失败，请重试', true); }); return; }
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000); toast('已导出：' + name);
+  }
+  var dstr = function (t) { return t ? ixDate(t) : ''; }, today = function () { return new Date().toISOString().slice(0, 10); };
+  DO.csvTasks = function () {
+    var rows = [['任务', '所属项目', '状态', '主负责人', '协作者', '验收人', '优先级', '截止日期', '是否逾期', '预期成果', '验收标准', '创建时间', '最近更新']];
+    vTasks().forEach(function (t) { var w = W(t.workId) || {}; rows.push([t.title, w.title, L.task[t.status], nm(t.ownerId), (t.collabs || []).map(nm).join('、'), nm(t.reviewerId), ({ hi: '高', mid: '中', lo: '低' })[t.priority || 'mid'], t.due || '', TM.isOverdue(S, t) ? '是' : '', t.expected, t.criteria, dstr(t.createdAt), dstr(t.lastActivity)]); });
+    csvSave('任务表-' + today() + '.csv', rows);
+  };
+  DO.csvWorks = function () {
+    var rows = [['项目', '类型', '状态', '负责人', '跟进运营', '验收人', '优先级', '截止日期', '任务总数', '已完成', '完成率', '目标', '创建时间']];
+    vWork().forEach(function (w) { var p = TM.workProgress(S, w.id); rows.push([w.title, L.kind[w.kind], L.work[w.status], w.leadId ? nm(w.leadId) : '', nm(w.operatorId), nm(w.reviewerId), ({ hi: '高', mid: '中', lo: '低' })[w.priority || 'mid'], w.due || '', p.total, p.done, p.total ? Math.round(p.done / p.total * 100) + '%' : '', w.goal, dstr(w.createdAt)]); });
+    csvSave('项目表-' + today() + '.csv', rows);
+  };
   DO.srvUsage = function () {
     TMS.usage().then(function (u) {
       var mb = function (n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB'; };
