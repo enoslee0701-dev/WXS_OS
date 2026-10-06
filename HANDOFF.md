@@ -199,6 +199,8 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
 
 68. 用户手机在局域网始终连不上 Mac（疑似路由器隔离 / 不在同一网络），且员工将来不在同一网络：先用 **Cloudflare 临时公网通道** 绕开局域网（用户已同意对外开放）。`scripts/tunnel-mac.sh install | uninstall | status | url | logs`：下载 cloudflared 到 ~/Library/TeamOps/bin，装成 launchd 常驻（com.teamops.tunnel），日志在 ~/Library/TeamOps/tunnel.log（不能放桌面：macOS 不让后台程序写桌面，launchd 报 78）。**通道重启后地址会变**，用 `scripts/tunnel-mac.sh url` 查。服务器：来自本机（通道）的请求按 `CF-Connecting-IP` 限流（以前所有外网用户共用 127.0.0.1，一个人输错会锁住所有人）；test_server 补测试。App：地址漏写协议时公网域名补 https、IP / .local / localhost 仍补 http（e2e_url 8）。安卓 2.4（versionCode 15）。当前地址：https://auto-briefly-struct-legacy.trycloudflare.com 。
 
+69. 用户截图：录音页弹出巨大的红色圆形提示「这台手机的语音转文字连不上（错误代码 11）…」。错误 11 = 安卓识别服务断线（国产手机上谷歌识别连不上）。停止后本来就会交给服务器 whisper 转，所以 `srGaveUp` 在 `canSrvTr()` 时改成普通提示「停止录音后由团队服务器转成文字」；toast 圆角 999px → 22px（多行时不再变成圆形）。e2e_srvtr（10）。安卓 2.5（versionCode 16）。
+
 测试现状：业务 418 + 同步一致性 254 次操作 + 随机操作 2×3000 + 服务器 90 + AI 代理 50 + 推送 19；端到端 25 组；界面爬虫另跑。提交前看 `npm run check` 的退出码。
 
 

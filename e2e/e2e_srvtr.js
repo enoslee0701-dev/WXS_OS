@@ -47,6 +47,16 @@ let srv;
   await waitClosed(); await p.waitForTimeout(1500);
   const after = await p.evaluate(() => ({ h: location.hash, sheet: (document.querySelector('#layer .sheet') || {}).textContent || '', pd: window.__tm && document.body.textContent.includes('感恩晚会') }));
   ok(after.pd || /感恩晚会|周会/.test(after.sheet), 'AI 建项目：视频由服务器转写后交给 AI 解析 ' + after.h);
+  // 4. 手机有语音识别但连不上（安卓错误代码 11 等）：不报红色错误，提示停止后由服务器转；停止后服务器转写填进文字
+  const p2 = await c.newPage(); p2.on('pageerror', e => errs.push(e.message));
+  await p2.addInitScript(() => { window.SpeechRecognition = function () { const r = this; r.start = () => setTimeout(() => { r.onerror && r.onerror({ error: 'network' }); r.onend && r.onend(); }, 50); r.stop = r.abort = () => {}; }; });
+  await p2.goto(URL + '#/new/voice'); await p2.waitForSelector('.vr-c[data-do=voStart]'); await p2.waitForTimeout(400);
+  await p2.click('.vr-c[data-do=voStart]'); await p2.waitForTimeout(2200);
+  const tst = await p2.evaluate(() => { const t = document.getElementById('toast'); return { text: t.textContent, bad: t.className.includes('bad'), r: getComputedStyle(t).borderRadius }; });
+  ok(/团队服务器转成文字/.test(tst.text) && !tst.bad && !/错误代码/.test(tst.text), '手机识别连不上：普通提示，停止后由服务器转 ' + JSON.stringify(tst));
+  ok(parseFloat(tst.r) <= 24, '提示框是圆角矩形，文字长也不会变成圆形 ' + tst.r);
+  await p2.click('.vr-c[data-do=voStop]'); await p2.waitForFunction(() => /感恩晚会/.test((document.querySelector('[data-cap="vo.text"]') || {}).value || ''), null, { timeout: 10000 }).catch(() => {});
+  ok(/感恩晚会/.test(await p2.inputValue('[data-cap="vo.text"]')), '停止后服务器转写填进识别文字');
   ok(errs.length === 0, '无报错 ' + errs.join('|'));
   console.log(`服务器转文字 E2E 通过 ${pass}，失败 ${fail}`);
   await b.close(); srv.kill(); fs.rmSync(DIR, { recursive: true, force: true }); process.exit(fail ? 1 : 0);

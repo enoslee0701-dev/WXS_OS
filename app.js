@@ -1012,7 +1012,8 @@
     TMS.diag({ kind: 'speech', error: err, code: d.code, tried: d.tried, service: d.service, device: d.device });
   }
   function srCodeText() { var d = typeof TMN !== 'undefined' && TMN.lastSpeechError; return d && d.code ? '（错误代码 ' + d.code + '）' : ''; }
-  function srGaveUp(fatal) { toast((fatal ? '语音转文字暂时不可用' : '这台手机的语音转文字连不上') + srCodeText() + '，录音照常进行。也可以用输入法的话筒说到文字框里', true); }
+  // 手机自带的识别不行时：连着能转写的团队服务器就不当成错误——停止录音后服务器会转（见 voStop / taRec 的 srvTr）
+  function srGaveUp(fatal) { if (canSrvTr()) return toast('手机自带的边说边转用不了，停止录音后由团队服务器转成文字'); toast((fatal ? '语音转文字暂时不可用' : '这台手机的语音转文字连不上') + srCodeText() + '，录音照常进行。也可以用输入法的话筒说到文字框里', true); }
   function voSR() {
     if (!SR) return; try { var r = new SR(); r.lang = 'zh-CN'; r.continuous = true; r.onresult = function (e) { for (var i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) { vo.text = (vo.text + e.results[i][0].transcript + '。').slice(0, 1000); var ta = document.querySelector('[data-cap="vo.text"]'); if (ta) ta.value = vo.text; } }; srKeep(r, function () { return vo.state === 'rec' && vo.sr === r; }, srGaveUp); r.start(); vo.sr = r; } catch (e) {}
   }
