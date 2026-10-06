@@ -8,7 +8,8 @@
   window.addEventListener('error', function (e) { errs.push(String(e.message || e) + (e.filename ? ' @' + String(e.filename).slice(-30) + ':' + e.lineno : '') + (e.error && e.error.stack ? ' ' + String(e.error.stack).split('\n').slice(0, 3).join(' < ') : '')); });
   window.addEventListener('unhandledrejection', function (e) { errs.push('promise: ' + str(e.reason)); });
   var str = function (x) { if (x && typeof x === 'object') { if (x.message) return (x.name ? x.name + ': ' : '') + x.message; try { return JSON.stringify(x); } catch (e) { return String(x); } } return String(x); };
-  var ce = console.error; console.error = function () { errs.push('console: ' + [].map.call(arguments, str).join(' ')); return ce.apply(console, arguments); };
+  // 用户取消系统分享面板时 Capacitor 自己会打一条「Share canceled」，不是 App 的错误
+  var ce = console.error; console.error = function () { var m = [].map.call(arguments, str).join(' '); if (!/Share canceled/i.test(m)) errs.push('console: ' + m); return ce.apply(console, arguments); };
   // 系统对话框、文件选择器会挡住自动操作：替换掉
   window.confirm = function () { return false; }; window.alert = function () {}; window.prompt = function () { return null; };
   var ic = HTMLInputElement.prototype.click; HTMLInputElement.prototype.click = function () { if (this.type === 'file') return; return ic.call(this); };
