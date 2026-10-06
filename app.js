@@ -443,11 +443,16 @@
   function viewHome() {
     var u = TM.user(S, me), nU = unread(), p = PRES[u.presence || 'offline'];
     return '<section class="hm">' +
-      '<header class="hm-top"><button class="hm-me" data-do="switch" aria-label="切换账号，当前 ' + esc(u.name) + '">' + av(me) + '<i style="background:' + p[1] + '"></i></button>' + (SRV ? '<span></span>' : '<span class="hm-demo">演示版</span>') + '<a class="hm-bell" href="#/inbox" aria-label="通知 ' + nU + ' 条未读">' + hi('bell', 1.8) + (nU ? '<i>' + nU + '</i>' : '') + '</a></header>' +
+      '<header class="hm-top"><button class="hm-me" data-do="switch" aria-label="切换账号，当前 ' + esc(u.name) + '">' + av(me) + '<i style="background:' + p[1] + '"></i></button>' + '<span class="hm-mid">' + (SRV ? '' : '<span class="hm-demo">演示版</span>') + hmPending() + '</span>' + '<a class="hm-bell" href="#/inbox" aria-label="通知 ' + nU + ' 条未读">' + hi('bell', 1.8) + (nU ? '<i>' + nU + '</i>' : '') + '</a></header>' +
       '<div class="hm-copy"><small>FOR A GREATER MISSION</small><h1>用科技<br>让福音走得更远</h1>' +
       '<button class="hm-verse" data-do="hmVerse"><svg class="hm-q" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18v-5.5C4 8.4 6.2 6 10 5.5V8c-2 .4-3 1.7-3 4h3v6zm9.5 0v-5.5c0-4.1 2.2-6.5 6-7V8c-2 .4-3 1.7-3 4h3v6z" fill="currentColor"/></svg><span><b>' + esc(VERSES[hmV % VERSES.length][0]).replace('，', '，<br>') + '</b><small>— ' + VERSES[hmV % VERSES.length][1] + '</small></span>' + hi('chev', 2) + '</button></div>' +
       '<div class="hm-cards"><div class="hm-script" aria-hidden="true">Better<br>&nbsp;&nbsp;Together<svg viewBox="0 0 180 40"><path d="M4 38C60 22 120 10 176 2" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg></div>' + homeCards().map(function (k, i) { return '<button class="hm-card c' + (i + 1) + ' hc-' + k[0] + '" data-do="' + k[0] + '"><span class="hm-ic">' + k[1] + '</span><i class="hm-go">' + hi('chev', 2.2) + '</i><b>' + k[2] + '</b><small>' + k[3] + '</small></button>'; }).join('') + '</div>' +
       '<footer class="hm-foot"><i></i><p>微小的顺服，<br>可以带来永恒的改变。</p><small>SMALL STEPS · ETERNAL IMPACT</small></footer></section>';
+  }
+  // 首页第一屏的「待你处理」（文档 1.2 / 7.2）：老板 = 待决策 + 待终验；其他人 = 我的待办里没做完的
+  function hmPending() {
+    var n = isOwner() ? S.decisions.filter(function (d) { return d.status === 'pending'; }).length + vTasks().filter(function (t) { return t.status === 'owner_review'; }).length : todoItems().filter(function (x) { return !x.done; }).length;
+    return n ? '<a class="hm-todo" href="' + (isOwner() ? '#/stat/decide' : '#/tasks') + '">待你处理 <b>' + n + '</b></a>' : '';
   }
   /* 首页两张卡片按角色给出：老板/发起人 记录想法+新建项目；运营者 整理想法+新建项目；执行者 我的待办+记待办；管理员 成员+知识库 */
   function homeCards() {

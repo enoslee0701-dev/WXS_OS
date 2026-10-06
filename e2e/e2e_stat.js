@@ -44,6 +44,10 @@ await p.selectOption('[data-speriod]','1');await p.waitForTimeout(120);ok((await
 // 非老板
 await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("林晓")');await p.goto(URL+'#/me');await p.waitForTimeout(100);await p.click('a.me-ov[href="#/stat/decide"]');await p.waitForTimeout(120);
 ok((await p.textContent('.s-head h1'))==='等你处理','运营者看到「等你处理」');
+// 首页第一屏「待你处理」（老板）：数量和「需要你决策」一致，点了去决策页
+await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Enos")');await p.waitForTimeout(150);
+{ const n=await p.evaluate(()=>{const S=window.__tm.S;return S.decisions.filter(d=>d.status==='pending').length+S.tasks.filter(t=>t.status==='owner_review').length;});
+  if(n){ok((await p.textContent('.hm-todo b'))===String(n),'首页显示待你处理 '+n);await p.click('.hm-todo');await p.waitForTimeout(150);ok(p.url().endsWith('#/stat/decide'),'点了去「需要你决策」');} else ok(await p.locator('.hm-todo').count()===0,'没有待处理时不显示'); }
 // 执行者有受阻且逾期的任务：首页不能说「都处理完了」，今天到期页列出逾期任务
 await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("周敏")');await p.waitForTimeout(150);
 await p.evaluate(()=>{const S=window.__tm.S,t=S.tasks.find(x=>x.ownerId==='u_admin_ex'&&!['done','cancelled'].includes(x.status));t.status='blocked';const d=new Date();d.setDate(d.getDate()-1);t.due=d.toISOString().slice(0,10);});
