@@ -181,11 +181,12 @@
   var SRV = typeof TMS !== 'undefined' && TMS.server, srvL = { probed: false, setup: false, err: '', busy: false, url: SRV ? TMS.serverUrl() : '' };
   function srvProbe() {
     if (!srvL.url || /^https?:\/\/$/.test(srvL.url)) { srvL.probed = true; srvL.err = '请先填写服务器地址'; return; }
-    TMS.probe(srvL.url).then(function (r) { srvL.probed = true; srvL.setup = !r.setup; srvL.err = ''; render(); }, function (e) { srvL.probed = true; srvL.err = e.error || '连不上服务器'; render(); netFix(srvL.url); });
+    var url = srvL.url;
+    TMS.probe(url).then(function (r) { srvL.probed = true; var mode = !r.setup; srvL.err = ''; if (mode !== srvL.setup) { srvL.setup = mode; render(); } else srvRefresh(); }, function (e) { srvL.probed = true; srvL.err = e.error || '连不上服务器'; srvRefresh(); netFix(url); });
   }
   function viewSrvLogin() {
     if (!srvL.probed) { srvProbe(); }
-    var urlF = TMS.sameOrigin ? '' : field('服务器地址', '<input type="text" inputmode="url" name="server" value="' + esc(srvL.url) + '" placeholder="老板给的地址，例如 192.168.1.x" autocapitalize="off" autocorrect="off" required><button type="button" class="srv-scan" data-do="srvScan">' + hi('spark', 1.6) + '在这个 Wi-Fi 里自动查找</button>', srvL.err ? '<span class="srv-err">' + esc(srvL.err) + '</span>' : '');
+    var urlF = TMS.sameOrigin ? '' : field('服务器地址', '<input type="text" inputmode="url" name="server" value="' + esc(srvL.url) + '" placeholder="老板给的地址，例如 192.168.1.x" autocapitalize="off" autocorrect="off" required><button type="button" class="srv-scan" data-do="srvScan">' + hi('spark', 1.6) + '在这个 Wi-Fi 里自动查找</button>', '<span class="srv-err" id="srvErr"' + (srvL.err ? '' : ' style="display:none"') + '>' + esc(srvL.err) + '</span>');
     var h = '<div class="login srv-login"><div class="mark" aria-hidden="true">协同</div>';
     if (srvL.probed && srvL.setup && !srvL.err) {
       h += '<h1>创建你的团队</h1><p>第一次使用：先建立老板账号。之后由你给每位成员分派登录账号。</p><form class="srv-form" data-form="srvSetup">' + urlF +
@@ -208,17 +209,28 @@
   }
   /* 连不上服务器时（安卓）：申请本地网络权限后重试；系统网络能通但浏览器内核不通，就切到原生网络模式；还不行就把诊断写进提示 */
   var netFixing = false;
+  // 只更新错误提示，不重绘整页（重绘会清掉正在输入的账号密码、打断自动查找）
+  function srvRefresh() {
+    var box = document.getElementById('srvErr');
+    if (!box || !document.querySelector('form[data-form=srvLogin], form[data-form=srvSetup]')) return render();
+    box.textContent = srvL.err || ''; box.style.display = srvL.err ? '' : 'none';
+  }
+  var netTried = {}, autoScanned = false;
   function netFix(url) {
     if (netFixing || typeof TMN === 'undefined' || !TMN.netDiag || !url || /^https?:\/\/$/.test(url)) return;
-    netFixing = true;
     var base = TMS.normUrl ? TMS.normUrl(url) : url;
+    if (netTried[base]) return; netTried[base] = true; // 每个地址只诊断一次，避免反复弹提示、反复刷新
+    netFixing = true;
     TMN.netDiag(base).then(function (d) {
       netFixing = false; if (!d) return;
-      var retry = function (msg) { if (msg) toast(msg); srvL.probed = false; srvL.err = ''; render(); };
+      var retry = function (msg) { if (msg) toast(msg); if (srvL.url === url) srvProbe(); };
       if (d.nativeOk && !TMS.nativeMode) { TMS.setNativeMode(true); return retry('已改用手机系统网络连接服务器'); }
       if (d.granted) return retry('已允许访问本地网络，正在重新连接');
-      if (!d.nativeOk) srvL.err = '连不上服务器（' + base + '）。手机系统也连不到这个地址：请确认手机和服务器电脑连的是同一个 Wi-Fi（不是流量、不是访客 Wi-Fi）、关掉 VPN，服务器电脑开着。诊断：' + d.device + '；本地网络权限 ' + (d.localnet || '无') + '；' + (d.nativeErr || '').slice(0, 80);
-      render();
+      // 这个地址连不上：自动在当前 Wi-Fi 里找一次团队服务器（地址可能填错了，或者电脑换了 IP）
+      var diagMsg = '连不上服务器（' + base + '）。手机系统也连不到这个地址：请确认手机和服务器电脑连的是同一个 Wi-Fi（不是流量、不是访客 Wi-Fi）、关掉 VPN，服务器电脑开着。诊断：' + d.device + '；本地网络权限 ' + (d.localnet || '无') + '；' + (d.nativeErr || '').slice(0, 80);
+      var showDiag = function () { if (!d.nativeOk && srvL.url === url) { srvL.err = diagMsg; srvRefresh(); } };
+      if (!autoScanned && TMS.scan) { autoScanned = true; var sb = document.querySelector('[data-do=srvScan]'); if (sb) return DO.srvScan(sb, function (found) { if (!found) showDiag(); }); }
+      showDiag();
       if (SRV && TMS.diag) TMS.diag({ kind: 'connect', base: base, diag: d });
     });
   }
@@ -3149,14 +3161,16 @@
   DO.onboardGo = function (el) { closeSheet(); location.hash = el.dataset.h; };
   DO.demoChoose = function () { try { localStorage.setItem('tm_demo_chosen', '1'); } catch (e) {} render(); };
   // 自动查找团队服务器：找到就填进地址框（登录页会顺便重新检查）
-  DO.srvScan = function (el) {
+  DO.srvScan = function (el, done) {
+    if (!el || el.disabled) return; if (typeof done !== 'function') done = null;
     var inp = el && el.parentNode && el.parentNode.querySelector('input[name=server]') || document.querySelector('input[name=server]');
     el.disabled = true; var t0 = el.innerHTML; el.textContent = '正在查找…';
     TMS.scan(function (d, n) { el.textContent = '正在查找… ' + Math.round(d / n * 100) + '%'; }).then(function (list) {
       el.disabled = false; el.innerHTML = t0;
+      if (done) done(list[0]);
       if (!list.length) return toast('这个 Wi-Fi 里没找到团队服务器：确认手机和服务器电脑连的是同一个 Wi-Fi、服务器电脑开着，或者直接填老板给的地址', true);
       if (inp) inp.value = list[0];
-      if (document.querySelector('form[data-form=srvLogin], form[data-form=srvSetup]')) { srvL.url = list[0]; srvL.probed = false; srvL.err = ''; render(); }
+      if (document.querySelector('form[data-form=srvLogin], form[data-form=srvSetup]')) { srvL.url = list[0]; srvL.err = ''; srvRefresh(); srvProbe(); }
       toast('找到了团队服务器：' + list[0]);
     });
   };

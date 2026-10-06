@@ -21,6 +21,7 @@ const FAKE = (opts) => {
       if (pl === 'Speech' && m === 'start' && o.srBroken) { F.starts = (F.starts || 0) + 1; setTimeout(() => F.emit('Speech', 'error', { error: o.srBroken, code: 5, tried: ['default#5'], service: 'com.vendor/.Svc', device: 'Vendor X1 · Android 14' }), 20); return Promise.resolve({}); }
       if (pl === 'Speech' && m === 'requestPermissions') return Promise.resolve({ speech: 'granted', microphone: 'granted' });
       if (pl === 'App' && m === 'getInfo') return Promise.resolve({ version: '1.3', build: '4' });
+      if (pl === 'Diag' && m === 'netInfo') return Promise.resolve({ ips: ['192.168.9.20'] });
       if (pl === 'Diag' && m === 'netState') return Promise.resolve({ sdk: o.sdk || 34, device: 'Vendor X1 · Android 17', localnet: F.localnet || 'prompt', nearby: 'prompt' });
       if (pl === 'Diag' && m === 'requestPermissions') { F.localnet = 'granted'; return Promise.resolve({ localnet: 'granted' }); }
       if (pl === 'Diag' && m === 'httpGet') return Promise.resolve(o.nativeOk ? { ok: true, status: 200, body: '{"ok":true,"setup":true}' } : { ok: false, error: 'SocketTimeoutException: timeout' });
@@ -183,10 +184,20 @@ const FAKE = (opts) => {
     await p.waitForSelector('.hm-card', { timeout: 10000 }).catch(() => {});
     ok(await p.evaluate(() => TMS.loggedIn() && window.__tm.S.users[0].name === '王老板') && await p.evaluate(() => window.__fake.native) > 1, '原生网络模式下能登录、拿到团队数据');
     sv.kill(); fs.rmSync(DIR, { recursive: true, force: true }); await p.context().close(); }
+  // 9b. 诊断和重连不会反复刷新页面：正在输入的账号不会被清掉，权限只申请一次
+  p = await mk({ sdk: 36, nativeOk: false });
+  await p.context().route(/^http:\/\/192\.168\.9\.\d+:8787\//, r => r.abort());
+  await p.evaluate(() => { localStorage.removeItem('tm_user_v3'); localStorage.setItem('tm_server', 'http://192.168.9.7:8787'); }); await p.reload();
+  await p.waitForSelector('form[data-form=srvLogin]'); await p.fill('form[data-form=srvLogin] input[name=login]', 'xiaoli');
+  await p.waitForTimeout(4000);
+  ok(await p.inputValue('form[data-form=srvLogin] input[name=login]') === 'xiaoli', '自动诊断 / 重连期间输入的账号不会被清掉');
+  ok((await calls(p)).filter(x => x === 'Diag.requestPermissions').length === 1, '本地网络权限只申请一次（不会反复弹）');
+  ok(await p.evaluate(() => { const s = document.querySelector('.srv-scan svg'); return s && s.getBoundingClientRect().width <= 20; }), '「自动查找」按钮的图标是正常大小');
+  await p.context().close();
   // 10. 系统网络也不通：提示里带上诊断
   p = await mk({ sdk: 34, nativeOk: false });
-  await p.evaluate(() => { localStorage.removeItem('tm_user_v3'); localStorage.setItem('tm_server', 'http://192.168.9.8:8787'); }); await p.context().route('http://192.168.9.8:8787/**', r => r.abort()); await p.reload();
-  await p.waitForFunction(() => /诊断：/.test(document.body.textContent), null, { timeout: 8000 }).catch(() => {});
+  await p.evaluate(() => { localStorage.removeItem('tm_user_v3'); localStorage.setItem('tm_server', 'http://192.168.9.8:8787'); }); await p.context().route(/^http:\/\/192\.168\.9\.\d+:8787\//, r => r.abort()); await p.reload();
+  await p.waitForFunction(() => /诊断：/.test(document.body.textContent), null, { timeout: 20000 }).catch(() => {});
   ok(/同一个 Wi-Fi/.test(await p.textContent('#app')) && /诊断：Vendor X1/.test(await p.textContent('#app')), '系统网络也不通：提示检查 Wi-Fi，并附诊断');
   await p.context().close();
   console.log(`Android 原生层 E2E 通过 ${pass}，失败 ${fail}`);

@@ -193,8 +193,10 @@ var TMN = (function () {
     var out = {};
     return Diag.netState().then(function (st) {
       out.sdk = st.sdk; out.device = st.device; out.localnet = st.localnet; out.nearby = st.nearby;
-      if (st.sdk >= 36 && st.localnet !== 'granted') {
-        var want = st.sdk >= 37 ? ['localnet'] : ['localnet', 'nearby'];
+      // 只申请一次：有的系统不认识 ACCESS_LOCAL_NETWORK，状态一直是 prompt，反复申请会一直弹 / 一直重试
+      if (st.sdk >= 36 && st.localnet !== 'granted' && st.nearby !== 'granted' && !api._lnAsked) {
+        api._lnAsked = true;
+        var want = ['localnet', 'nearby'];
         return Diag.requestPermissions({ permissions: want }).then(function (r) { out.granted = r && (r.localnet === 'granted' || r.nearby === 'granted'); out.localnet = r && r.localnet; }, function () {});
       }
     }).then(function () { return Diag.httpGet({ url: base + '/api/health' }); }).then(function (h) {
