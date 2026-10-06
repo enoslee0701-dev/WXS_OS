@@ -1827,6 +1827,20 @@
     var r0 = d0 + open ? Math.round(d0 / (d0 + open) * 100) : null, r1 = d1 + open ? Math.round(d1 / (d1 + open) * 100) : null;
     return { rate: r0, prev: r1, done: d0, open: open };
   }
+  /* 流转速度（文档 1.2 成功标准）：想法提交到有人跟进、到派出第一个任务的平均时间；进行中任务里多久没动静的比例。只给老板和运营者看 */
+  function flowCard() {
+    if (!(isOwner() || TM.hasRole(S, me, 'operator'))) return '';
+    var dur = function (ms) { if (ms == null) return '—'; var h = ms / 36e5; return h < 1 ? Math.max(1, Math.round(ms / 6e4)) + ' 分钟' : h < 48 ? (Math.round(h * 10) / 10) + ' 小时' : Math.round(h / 24) + ' 天'; };
+    var avg = function (xs) { return xs.length ? xs.reduce(function (a, b) { return a + b; }, 0) / xs.length : null; };
+    var since = Date.now() - 30 * 864e5, claim = [], first = [];
+    vIdeas().forEach(function (d) { if (!d.submittedAt || d.submittedAt < since) return;
+      var ce = S.events.filter(function (e) { return e.ideaId === d.id && (e.action === 'idea.claim' || e.action === 'idea.reassignFollower'); }).sort(function (a, b) { return a.at - b.at; })[0]; if (ce) claim.push(ce.at - d.submittedAt);
+      var ws = S.workItems.filter(function (w) { return w.ideaId === d.id; }).map(function (w) { return w.id; }), ts = S.tasks.filter(function (t) { return ws.indexOf(t.workId) >= 0; }).map(function (t) { return t.createdAt; }).sort(); if (ts.length) first.push(ts[0] - d.submittedAt); });
+    var prog = scopeTasks().filter(function (t) { return ['assigned', 'accepted', 'in_progress'].indexOf(t.status) >= 0; }), st = prog.filter(function (t) { return TM.isStale(S, t); }).length;
+    var cell = function (v, l) { return '<div><b>' + v + '</b><small>' + l + '</small></div>'; };
+    return '<section class="wd-card s-flow"><div class="wd-ph"><b>流转速度</b><small class="muted" style="font-size:12.5px">近 30 天</small></div><div class="s-flow-g">' +
+      cell(dur(avg(claim)), '提交到有人跟进') + cell(dur(avg(first)), '提交到派出第一个任务') + cell(prog.length ? Math.round(st / prog.length * 100) + '%' : '—', S.settings.staleDays + ' 天以上没动静的任务') + '</div></section>';
+  }
   function viewRate() {
     var sc = scopeTasks(), off = st.period, ws0 = weekStart(off).getTime(), we0 = ws0 + 7 * 864e5;
     var passAt = {}; S.reviews.forEach(function (r) { if (r.taskId && (r.verdict === 'pass' || r.verdict === 'owner_pass')) passAt[r.taskId] = Math.max(passAt[r.taskId] || 0, r.at); });
@@ -1853,6 +1867,7 @@
       '<section class="wd-card"><div class="wd-ph"><b>任务完成情况</b><small class="muted" style="font-size:12.5px">按截止日</small></div><div class="s-legend"><span><i class="d-green"></i>已完成 <b>' + doneW.length + '</b></span><span><i class="d-blue"></i>进行中 <b>' + inprog.length + '</b></span><span><i class="d-gray"></i>未开始 <b>' + notyet.length + '</b></span></div>' +
       (perDay.every(function (x) { return !(x.d + x.p + x.n); }) ? '<p class="muted s-empty">这一周没有到截止日的任务。</p>' : '<div class="s-bars">' + perDay.map(function (x, i) { var h3 = function (v) { return Math.round(v / mx * 86); }; return '<div><span class="s-col"><i class="g" style="height:' + h3(x.d) + 'px"></i><i class="b" style="height:' + h3(x.p) + 'px"></i><i class="n" style="height:' + Math.max(x.d + x.p + x.n ? 0 : 6, h3(x.n)) + 'px"></i></span><small>' + days[i] + '</small></div>'; }).join('') + '</div>') + '</section>' +
       '<section class="wd-card"><div class="wd-ph"><b>按项目统计</b><a class="wd-link" href="#/work">查看全部</a></div>' + (projs.length ? '' : '<p class="muted s-empty">还没有项目。<a href="#/project">去新建一个</a></p>') + projs.map(function (x) { return '<a class="s-prow" href="#/work/' + x.w.id + '">' + wIcon(x.w) + '<span class="s-pn">' + esc(x.w.title) + '<i><em class="' + (x.pct >= 75 ? 'g' : '') + '" style="width:' + x.pct + '%"></em></i></span><span class="s-pp">' + x.pct + '%</span><span class="s-pf">' + x.p.done + '/' + x.p.total + '</span></a>'; }).join('') + '</section>' +
+      flowCard() +
       '<section class="s-tip">' + ti('bulb', 1.7) + '<div><b>效率建议</b><p>' + esc(tip) + '</p></div><button class="t-link s-blue" data-do="quickAI">AI 建议' + hi('chev', 2) + '</button></section>';
   }
   var SD = {
