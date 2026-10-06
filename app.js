@@ -183,7 +183,7 @@
   function workRow(w) {
     var p = TM.workProgress(S, w.id);
     var flags = S.tasks.filter(function (t) { return t.workId === w.id && (t.status === 'blocked' || TM.isOverdue(S, t) || TM.isStale(S, t)); }).length;
-    var meta = ['<span>' + L.kind[w.kind] + '</span>', '<span>阶段：' + esc(TM.stageName(w.kind, w.stage)) + '</span>', '<span>任务 ' + p.done + '/' + p.total + '</span>'];
+    var meta = ['<span>' + L.kind[w.kind] + '</span>', '<span>阶段：' + esc(wStage(w)) + '</span>', '<span>任务 ' + p.done + '/' + p.total + '</span>'];
     if (flags) meta.push('<span class="r">' + flags + ' 项需关注</span>');
     var nx = w.status === 'planning' ? { who: w.leadId, what: '安排任务' } : w.status === 'acceptance' ? { who: w.reviewerId, what: '确认项目完成' } : null;
     return '<a class="row' + (flags ? ' flag' : '') + '" href="#/work/' + w.id + '"><div class="t"><span>' + esc(w.title) + '</span>' + pill('work', w.status) + '</div><div class="m">' + meta.join('') + '</div>' +
@@ -604,6 +604,8 @@
     var txt = ev ? ev.text.replace(/^.{0,0}/, '') : '创建了想法';
     return { who: who, txt: txt.length > 22 ? txt.slice(0, 22) + '…' : txt, at: ev ? ev.at : d.lastActivity };
   }
+  // 阶段名：项目完成 / 取消后不再显示最初的阶段（以前产品项目完成后仍显示「需求澄清阶段」）
+  function wStage(w) { return w.status === 'done' ? '已完成' : w.status === 'cancelled' ? '已取消' : TM.stageName(w.kind, w.stage); }
   function viewIdeas() {
     var all = vIdeas().sort(byRecent), f = filt.ideas || 'all';
     var h = projHeader('ideas');
@@ -2389,7 +2391,7 @@
     var flags = S.tasks.filter(function (t) { return t.workId === w.id && (t.status === 'blocked' || TM.isOverdue(S, t) || TM.isStale(S, t)); }).length;
     var nx = w.status === 'planning' ? [w.leadId, '安排任务'] : w.status === 'acceptance' ? [w.reviewerId, '确认项目完成'] : null;
     return '<a class="ix2-wk" href="#/work/' + w.id + '"><span class="ix2-wkt"><b>' + esc(w.title) + '</b>' + pill('work', w.status) + '</span>' +
-      '<span class="ix2-wkm">' + L.kind[w.kind] + ' · ' + esc(TM.stageName(w.kind, w.stage)) + ' · 任务 ' + p.done + '/' + p.total + (flags ? '<em>' + flags + ' 项需关注</em>' : '') + '</span>' +
+      '<span class="ix2-wkm">' + L.kind[w.kind] + ' · ' + esc(wStage(w)) + ' · 任务 ' + p.done + '/' + p.total + (flags ? '<em>' + flags + ' 项需关注</em>' : '') + '</span>' +
       (p.total ? '<span class="ix2-wkb"><i style="width:' + pc + '%"></i></span>' : '') +
       (nx ? '<span class="ix2-wkn">下一步：' + esc(nx[0] === me ? '你' : nm(nx[0])) + ' ' + nx[1] + '</span>' : '') + hi('chev', 2) + '</a>';
   }
@@ -2682,7 +2684,7 @@
     var mg = w.leadId === me || w.operatorId === me || isOwner();
     var back = hi('chev', 2.2).replace('M9 6l6 6-6 6', 'M15 6l-6 6 6 6');
     var h = '<header class="wx-top"><button class="wx-ic" data-do="back" aria-label="返回">' + back + '</button><span></span><button class="wx-ic" data-do="wMore" aria-label="更多">' + ti('more', 1.6) + '</button><button class="wx-ic" data-do="wShare" aria-label="分享">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6M20 4l-8.5 8.5M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg></button></header>' +
-      '<section class="wx-hero"><span class="wx-logo">' + '<svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="14" rx="4" fill="#fff"/><path d="M7.5 15l3-3.2 2.3 2.2 3.7-4" stroke="#4F7BEF" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>' + '</span><div><h1>' + esc(w.title) + '</h1><div class="wx-chips"><i>' + esc(wKindLabel(w)) + '</i><i>' + esc(TM.stageName(w.kind, w.stage)) + '阶段</i><span class="ws ' + st[1] + '">' + st[0] + '</span></div></div></section>' +
+      '<section class="wx-hero"><span class="wx-logo">' + '<svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="14" rx="4" fill="#fff"/><path d="M7.5 15l3-3.2 2.3 2.2 3.7-4" stroke="#4F7BEF" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>' + '</span><div><h1>' + esc(w.title) + '</h1><div class="wx-chips"><i>' + esc(wKindLabel(w)) + '</i><i>' + esc(wStage(w)) + '阶段</i><span class="ws ' + st[1] + '">' + st[0] + '</span></div></div></section>' +
       ((w.desc || w.goal) ? '<p class="wx-desc">' + esc(w.desc || w.goal) + '</p>' : '') +
       (w.status === 'paused' ? '<div class="callout warn">老板已暂停这个项目，任务暂不能操作。</div>' : '') +
       (w.status === 'acceptance' && w.reviewerId === me ? '<div class="wd-accept"><span>任务已全部完成，等你确认项目完成</span><button data-do="closeWork">确认完成</button></div>' : '') +
@@ -2756,7 +2758,7 @@
     var open = ts.filter(function (x) { return x.status !== 'done'; }), p = TM.workProgress(S, w.id), left = w.due ? dayDiff(w.due) : null;
     var flagOf = function (x) { return x.status === 'blocked' ? '受阻' + (x.blockedReason ? '：' + x.blockedReason : '') : TM.isOverdue(S, x) ? '已逾期' : TM.isStale(S, x) ? S.settings.staleDays + ' 天以上没动静' : ''; };
     var tl = function (x) { return '<li>' + esc(x.title) + '<em>' + esc(nm(x.ownerId)) + ' · ' + esc(L.task[x.status] || '') + '</em></li>'; };
-    if (/进度|到哪|状态|多少|完成了|情况/.test(t)) return { html: '<p>完成 <b>' + p.done + '/' + p.total + '</b> 项任务（' + wPct(w) + '%），当前在<b>' + esc(TM.stageName(w.kind, w.stage)) + '</b>阶段。' + (left == null ? '' : left >= 0 ? '离截止还有 ' + left + ' 天。' : '已超过截止 ' + (-left) + ' 天。') + '</p>' + (open.length ? '<p>还没完成的：</p>' + li(open.slice(0, 5).map(tl)) : ''), src: ['任务'] };
+    if (/进度|到哪|状态|多少|完成了|情况/.test(t)) return { html: '<p>完成 <b>' + p.done + '/' + p.total + '</b> 项任务（' + wPct(w) + '%），当前在<b>' + esc(wStage(w)) + '</b>阶段。' + (left == null ? '' : left >= 0 ? '离截止还有 ' + left + ' 天。' : '已超过截止 ' + (-left) + ' 天。') + '</p>' + (open.length ? '<p>还没完成的：</p>' + li(open.slice(0, 5).map(tl)) : ''), src: ['任务'] };
     if (/谁|分工|在做|负责|成员/.test(t)) { var by = {}; open.forEach(function (x) { (by[x.ownerId] = by[x.ownerId] || []).push(x.title); }); var ks = Object.keys(by); return { html: '<p>负责人 <b>' + esc(w.leadId ? nm(w.leadId) : '未设') + '</b>，跟进运营 <b>' + esc(w.operatorId ? nm(w.operatorId) : '未设') + '</b>。</p>' + (ks.length ? '<p>手上有任务的：</p>' + li(ks.map(function (u) { return '<li><b>' + esc(nm(u)) + '</b>：' + esc(by[u].join('、')) + '</li>'; })) : '<p>目前没有进行中的任务。</p>'), src: ['任务', '成员'] }; }
     if (/风险|卡|受阻|逾期|关注|问题|担心/.test(t)) { var fl = open.filter(flagOf); return { html: fl.length ? '<p>有 ' + fl.length + ' 项需要关注：</p>' + li(fl.map(function (x) { return '<li>' + esc(x.title) + '<em>' + esc(nm(x.ownerId) + ' · ' + flagOf(x)) + '</em></li>'; })) : '<p>目前没有受阻、逾期或长期没动静的任务。</p>' + (left != null && left >= 0 && left <= 3 && open.length ? '<p>不过离截止只剩 ' + left + ' 天，还有 ' + open.length + ' 项没完成，要盯紧。</p>' : ''), src: ['任务'] }; }
     if (/下一步|接下来|怎么办|该做|建议/.test(t)) { var nx = open.map(function (x) { var n = TM.nextForTask(S, x); return n ? '<li>' + esc((n.who === me ? '你' : nm(n.who)) + ' ' + n.what + '「' + x.title + '」') + '</li>' : ''; }).filter(Boolean); if (w.status === 'planning' && !ts.length) nx.unshift('<li>' + esc(nm(w.leadId || w.operatorId)) + ' 先拆分任务</li>'); if (w.status === 'acceptance') nx.unshift('<li>' + esc(nm(w.reviewerId)) + ' 确认项目完成</li>'); return { html: nx.length ? '<p>接下来：</p><ol>' + nx.slice(0, 6).join('') + '</ol>' : '<p>项目没有待办的下一步了。</p>', src: ['任务'] }; }
