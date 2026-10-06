@@ -18,6 +18,7 @@ var TMS = (function () {
   if (api.server && !api.token) { put(K, null); put(KU, null); }
 
   // 服务器地址容错：中文键盘打出的全角「：」「。」、空格、漏写 http://、漏写端口（局域网 IP 默认 8787）、局域网地址误写成 https
+  api.normUrl = function (u) { return norm(u); };
   function norm(u) {
     u = String(u || '').trim().replace(/[：]/g, ':').replace(/[。．]/g, '.').replace(/[／]/g, '/').replace(/\s+/g, '').replace(/\/+$/, '');
     if (u && !/^https?:\/\//i.test(u)) u = 'http://' + u.replace(/^\/+/, '');
@@ -25,7 +26,18 @@ var TMS = (function () {
     if (m) u = 'http://' + m[2] + (m[3] || ':8787') + (m[4] || '');
     return u;
   }
+  // 原生网络模式：App 里的浏览器内核连不上服务器、但手机系统网络能通时（例如新版安卓 WebView 的限制），API 请求改走原生
+  api.nativeMode = g('tm_native_net') === '1';
+  api.setNativeMode = function (on) { api.nativeMode = !!on; put('tm_native_net', on ? '1' : null); };
   function reqAt(base, method, path, body, token, wait) {
+    if (api.nativeMode && typeof TMN !== 'undefined' && TMN.nativeRequest && /^http:/.test(base)) {
+      var hd = Object.assign({ 'Content-Type': 'application/json' }, token ? { Authorization: 'Bearer ' + token } : {});
+      return TMN.nativeRequest(method, base + path, hd, body ? body : undefined).then(function (r) {
+        var j = r.data; if (typeof j === 'string') { try { j = JSON.parse(j); } catch (e) { j = {}; } }
+        if (r.status >= 200 && r.status < 300) return j || {};
+        throw Object.assign({ status: r.status }, j || {}, { error: (j && j.error) || '请求失败（' + r.status + '）' });
+      }, function () { throw { status: 0, error: '连不上服务器（原生网络）' }; });
+    }
     var ctl = window.AbortController ? new AbortController() : null, tm = setTimeout(function () { if (ctl) ctl.abort(); }, wait || 15000);
     return fetch(base + path, { method: method, signal: ctl && ctl.signal, headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}), body: body ? JSON.stringify(body) : undefined })
       .then(function (r) { clearTimeout(tm); return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { j.status = r.status; throw j; } return j; }); },
@@ -132,7 +144,7 @@ var TMS = (function () {
   function connect() {
     if (!api.loggedIn()) return;
     var poll = function () { clearInterval(pollT); pollT = setInterval(pull, 8000); };
-    if (!window.EventSource) return poll();
+    if (!window.EventSource || api.nativeMode) return poll(); // 原生网络模式下浏览器内核连不上服务器：改成定时拉取
     try {
       es = new EventSource(api.base + '/api/events?token=' + encodeURIComponent(api.token));
       es.addEventListener('v', function (e) { var v = 0; try { v = JSON.parse(e.data).version; } catch (x) {} setStatus('online'); clearInterval(pollT); if (v > api.version) pull(); flush(); });

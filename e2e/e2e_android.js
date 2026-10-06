@@ -11,7 +11,7 @@ const FAKE = (opts) => {
   const M = (n, ms) => ({ name: n, methods: ms.map(x => ({ name: x, rtype: 'promise' })).concat([{ name: 'addListener', rtype: 'callback' }, { name: 'removeListener', rtype: 'promise' }, { name: 'removeAllListeners', rtype: 'promise' }]) });
   window.androidBridge = { postMessage() {} };
   window.Capacitor = {
-    PluginHeaders: [M('Preferences', ['get', 'set', 'remove', 'keys']), M('Clipboard', ['write', 'read']), M('App', ['exitApp', 'getInfo']), M('StatusBar', ['setStyle']), M('Keyboard', ['setAccessoryBarVisible']), M('SplashScreen', ['hide', 'show']), M('Speech', ['available', 'checkPermissions', 'requestPermissions', 'start', 'stop']), M('PushNotifications', ['checkPermissions', 'requestPermissions', 'register']), M('Haptics', ['impact', 'notification']), M('Diag', ['lastCrash', 'simulate']), M('Filesystem', ['writeFile']), M('Share', ['share'])],
+    PluginHeaders: [M('Preferences', ['get', 'set', 'remove', 'keys']), M('Clipboard', ['write', 'read']), M('App', ['exitApp', 'getInfo']), M('StatusBar', ['setStyle']), M('Keyboard', ['setAccessoryBarVisible']), M('SplashScreen', ['hide', 'show']), M('Speech', ['available', 'checkPermissions', 'requestPermissions', 'start', 'stop']), M('PushNotifications', ['checkPermissions', 'requestPermissions', 'register']), M('Haptics', ['impact', 'notification']), M('Diag', ['lastCrash', 'simulate', 'netInfo', 'netState', 'httpGet', 'checkPermissions', 'requestPermissions']), M('CapacitorHttp', ['request']), M('Filesystem', ['writeFile']), M('Share', ['share'])],
     nativeCallback(pl, m, a, cb) { const k = pl + ':' + a.eventName; (subs[k] = subs[k] || []).push(cb); return String(++cid); },
     nativePromise(pl, m, a) {
       F.calls.push(pl + '.' + m); F.args[pl + '.' + m] = a;
@@ -21,6 +21,11 @@ const FAKE = (opts) => {
       if (pl === 'Speech' && m === 'start' && o.srBroken) { F.starts = (F.starts || 0) + 1; setTimeout(() => F.emit('Speech', 'error', { error: o.srBroken, code: 5, tried: ['default#5'], service: 'com.vendor/.Svc', device: 'Vendor X1 · Android 14' }), 20); return Promise.resolve({}); }
       if (pl === 'Speech' && m === 'requestPermissions') return Promise.resolve({ speech: 'granted', microphone: 'granted' });
       if (pl === 'App' && m === 'getInfo') return Promise.resolve({ version: '1.3', build: '4' });
+      if (pl === 'Diag' && m === 'netState') return Promise.resolve({ sdk: o.sdk || 34, device: 'Vendor X1 · Android 17', localnet: F.localnet || 'prompt', nearby: 'prompt' });
+      if (pl === 'Diag' && m === 'requestPermissions') { F.localnet = 'granted'; return Promise.resolve({ localnet: 'granted' }); }
+      if (pl === 'Diag' && m === 'httpGet') return Promise.resolve(o.nativeOk ? { ok: true, status: 200, body: '{"ok":true,"setup":true}' } : { ok: false, error: 'SocketTimeoutException: timeout' });
+      // 原生网络发请求：转给真正的服务器（模拟 WebView 被拦、原生能通）
+      if (pl === 'CapacitorHttp' && m === 'request') { F.native = (F.native || 0) + 1; const u = a.url.replace(/^http:\/\/192\.168\.9\.9:8787/, o.realSrv); return fetch(u, { method: a.method, headers: a.headers, body: a.data ? JSON.stringify(a.data) : undefined }).then(r => r.json().then(j => ({ status: r.status, data: j }))); }
       if (pl === 'Diag' && m === 'lastCrash') return Promise.resolve({ text: o.crash || '' });
       if (pl === 'Filesystem' && m === 'writeFile') return Promise.resolve({ uri: 'file:///cache/' + a.path });
       if (pl === 'PushNotifications' && m === 'checkPermissions') return Promise.resolve({ receive: 'granted' });
@@ -160,6 +165,30 @@ const FAKE = (opts) => {
     ok(p.url() === SRV + '/app/android.apk', '点「下载安装」交给系统浏览器下载安装包：' + p.url());
     sv.kill(); fs.rmSync(DIR, { recursive: true, force: true }); await p.context().close(); }
 
+  // 9. 连不上服务器：Android 17 先申请「本地网络」权限；手机系统网络能通、浏览器内核被拦时，自动改走原生网络
+  { const { spawn } = require('child_process'), fs = require('fs'), os = require('os'), path = require('path');
+    const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-net-')), PORT = 26000 + Math.floor(Math.random() * 900), REAL = 'http://127.0.0.1:' + PORT;
+    const sv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'server.js')], { env: { ...process.env, LLM: '0', TRANSCRIBE: '0', PORT, HOST: '127.0.0.1', DATA_DIR: DIR, SETUP_CODE: 'c' }, stdio: ['ignore', 'pipe', 'ignore'] });
+    await new Promise(r => sv.stdout.on('data', d => { if (/已启动/.test(String(d))) r(); }));
+    await fetch(REAL + '/api/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '王老板', login: 'boss', password: 'boss123456', code: 'c' }) });
+    p = await mk({ sdk: 37, nativeOk: true, realSrv: REAL });
+    await p.context().route('http://192.168.9.9:8787/**', r => r.abort()); // App 里的浏览器内核连不上
+    await p.evaluate(() => { localStorage.removeItem('tm_user_v3'); localStorage.setItem('tm_server', 'http://192.168.9.9:8787'); }); await p.reload();
+    await p.waitForFunction(() => window.__fake.calls.includes('Diag.requestPermissions'), null, { timeout: 8000 }).catch(() => {});
+    ok((await calls(p)).includes('Diag.requestPermissions'), 'Android 17 连不上：申请本地网络权限');
+    await p.waitForFunction(() => localStorage.getItem('tm_native_net') === '1', null, { timeout: 8000 }).catch(() => {});
+    ok(await p.evaluate(() => localStorage.getItem('tm_native_net')) === '1', '系统网络能通、浏览器内核被拦：自动改走原生网络');
+    await p.waitForSelector('form[data-form=srvLogin]', { timeout: 8000 });
+    await p.fill('form[data-form=srvLogin] input[name=login]', 'boss'); await p.fill('form[data-form=srvLogin] input[name=password]', 'boss123456'); await p.click('form[data-form=srvLogin] button[type=submit]');
+    await p.waitForSelector('.hm-card', { timeout: 10000 }).catch(() => {});
+    ok(await p.evaluate(() => TMS.loggedIn() && window.__tm.S.users[0].name === '王老板') && await p.evaluate(() => window.__fake.native) > 1, '原生网络模式下能登录、拿到团队数据');
+    sv.kill(); fs.rmSync(DIR, { recursive: true, force: true }); await p.context().close(); }
+  // 10. 系统网络也不通：提示里带上诊断
+  p = await mk({ sdk: 34, nativeOk: false });
+  await p.evaluate(() => { localStorage.removeItem('tm_user_v3'); localStorage.setItem('tm_server', 'http://192.168.9.8:8787'); }); await p.context().route('http://192.168.9.8:8787/**', r => r.abort()); await p.reload();
+  await p.waitForFunction(() => /诊断：/.test(document.body.textContent), null, { timeout: 8000 }).catch(() => {});
+  ok(/同一个 Wi-Fi/.test(await p.textContent('#app')) && /诊断：Vendor X1/.test(await p.textContent('#app')), '系统网络也不通：提示检查 Wi-Fi，并附诊断');
+  await p.context().close();
   console.log(`Android 原生层 E2E 通过 ${pass}，失败 ${fail}`);
   await b.close(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

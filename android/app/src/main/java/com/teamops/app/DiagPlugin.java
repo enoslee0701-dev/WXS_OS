@@ -24,7 +24,14 @@ import java.util.Locale;
  * 诊断：记录 App 闪退的原因（Java 异常、网页渲染进程崩溃），下次打开时由 JS 读取并提示用户。
  * lastCrash() → {text}（没有记录时 text 为空），读取后删除。
  */
-@CapacitorPlugin(name = "Diag")
+@CapacitorPlugin(
+    name = "Diag",
+    permissions = {
+        // Android 16 起的「本地网络保护」：连同一 Wi-Fi 里的团队服务器需要这个权限（Android 17 起强制；16 上测试时用「附近 Wi-Fi 设备」权限）
+        @com.getcapacitor.annotation.Permission(alias = "localnet", strings = { "android.permission.ACCESS_LOCAL_NETWORK" }),
+        @com.getcapacitor.annotation.Permission(alias = "nearby", strings = { "android.permission.NEARBY_WIFI_DEVICES" })
+    }
+)
 public class DiagPlugin extends Plugin {
     private static final String FILE = "last_crash.txt";
 
@@ -100,6 +107,39 @@ public class DiagPlugin extends Plugin {
         } catch (Exception ignored) {}
         JSObject r = new JSObject();
         r.put("ips", ips);
+        call.resolve(r);
+    }
+
+    /** 用系统原生网络访问一个地址（不经过 App 里的浏览器内核）：用来判断连不上服务器是网络问题还是浏览器内核的限制 */
+    @PluginMethod
+    public void httpGet(PluginCall call) {
+        final String u = call.getString("url", "");
+        new Thread(() -> {
+            JSObject r = new JSObject();
+            java.net.HttpURLConnection c = null;
+            try {
+                c = (java.net.HttpURLConnection) new java.net.URL(u).openConnection();
+                c.setConnectTimeout(4000); c.setReadTimeout(4000);
+                int code = c.getResponseCode();
+                java.io.InputStream in = code < 400 ? c.getInputStream() : c.getErrorStream();
+                ByteArrayOutputStream bo = new ByteArrayOutputStream(); byte[] buf = new byte[2048]; int n;
+                while (in != null && (n = in.read(buf)) > 0 && bo.size() < 8192) bo.write(buf, 0, n);
+                r.put("ok", true); r.put("status", code); r.put("body", new String(bo.toByteArray(), StandardCharsets.UTF_8));
+            } catch (Exception e) {
+                r.put("ok", false); r.put("error", e.getClass().getSimpleName() + ": " + e.getMessage());
+            } finally { if (c != null) c.disconnect(); }
+            call.resolve(r);
+        }).start();
+    }
+
+    /** 本机系统版本和本地网络相关权限状态 */
+    @PluginMethod
+    public void netState(PluginCall call) {
+        JSObject r = new JSObject();
+        r.put("sdk", Build.VERSION.SDK_INT);
+        r.put("device", Build.MANUFACTURER + " " + Build.MODEL + " · Android " + Build.VERSION.RELEASE);
+        r.put("localnet", getPermissionState("localnet").toString());
+        r.put("nearby", getPermissionState("nearby").toString());
         call.resolve(r);
     }
 

@@ -186,6 +186,27 @@ var TMN = (function () {
   api.appInfo = function () { return App && App.getInfo ? App.getInfo().catch(function () { return null; }) : Promise.resolve(null); };
   // 手机当前的局域网 IP（安卓原生给；其他平台返回空，由调用方按常见网段查找）
   api.localIps = function () { return Diag && Diag.netInfo ? Diag.netInfo().then(function (r) { return r && r.ips || []; }, function () { return []; }) : Promise.resolve([]); };
+  // 连不上服务器时的诊断（安卓）：① Android 16+ 先申请「本地网络」权限（没给权限时系统会悄悄拦住连同一 Wi-Fi 的设备）；
+  // ② 用系统原生网络直接访问服务器，判断是网络不通，还是只有 App 里的浏览器内核被拦住。返回 {granted: 刚给了权限, nativeOk, ...}
+  api.netDiag = function (base) {
+    if (!Diag || !Diag.netState) return Promise.resolve(null);
+    var out = {};
+    return Diag.netState().then(function (st) {
+      out.sdk = st.sdk; out.device = st.device; out.localnet = st.localnet; out.nearby = st.nearby;
+      if (st.sdk >= 36 && st.localnet !== 'granted') {
+        var want = st.sdk >= 37 ? ['localnet'] : ['localnet', 'nearby'];
+        return Diag.requestPermissions({ permissions: want }).then(function (r) { out.granted = r && (r.localnet === 'granted' || r.nearby === 'granted'); out.localnet = r && r.localnet; }, function () {});
+      }
+    }).then(function () { return Diag.httpGet({ url: base + '/api/health' }); }).then(function (h) {
+      out.nativeOk = !!(h && h.ok && /"ok":true/.test(h.body || '')); out.nativeErr = h && h.error; return out;
+    }, function (e) { out.nativeErr = String(e && e.message || e); return out; });
+  };
+  // 原生网络发请求（浏览器内核被拦住、但系统网络能通时用）：Capacitor 自带的 CapacitorHttp
+  var CHttp = native ? plug('CapacitorHttp') : null;
+  api.nativeRequest = function (method, url, headers, body) {
+    if (!CHttp) return Promise.reject(new Error('unsupported'));
+    return CHttp.request({ method: method, url: url, headers: headers || {}, data: body, connectTimeout: 15000, readTimeout: 120000 }).then(function (r) { return { status: r.status, data: r.data }; });
+  };
   /* ---------- 诊断：上次闪退的原因（Android），由 app.js 启动后提示 ---------- */
   api.lastCrash = function () { return Diag ? Diag.lastCrash().then(function (r) { return r && r.text || ''; }, function () { return ''; }) : Promise.resolve(''); };
   api.plugins.Diag = Diag;

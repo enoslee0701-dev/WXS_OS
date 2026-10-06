@@ -181,7 +181,7 @@
   var SRV = typeof TMS !== 'undefined' && TMS.server, srvL = { probed: false, setup: false, err: '', busy: false, url: SRV ? TMS.serverUrl() : '' };
   function srvProbe() {
     if (!srvL.url || /^https?:\/\/$/.test(srvL.url)) { srvL.probed = true; srvL.err = '请先填写服务器地址'; return; }
-    TMS.probe(srvL.url).then(function (r) { srvL.probed = true; srvL.setup = !r.setup; srvL.err = ''; render(); }, function (e) { srvL.probed = true; srvL.err = e.error || '连不上服务器'; render(); });
+    TMS.probe(srvL.url).then(function (r) { srvL.probed = true; srvL.setup = !r.setup; srvL.err = ''; render(); }, function (e) { srvL.probed = true; srvL.err = e.error || '连不上服务器'; render(); netFix(srvL.url); });
   }
   function viewSrvLogin() {
     if (!srvL.probed) { srvProbe(); }
@@ -205,6 +205,22 @@
     }
     if (!TMS.sameOrigin) h += '<button class="srv-local" data-do="srvLocal">不连服务器，用演示模式看看</button>';
     return h + '</div>';
+  }
+  /* 连不上服务器时（安卓）：申请本地网络权限后重试；系统网络能通但浏览器内核不通，就切到原生网络模式；还不行就把诊断写进提示 */
+  var netFixing = false;
+  function netFix(url) {
+    if (netFixing || typeof TMN === 'undefined' || !TMN.netDiag || !url || /^https?:\/\/$/.test(url)) return;
+    netFixing = true;
+    var base = TMS.normUrl ? TMS.normUrl(url) : url;
+    TMN.netDiag(base).then(function (d) {
+      netFixing = false; if (!d) return;
+      var retry = function (msg) { if (msg) toast(msg); srvL.probed = false; srvL.err = ''; render(); };
+      if (d.nativeOk && !TMS.nativeMode) { TMS.setNativeMode(true); return retry('已改用手机系统网络连接服务器'); }
+      if (d.granted) return retry('已允许访问本地网络，正在重新连接');
+      if (!d.nativeOk) srvL.err = '连不上服务器（' + base + '）。手机系统也连不到这个地址：请确认手机和服务器电脑连的是同一个 Wi-Fi（不是流量、不是访客 Wi-Fi）、关掉 VPN，服务器电脑开着。诊断：' + d.device + '；本地网络权限 ' + (d.localnet || '无') + '；' + (d.nativeErr || '').slice(0, 80);
+      render();
+      if (SRV && TMS.diag) TMS.diag({ kind: 'connect', base: base, diag: d });
+    });
   }
   // 只切换按钮状态，不重绘表单（重绘会清掉已经填好的账号）
   /* 正式模式（连服务器）下的措辞：去掉「演示版」，已经不对的说法（不上传等）换成实际情况；演示模式原样 */
@@ -255,7 +271,7 @@
   function srvPrefill() { try { return localStorage.getItem('tm_prefill_login') || ''; } catch (e) { return ''; } }
   function srvBusy(b) { srvL.busy = b; var x = document.querySelector('.srv-form button[type=submit]'); if (x) { x.disabled = b; if (!x.dataset.t) x.dataset.t = x.textContent; x.textContent = b ? (x.closest('[data-form=srvSetup]') ? '正在创建…' : '正在登录…') : x.dataset.t; } }
   var SRVF = {
-    srvLogin: function (o) { srvL.url = o.server || srvL.url; srvBusy(true); TMS.login(srvL.url, (o.login || '').trim(), o.password || '').then(null, function (e) { srvBusy(false); if (e.needsSetup) { srvL.setup = true; srvL.err = ''; render(); } toast(e.error || '登录失败', true); }); },
+    srvLogin: function (o) { srvL.url = o.server || srvL.url; srvBusy(true); TMS.login(srvL.url, (o.login || '').trim(), o.password || '').then(null, function (e) { srvBusy(false); if (e.needsSetup) { srvL.setup = true; srvL.err = ''; render(); } toast(e.error || '登录失败', true); if (!e.status) netFix(srvL.url); }); },
     srvSetup: function (o) { srvL.url = o.server || srvL.url; srvBusy(true); TMS.setup(srvL.url, { name: (o.name || '').trim(), title: (o.title || '').trim(), login: (o.login || '').trim(), password: o.password || '', demo: !!o.demo, code: (o.code || '').trim() }).then(null, function (e) { srvBusy(false); toast(e.error || '创建失败', true); }); }
   };
   /* App（原生）首次打开：先问连团队服务器还是看演示；浏览器演示网页不受影响 */
