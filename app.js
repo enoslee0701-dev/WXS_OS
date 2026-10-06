@@ -2719,6 +2719,7 @@
     if ((w.leadId === me || (w.kind !== 'product' && w.operatorId === me) || ow) && TM.STAGES[w.kind].length > 1 && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['推进阶段', 'stage']);
     if (ow && ['planning', 'active', 'acceptance', 'blocked'].indexOf(w.status) >= 0) a.push(['暂停', 'pause']);
     if (ow && w.status === 'paused') a.push(['恢复', 'resume']);
+    if ((ow || w.leadId === me) && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['更换人员', 'wReassign']);
     if ((ow || w.leadId === me || w.operatorId === me) && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['取消项目', 'cancelWork']);
     return a;
   }
@@ -2787,7 +2788,7 @@
     var IC = function (path, c) { return '<svg viewBox="0 0 24 24" fill="none" stroke="' + (c || 'currentColor') + '" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + path + '</svg>'; };
     var h = ixHead('任务详情', '把事情做完、做好') + steps +
       '<section class="ix2-card ix2-main"><div class="tx-chips">' + pill('task', t.status) + '<i>' + esc(L.kind[w.kind]) + '</i>' + (t.priority === 'hi' ? '<i class="r">高优先级</i>' : '') + (od ? '<i class="r">已逾期</i>' : '') + (st ? '<i class="r">' + S.settings.staleDays + ' 天以上无动态</i>' : '') + '</div>' +
-      '<h2>' + esc(t.title) + '</h2><a class="tx-work" href="#/work/' + w.id + '">' + IC('<path d="M3.8 8.2a2.7 2.7 0 0 1 2.7-2.7h3l2 2.2h6a2.7 2.7 0 0 1 2.7 2.7v6.9a2.7 2.7 0 0 1-2.7 2.7h-11a2.7 2.7 0 0 1-2.7-2.7z"/>') + '<span>属于项目</span><b>' + esc(w.title) + '</b>' + hi('chev', 2) + '</a>' +
+      '<h2>' + esc(t.title) + '</h2>' + ((w.leadId === me || w.operatorId === me || isOwner()) && ['done', 'cancelled'].indexOf(t.status) < 0 && w.status !== 'paused' ? '<button type="button" class="btn ghost tx-edit" data-do="taskEdit">编辑任务</button>' : '') + '<a class="tx-work" href="#/work/' + w.id + '">' + IC('<path d="M3.8 8.2a2.7 2.7 0 0 1 2.7-2.7h3l2 2.2h6a2.7 2.7 0 0 1 2.7 2.7v6.9a2.7 2.7 0 0 1-2.7 2.7h-11a2.7 2.7 0 0 1-2.7-2.7z"/>') + '<span>属于项目</span><b>' + esc(w.title) + '</b>' + hi('chev', 2) + '</a>' +
       (t.status === 'blocked' ? '<div class="callout bad" style="margin-top:10px">受阻：' + esc(t.blockedReason) + '</div>' : '') +
       (nx ? '<div class="ix-next ix2-next tx-next">' + av(nx.who, true) + '下一步：<b>' + esc(nx.who === me ? '你' : nm(nx.who)) + '</b> ' + esc(nx.what) + '</div>' : '') + '</section>';
     var row = function (icon, label, val, full) { return '<div class="wx-r' + (full ? ' full' : '') + '"><span class="wx-ri">' + icon + '</span><span class="wx-rl">' + label + '</span><span class="wx-rv">' + val + '</span></div>'; };
@@ -2999,6 +3000,29 @@
         function (o) { act('work.stage', { id: w.id, stage: o.stage, note: o.note }, '阶段已更新'); });
     },
     closeWork: function () { var w = W(cur().id); openSheet('确认事项完成', '<p>事项下的任务已全部验收通过。确认后事项完成，老板和发起人会收到通知。</p>' + field('验收意见（可选）', '<textarea name="note" rows="2"></textarea>'), '确认完成', function (o) { act('work.close', { id: w.id, note: o.note }, '事项已完成'); }); },
+    taskEdit: function () {
+      var t = T(cur().id), w = W(t.workId), revs = TM.activeUsers(S).filter(function (u) { return u.id !== t.ownerId && !u.roles.every(function (a) { return a.role === 'admin'; }); }).map(function (u) { return u.id; });
+      openSheet('编辑任务', field('任务', '<input type="text" name="title" maxlength="50" value="' + esc(t.title) + '" required>') +
+        field('截止日期', '<input type="date" name="due" value="' + esc(t.due || '') + '">') +
+        '<div class="fld"><span>优先级</span><div class="opts">' + [['hi', '高'], ['mid', '中'], ['lo', '低']].map(function (x) { return opt('priority', x[0], x[1], '', (t.priority || 'mid') === x[0]); }).join('') + '</div></div>' +
+        field('验收人', userSelect('reviewerId', revs, t.reviewerId)) +
+        field('预期成果', '<input type="text" name="expected" value="' + esc(t.expected || '') + '" required>') +
+        field('验收标准', '<textarea name="criteria" rows="2" required>' + esc(t.criteria || '') + '</textarea>') +
+        field('说明（可选）', '<textarea name="description" rows="3">' + esc(t.description || '') + '</textarea>'), '保存', function (o) {
+          act('task.update', { id: t.id, title: o.title, due: o.due || null, priority: o.priority, reviewerId: o.reviewerId, expected: o.expected, criteria: o.criteria, description: o.description }, '任务已修改，执行人已收到通知');
+        });
+    },
+    wReassign: function () {
+      var w = W(cur().id), ow = isOwner(), act0 = TM.activeUsers(S);
+      var leads = TM.leadUsers(S), ops = act0.filter(function (u) { return TM.canFollow(S, u.id); }).map(function (u) { return u.id; }), revs = act0.filter(function (u) { return !u.roles.every(function (a) { return a.role === 'admin'; }); }).map(function (u) { return u.id; });
+      openSheet('更换项目人员', '<div class="callout">更换后会写进项目动态，并通知新旧双方。</div>' +
+        (ow && w.leadId ? field('项目负责人', userSelect('leadId', leads, w.leadId)) : '') + (ow ? field('跟进运营', userSelect('operatorId', ops, w.operatorId)) : '') +
+        field('验收人', userSelect('reviewerId', revs, w.reviewerId)), '保存', function (o) {
+          var pl = { id: w.id }; ['leadId', 'operatorId', 'reviewerId'].forEach(function (k) { if (o[k] && o[k] !== w[k]) pl[k] = o[k]; });
+          if (Object.keys(pl).length === 1) return closeSheet();
+          act('work.reassign', pl, '已更换，相关人已收到通知');
+        });
+    },
     cancelWork: function () { var w = W(cur().id), n = S.tasks.filter(function (t) { return t.workId === w.id && ['done', 'cancelled'].indexOf(t.status) < 0; }).length;
       openSheet('取消项目', '<div class="callout warn">取消后项目不能再操作' + (n ? '，' + n + ' 个未完成的任务会一并取消' : '') + '，相关人会收到通知，记录保留。来源想法会转为「暂缓」。</div>' + field('原因', '<textarea name="reason" rows="3" required></textarea>'), '确认取消', function (o) { act('work.cancel', { id: w.id, reason: o.reason }, '项目已取消'); }, true); },
     pause: function () { var w = W(cur().id); openSheet('暂停事项（纠偏）', '<div class="callout warn">暂停后所有任务不能操作，相关人会收到通知，原记录保留。</div>' + field('原因', '<textarea name="reason" rows="3"></textarea>'), '暂停', function (o) { act('work.pause', { id: w.id, reason: o.reason }, '已暂停'); }, true); },

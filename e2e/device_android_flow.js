@@ -18,6 +18,7 @@ const api = async (method, p, body, token) => (await fetch(API + p, { method, he
   console.log('设备：' + d.model());
   adb(`reverse tcp:${PORT} tcp:${PORT}`); // 手机上的 localhost:PORT 就是这台 Mac
   adb('logcat -c -b crash');
+  adb(`shell pm grant ${PKG} android.permission.RECORD_AUDIO`); // 全新安装时录音会弹系统权限框，挡住后面的步骤
   let p = await restartApp(d);
   const errs = []; p.on('pageerror', e => errs.push(e.message));
   // 页面用了 CSS zoom，旧版安卓 WebView 上 Playwright 算出的点击坐标会偏：直接触发元素的点击
@@ -54,10 +55,10 @@ const api = async (method, p, body, token) => (await fetch(API + p, { method, he
       let res = ''; for (let i = 0; i < 40 && !res; i++) { await p.waitForTimeout(500); res = await p.evaluate(() => { const t = document.getElementById('toast'); const v = document.querySelector('[data-cap="vo.text"]'); return v && v.value ? 'text:' + v.value : (t.className.includes('on') && /识别到说话|转文字失败|连不上/.test(t.textContent) ? 'toast:' + t.textContent : ''); }); }
       ok(/^text:|没有识别到说话/.test(res), '这台手机没有语音识别：录音交给服务器转写，流程走通 ' + res);
       await p.evaluate(() => { location.hash = '#/home'; }); await p.waitForTimeout(500);
-    } else console.log('（这台设备有语音识别服务，跳过服务器转写这一步）');
+    } else { console.log('（这台设备有语音识别服务，跳过服务器转写这一步）'); await p.evaluate(() => { location.hash = '#/home'; }); await p.waitForTimeout(500); }
   } else console.log('（服务器没装语音转写，跳过）');
   // 3. 手机返回键：回到开始记录前的页面（首页）
-  adb('shell input keyevent 4'); await p.waitForTimeout(800);
+  adb('shell input keyevent 4'); await p.waitForTimeout(1500); // 真机开着页面切换动画，多等一会
   ok(await p.evaluate(() => location.hash) === '#/home', '手机返回键回到首页：' + await p.evaluate(() => location.hash));
   // 4. 服务器上的改动实时出现在手机上
   await api('POST', '/api/act', { name: 'idea.create', payload: { note: '来自电脑的想法' } }, tok);

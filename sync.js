@@ -47,7 +47,9 @@ var TMS = (function () {
   function req(method, path, body, wait) { return reqAt(api.base, method, path, body, api.token, wait); }
   var AI_WAIT = 120000; // AI 生成要几十秒，不能用 15 秒的普通超时（客户端放弃了服务器照样跑完、照样扣次数）
   // iOS 里：localStorage 的删除要先同步到原生备份再刷新，否则刷新后会被当成「丢失」又补回来（退出了又登录回去）
-  function reloadSafe() { var done = false, go = function () { if (!done) { done = true; location.reload(); } }; try { if (window.TMN && TMN.native && TMN.flush) { TMN.flush().then(go, go); setTimeout(go, 1500); return; } } catch (e) {} go(); }
+  // 刷新前先收起键盘并稍等：旧版安卓 WebView 在刷新瞬间收到原生「键盘收起」事件时，新页面还没有 Capacitor，会报错
+  function reloadSafe() { var done = false, kb = false; try { var a = document.activeElement; kb = !!(a && /^(INPUT|TEXTAREA)$/.test(a.tagName)); if (kb) a.blur(); } catch (e) {}
+    var go = function () { if (!done) { done = true; setTimeout(function () { location.reload(); }, kb ? 350 : 0); } }; try { if (window.TMN && TMN.native && TMN.flush) { TMN.flush().then(go, go); setTimeout(go, 1500); return; } } catch (e) {} go(); }
   function toast(m, bad) { if (window.__tm && window.__tm.toast) window.__tm.toast(m, bad); }
 
   /* ---------- 状态提示 ---------- */

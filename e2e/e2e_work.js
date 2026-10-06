@@ -62,4 +62,15 @@ await p.goto(URL+'#/work/W1');await p.waitForTimeout(200);await p.click('.action
 await p.click('.sheet [data-do=cancelWork]');await p.fill('.sheet textarea[name=reason]','方向调整');await sub();await p.waitForTimeout(150);
 ok(await p.evaluate(()=>{const S=window.__tm.S;return S.workItems.find(w=>w.id==='W1').status==='cancelled'&&S.tasks.filter(t=>t.workId==='W1').every(t=>['done','cancelled'].includes(t.status));}),'取消项目后项目和未完成任务都已取消');
 ok(await p.locator('.actions .btn:has-text("更多操作")').count()===0 || !(await p.evaluate(()=>!!document.querySelector('.sheet [data-do=cancelWork]'))),'已取消的项目不再提供取消');
+// 编辑任务：改截止日期和优先级
+{ const tid=await p.evaluate(()=>{const S=window.__tm.S;const t=S.tasks.find(x=>!['done','cancelled'].includes(x.status)&&S.workItems.find(w=>w.id===x.workId).status!=='paused'&&S.workItems.find(w=>w.id===x.workId).status!=='cancelled');return t&&t.id;});
+  await p.goto(URL+'#/task/'+tid);await p.waitForTimeout(200);ok(await p.locator('[data-do=taskEdit]').count()===1,'老板在任务详情看到「编辑任务」');
+  await p.click('[data-do=taskEdit]');await p.fill('.sheet input[name=due]','2026-12-24');await p.check('.sheet input[name=priority][value=hi]');await sub();await p.waitForTimeout(150);
+  ok(await p.evaluate((id)=>{const t=window.__tm.S.tasks.find(x=>x.id===id);return t.due==='2026-12-24'&&t.priority==='hi';},tid),'编辑任务保存成功');
+  // 更换项目人员：验收人
+  const wid=await p.evaluate((id)=>window.__tm.S.tasks.find(x=>x.id===id).workId,tid);
+  await p.goto(URL+'#/work/'+wid);await p.waitForTimeout(200);await p.click('.actions .btn:has-text("更多操作")');await p.click('.sheet [data-do=wReassign]');await p.waitForSelector('.sheet h2:has-text("更换项目人员")');
+  const nr=await p.evaluate(()=>{const s=document.querySelector('.sheet select[name=reviewerId]');const o=[...s.options].find(x=>!x.selected);return o&&o.value;});
+  await p.selectOption('.sheet select[name=reviewerId]',nr);await sub();await p.waitForTimeout(150);
+  ok(await p.evaluate(([w,r])=>window.__tm.S.workItems.find(x=>x.id===w).reviewerId===r,[wid,nr]),'更换验收人成功'); }
 console.log(`项目页 E2E 通过 ${pass}，失败 ${fail}`);await b.close();process.exit(fail?1:0);})().catch(e=>{console.error(e);process.exit(1)});

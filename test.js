@@ -701,5 +701,29 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
     must(TM.act(g, O, 'work.resume', { id: w.id }), '恢复'); must(TM.act(g, sub.reviewerId, 'task.review', { id: sub.id, verdict: 'pass', note: '好' }), '恢复后可以验收'); }
   else ok(false, '演示数据里没有待验收任务'); }
 
+// ===== 编辑任务、更换项目人员 =====
+{ const e = fresh();
+  const et = e.tasks.find(t => !['done', 'cancelled'].includes(t.status) && e.workItems.find(w => w.id === t.workId).status !== 'paused');
+  const ew = e.workItems.find(w => w.id === et.workId);
+  rej(TM.act(e, et.ownerId === DV ? AX : DV, 'task.update', { id: et.id, due: '2026-12-01' }), '无关的人不能改任务');
+  const eu = must(TM.act(e, O, 'task.update', { id: et.id, due: '2026-12-01', priority: 'hi', title: '改过的标题' }), '老板改任务截止、优先级、标题');
+  const et2 = e.tasks.find(t => t.id === et.id);
+  ok(et2.due === '2026-12-01' && et2.priority === 'hi' && et2.title === '改过的标题', '任务已更新');
+  ok(e.events.some(v => v.taskId === et.id && v.action === 'task.update' && /截止/.test(v.text)), '修改写进动态');
+  ok(e.notifications.some(n => n.userId === et.ownerId && /任务有修改/.test(n.title)), '执行人收到修改通知');
+  rej(TM.act(e, O, 'task.update', { id: et.id, due: 'next week' }), '非法日期被拒');
+  rej(TM.act(e, O, 'task.update', { id: et.id, reviewerId: et.ownerId }), '验收人不能是执行人自己');
+  rej(TM.act(e, O, 'task.update', { id: et.id, title: '改过的标题' }), '没变化时提示没有要修改的内容');
+  // 更换项目人员
+  rej(TM.act(e, OP, 'work.reassign', { id: ew.id, leadId: O }), '运营者不能换负责人');
+  const newRev = [LD, OP, O].find(x => x !== ew.reviewerId);
+  must(TM.act(e, O, 'work.reassign', { id: ew.id, reviewerId: newRev }), '老板换验收人');
+  ok(e.workItems.find(w => w.id === ew.id).reviewerId === newRev, '验收人已更换');
+  rej(TM.act(e, O, 'work.reassign', { id: ew.id, operatorId: DV }), '跟进人必须是运营者');
+  rej(TM.act(e, O, 'work.reassign', { id: ew.id }), '没有要换的人');
+  // 派任务时验收人和日期要合法
+  rej(TM.act(e, O, 'work.plan', { id: ew.id, tasks: [{ title: 'x', ownerId: DV, expected: 'a', criteria: 'b', reviewerId: 'nobody' }] }), '验收人不存在被拒');
+  rej(TM.act(e, O, 'work.plan', { id: ew.id, tasks: [{ title: 'x', ownerId: DV, expected: 'a', criteria: 'b', due: { a: 1 } }] }), '非法截止日期被拒'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

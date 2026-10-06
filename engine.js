@@ -551,6 +551,8 @@ var TM = (function () {
       var collabs = (x.collabs || []).filter(function (c, i, a) { return c !== x.ownerId && live(s, c) && a.indexOf(c) === i; });
       if (x.priority) need(['hi', 'mid', 'lo'].indexOf(x.priority) >= 0, '优先级不正确');
       if (txt(x.title).length > 50) deny('任务标题不超过 50 字');
+      if (x.reviewerId) need(live(s, x.reviewerId), '验收人不存在或已停用');
+      if (x.due) need(typeof x.due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x.due), '截止日期不正确');
       var t = { id: nid(s, 'T'), workId: w.id, title: txt(x.title), description: txt(x.description), ttype: x.ttype || '', priority: x.priority || 'mid', milestone: !!x.milestone, ownerId: x.ownerId, collabs: collabs, reviewerId: x.reviewerId || w.reviewerId,
         due: x.due || null, expected: txt(x.expected), criteria: txt(x.criteria), status: 'assigned', blockedReason: '', assignedBy: x.assignedBy || 'manual', lastActivity: now(s), createdAt: now(s) };
       s.tasks.push(t);
@@ -680,6 +682,38 @@ var TM = (function () {
     if ('due' in p) { need(!p.due || /^\d{4}-\d{2}-\d{2}$/.test(p.due), '日期不正确'); w.due = p.due || null; ch.push('截止时间'); }
     need(ch.length, '没有要修改的内容');
     ev(s, { workId: w.id, ideaId: w.ideaId, actor: uid, action: 'work.update', text: '修改项目' + ch.join('、') }); touchWork(s, w); return {};
+  };
+  /* 换项目里的人：老板可换负责人 / 跟进运营 / 验收人；负责人可换验收人。写动态、通知新旧双方 */
+  A['work.reassign'] = function (s, uid, p) {
+    var w = work(s, p.id), ow = hasRole(s, uid, 'owner'); need(['done', 'cancelled'].indexOf(w.status) < 0, '项目已结束');
+    var ch = [], who = [];
+    var set = function (field, label, id, ok, msg) { if (!(field in p) || !p[field] || p[field] === w[id]) return; need(ok(p[field]), msg); var old = w[id]; w[id] = p[field]; ch.push(label + '：' + name(s, old) + ' → ' + name(s, p[field])); who.push(old, p[field]); };
+    if ('leadId' in p || 'operatorId' in p) need(ow, '只有老板可以更换项目负责人或跟进运营');
+    if ('reviewerId' in p) need(ow || w.leadId === uid, '只有老板或项目负责人可以更换验收人');
+    set('leadId', '项目负责人', 'leadId', function (v) { return leadUsers(s).indexOf(v) >= 0; }, '新负责人必须是在职的负责人角色');
+    set('operatorId', '跟进运营', 'operatorId', function (v) { return live(s, v) && canFollow(s, v); }, '新跟进人必须是在职的运营者');
+    set('reviewerId', '验收人', 'reviewerId', function (v) { return live(s, v); }, '验收人不存在或已停用');
+    need(ch.length, '没有要更换的人');
+    ev(s, { workId: w.id, ideaId: w.ideaId, actor: uid, action: 'work.reassign', text: '更换' + ch.join('；') });
+    notify(s, who, uid, '项目人员有变动', w.title + '：' + ch.join('；'), '#/work/' + w.id); touchWork(s, w); return {};
+  };
+  /* 编辑任务：项目负责人、跟进运营或老板；改截止、验收人等写进动态并通知执行人（改验收人还通知新验收人） */
+  A['task.update'] = function (s, uid, p) {
+    var t = task(s, p.id), w = work(s, t.workId); need(canManageWork(s, uid, w), '只有项目负责人、跟进运营者或老板可以修改任务');
+    need(['done', 'cancelled'].indexOf(t.status) < 0, '任务已结束，不能修改'); need(w.status !== 'paused', '项目已暂停，恢复后才能操作');
+    var ch = [], extra = [];
+    if ('title' in p) { var ti = txt(p.title); need(ti, '任务需要标题'); need(ti.length <= 50, '任务标题不超过 50 字'); if (ti !== t.title) { t.title = ti; ch.push('标题'); } }
+    if ('description' in p) { var de = txt(p.description).slice(0, 2000); if (de !== t.description) { t.description = de; ch.push('说明'); } }
+    if ('expected' in p) { var ex = txt(p.expected); need(ex, '请写预期成果'); if (ex !== t.expected) { t.expected = ex.slice(0, 500); ch.push('预期成果'); } }
+    if ('criteria' in p) { var cr = txt(p.criteria); need(cr, '请写验收标准'); if (cr !== t.criteria) { t.criteria = cr.slice(0, 500); ch.push('验收标准'); } }
+    if ('priority' in p) { need(['hi', 'mid', 'lo'].indexOf(p.priority) >= 0, '优先级不正确'); if (p.priority !== t.priority) { t.priority = p.priority; ch.push('优先级'); } }
+    if ('due' in p) { need(!p.due || (typeof p.due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(p.due)), '截止日期不正确'); var nd = p.due || null; if (nd !== t.due) { ch.push('截止：' + (t.due || '无') + ' → ' + (nd || '无')); t.due = nd; t.remindedOn = null; } }
+    if ('reviewerId' in p && p.reviewerId && p.reviewerId !== t.reviewerId) { need(live(s, p.reviewerId), '验收人不存在或已停用'); need(p.reviewerId !== t.ownerId, '验收人不能是执行人自己'); ch.push('验收人：' + name(s, t.reviewerId) + ' → ' + name(s, p.reviewerId)); t.reviewerId = p.reviewerId; extra.push(p.reviewerId); }
+    if ('collabs' in p) { var cs = (Array.isArray(p.collabs) ? p.collabs : []).filter(function (c, i, a) { return c !== t.ownerId && live(s, c) && a.indexOf(c) === i; }).slice(0, 10);
+      if (cs.join() !== t.collabs.join()) { extra = extra.concat(cs.filter(function (c) { return t.collabs.indexOf(c) < 0; })); t.collabs = cs; ch.push('协作者'); } }
+    need(ch.length, '没有要修改的内容');
+    ev(s, { taskId: t.id, workId: w.id, actor: uid, action: 'task.update', text: '修改任务' + ch.join('、') });
+    notify(s, [t.ownerId].concat(extra), uid, '任务有修改', t.title + '：' + ch.join('、'), '#/task/' + t.id); touchTask(s, t); return {};
   };
   A['work.milestone.add'] = function (s, uid, p) {
     var w = work(s, p.id); need(canManageWork(s, uid, w), '只有项目负责人、跟进运营者或老板可以添加里程碑');
