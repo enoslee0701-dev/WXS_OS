@@ -33,5 +33,10 @@ await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acc
   ok(/^任务表-.*\.csv$/.test(d1.suggestedFilename())&&t1.charCodeAt(0)===0xFEFF&&t1.includes('任务,所属项目,状态')&&t1.split('\r\n').length>3,'导出任务表 CSV');
   const [d2]=await Promise.all([p.waitForEvent('download'),p.click('[data-do=csvWorks]')]);const t2=fs.readFileSync(await d2.path(),'utf8');
   ok(t2.includes('项目,类型,状态')&&t2.split('\r\n').length>2,'导出项目表 CSV'); }
+// 全部文件：我的 → 全部文件，按类型筛选、按名字搜
+await p.goto(URL+'#/me');await p.waitForTimeout(100);await p.click('a[href="#/files"]');await p.waitForTimeout(150);
+{ const n=await p.locator('.fl-list .row').count();ok(n>=1&&(await p.textContent('main')).includes('全部文件'),'全部文件列出附件 '+n);
+  await p.click('[data-do=flKind][data-k=img]');await p.waitForTimeout(80);const ni=await p.locator('.fl-list .row').count();
+  await p.click('[data-do=flKind][data-k=all]');await p.fill('#flq','不存在的文件名xyz');await p.waitForTimeout(400);ok(await p.locator('.fl-list .row').count()===0&&ni<=n,'按类型筛选、按名字搜');await p.fill('#flq','');await p.waitForTimeout(300); }
 ok(errs.length===0,'无报错 '+errs.join('|'));
 console.log(`我的 E2E 通过 ${pass}，失败 ${fail}`);await b.close();process.exit(fail?1:0);})().catch(e=>{console.error(e);process.exit(1)});

@@ -49,6 +49,34 @@
   function keepBlob(id, data) { var u = URL.createObjectURL(data); if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.upload(id, data, data && data.name); return u; }
   // 打开链接 / 文件：App 里交给系统浏览器或「用其他应用打开」（见 native.js），网页里开新窗口
   function openLink(u) { if (typeof TMN !== 'undefined' && TMN.openUrl) TMN.openUrl(u); else window.open(u, '_blank', 'noopener'); }
+  // 打开一个附件（项目文件、交付物、想法附件通用）：图片 / 录音 / 视频在面板里看，其他交给系统
+  function openMedia(m) {
+    if (m.kind === 'link') { if (m.url) openLink(m.url); return; }
+    var b = m.localId && blobUrl(m.localId); if (!b) return toast(SRV ? '这个文件还没上传完，稍后再试' : '演示版没有上传，这个文件只在添加它的设备上、刷新前能打开', true);
+    if (m.kind === 'image') return openSheet(m.name, '<img src="' + b + '" alt="' + esc(m.name) + '" style="width:100%;border-radius:14px">', '关闭', function () { closeSheet(); });
+    if (m.kind === 'audio') return openSheet(m.name, '<audio controls src="' + b + '" style="width:100%"></audio>', '关闭', function () { closeSheet(); });
+    if (m.kind === 'video') return openSheet(m.name, '<video controls playsinline src="' + b + '" style="width:100%;border-radius:14px"></video>', '关闭', function () { closeSheet(); });
+    openFile(b, m.name);
+  }
+  /* 全部文件：我能看到的项目文件、交付物附件、想法附件，按类型筛选、按名字搜 */
+  var fl = { k: 'all', q: '' };
+  function allFiles() {
+    var out = [];
+    vWork().forEach(function (w) { (w.files || []).forEach(function (m) { out.push({ m: m, src: '项目「' + w.title + '」', href: '#/work/' + w.id, at: m.at || w.createdAt, by: m.by }); }); });
+    var vt = {}; vTasks().forEach(function (t) { vt[t.id] = t; });
+    (S.deliverables || []).forEach(function (f) { var t = vt[f.taskId]; if (!t) return; (f.media || []).forEach(function (m) { out.push({ m: m, src: '交付物 · 任务「' + t.title + '」', href: '#/task/' + t.id, at: f.at, by: f.by }); }); });
+    vIdeas().forEach(function (d) { if (!TM.canViewMedia(S, me, d)) return; (d.media || []).forEach(function (m) { if (TM.canSeeMediaItem(S, me, d, m)) out.push({ m: m, src: '想法「' + (d.title || '未命名') + '」', href: '#/idea/' + d.id, at: m.at || d.createdAt, by: m.by || d.creatorId }); }); });
+    return out.sort(function (a, b) { return (b.at || 0) - (a.at || 0); });
+  }
+  function flKind(m) { var n = (m.name || '').toLowerCase(); return m.kind === 'link' ? 'link' : m.kind === 'image' || /\.(png|jpe?g|gif|webp|heic)$/.test(n) ? 'img' : m.kind === 'audio' || m.kind === 'video' ? 'av' : 'doc'; }
+  function viewFiles() {
+    var all = allFiles(), K = [['all', '全部'], ['doc', '文档'], ['img', '图片'], ['av', '录音视频'], ['link', '链接']], q = fl.q.trim().toLowerCase();
+    var rows = all.filter(function (x) { return (fl.k === 'all' || flKind(x.m) === fl.k) && (!q || (x.m.name + ' ' + x.src).toLowerCase().indexOf(q) >= 0); });
+    return ixHead('全部文件', '我能看到的项目文件、交付物和想法附件') + '<div class="fl-top"><input type="search" id="flq" placeholder="按文件名或项目名找" value="' + esc(fl.q) + '"></div>' +
+      '<div class="w-chips">' + K.map(function (k) { var n = all.filter(function (x) { return k[0] === 'all' || flKind(x.m) === k[0]; }).length; return '<button class="' + (fl.k === k[0] ? 'on' : '') + '" data-do="flKind" data-k="' + k[0] + '">' + k[1] + ' <i>' + n + '</i></button>'; }).join('') + '</div>' +
+      (rows.length ? '<div class="list wf-list fl-list">' + rows.slice(0, 200).map(function (x, i) { var meta = [x.src, x.by ? nm(x.by) : '', x.at ? ago(x.at) : ''].filter(Boolean).join(' · ');
+        return '<div class="row wf"><button class="wf-o" data-do="flOpen" data-i="' + all.indexOf(x) + '">' + wfIcon(x.m) + '<span class="wf-t"><b>' + esc(x.m.name) + '</b><small>' + esc(meta) + '</small></span></button><a class="fl-go" href="' + x.href + '" aria-label="去所在的地方">' + hi('chev', 2) + '</a></div>'; }).join('') + '</div>' : emptyBox(all.length ? '没有符合条件的文件。' : '还没有文件。在项目、任务交付或想法里上传后，会集中显示在这里。'));
+  }
   function openFile(u, name) {
     if (typeof TMN !== 'undefined' && TMN.native && /^blob:/.test(u) && TMN.canShareFile) {
       return fetch(u).then(function (r) { return r.blob(); }).then(function (b) { return TMN.shareFile(b, name); }).catch(function () { toast('这个文件打不开', true); });
@@ -1960,6 +1988,7 @@
       '<button class="me-info" data-do="quickAI">' + hi('spark', 1.7) + '<span>AI 助手</span><b>整理、分析、建议、创作</b>' + hi('chev', 2) + '</button>' +
       '<a class="me-info" href="#/inbox">' + hi('bell', 1.7) + '<span>通知中心</span><b>' + (nU ? nU + ' 条未读' : '全部已读') + '</b>' + hi('chev', 2) + '</a>' +
       (can ? '<a class="me-info" href="#/settings">' + ai2('ctx', 1.7) + '<span>更多设置</span><b>终验、标签、提醒、演示工具</b>' + hi('chev', 2) + '</a>' : '') +
+      (myCaps().work || myCaps().ideas || myCaps().tasks ? '<a class="me-info" href="#/files">' + ai2('doc2', 1.7) + '<span>全部文件</span><b></b>' + hi('chev', 2) + '</a>' : '') +
       '<button class="me-info" data-do="meHelp">' + ti('help', 1.7) + '<span>使用帮助</span><b></b>' + hi('chev', 2) + '</button>' +
       '<button class="me-info" data-do="meAbout">' + ai2('info', 1.7) + '<span>关于</span><b>' + esc(SRV ? (APPV ? '版本 ' + APPV : '正式版') : '演示模式') + '</b>' + hi('chev', 2) + '</button></section>';
   }
@@ -2807,13 +2836,7 @@
       openSheet('上传到项目', '<div class="ix2-opts">' + o('environment', 'image/*', ai2('img', 1.7), '拍照', '用相机拍一张') + o('', 'image/*,video/*', ai2('vcam', 1.7), '相册', '图片或视频') + o('', '', ai2('doc2', 1.7), '文件', 'PDF、Excel、Word 等') + o('', 'audio/*', ai2('mic', 1.7), '录音', '选择一段录音') +
         '<button type="button" class="ix2-opt" data-do="wLink"><span class="ix2-oi">' + LINKI + '</span><b>链接</b><small>网页、云盘地址</small></button></div><p class="muted" style="font-size:13px;margin:10px 0 0">项目成员都能看到。每个项目最多 50 个文件；' + (SRV ? '文件会上传到团队服务器，同事都能打开。' : '演示版不上传，文件只保存在这台设备。') + '</p>', '关闭', function () { closeSheet(); }); },
     wLink: function () { var id = cur().id; openSheet('添加链接', field('链接地址', '<input type="url" name="url" placeholder="https://" required>') + field('名称（可选）', '<input type="text" name="name" maxlength="40" placeholder="例如：设计稿">'), '添加', function (o) { var u = (o.url || '').trim(); act('work.attach', { id: id, media: [{ kind: 'link', url: u, name: (o.name || '').trim() || u.replace(/^https?:\/\//, '').slice(0, 40) }] }, '已添加链接'); }); },
-    wfOpen: function (el) { var w = W(cur().id), m = (w.files || []).find(function (f) { return f.id === el.dataset.fid; }); if (!m) return;
-      if (m.kind === 'link') { if (m.url) openLink(m.url); return; }
-      var b = m.localId && blobUrl(m.localId); if (!b) return toast('演示版没有上传，这个文件只在添加它的设备上、刷新前能打开', true);
-      if (m.kind === 'image') return openSheet(m.name, '<img src="' + b + '" alt="' + esc(m.name) + '" style="width:100%;border-radius:14px">', '关闭', function () { closeSheet(); });
-      if (m.kind === 'audio') return openSheet(m.name, '<audio controls src="' + b + '" style="width:100%"></audio>', '关闭', function () { closeSheet(); });
-      if (m.kind === 'video') return openSheet(m.name, '<video controls playsinline src="' + b + '" style="width:100%;border-radius:14px"></video>', '关闭', function () { closeSheet(); });
-      openFile(b, m.name); },
+    wfOpen: function (el) { var w = W(cur().id), m = (w.files || []).find(function (f) { return f.id === el.dataset.fid; }); if (!m) return; openMedia(m); },
     wfDel: function (el) { var w = W(cur().id), m = (w.files || []).find(function (f) { return f.id === el.dataset.fid; }); if (!m) return; openSheet('删除文件', '<p style="margin:0;font-size:14px">确定删除「' + esc(m.name) + '」？删除后项目成员都看不到了。</p>', '删除', function () { act('work.detach', { id: w.id, fid: m.id }, '已删除'); }, true); },
     wShare: function () { var u = location.href; try { navigator.clipboard.writeText(u).then(function () { toast('链接已复制，同事登录后可查看（需有权限）'); }, function () { toast('请手动复制地址栏链接'); }); } catch (e) { toast('请手动复制地址栏链接'); } },
     wMore: function () {
@@ -3220,6 +3243,7 @@
       case 'todo': if (c.id === 'new') { body = c.sub === 'manual' ? viewTodoManual() : c.sub === 'ai' ? viewTodoAI() : viewTodoNew(); } else { location.hash = '#/tasks'; return; } break;
       case 'me': body = viewMe(); break;
       case 'kb': body = viewKB(c.id); back = true; break;
+      case 'files': body = viewFiles(); break;
       case 'settings': body = viewSettings(); back = true; title = '更多设置'; break;
       default: body = viewHome(); c.name = 'home';
     }
@@ -3227,9 +3251,9 @@
     if (!SRV && /^#\/(new\/(voice|video|file)|project\/ai|todo\/new\/ai|kb\/voice)/.test(location.hash)) { var dtip = '<div class="demo-tip"><b>你正在用演示模式</b><span>这里的录音不会上传，视频里的话不会转成文字，AI 也是规则模拟。连接团队服务器后，录音和视频会自动转成文字，AI 会真正读懂内容。</span><button type="button" class="btn pri" data-do="srvConnect">连接团队服务器</button></div>';
       body = body + dtip; } // 放在页面最后：以前插在第一个区块后面，会把录音页的「话筒—计时—按钮」切开
     var u = TM.user(S, me);
-    var tabKey = { idea: 'ideas', new: 'ideas', project: 'work', stat: 'home', settings: 'me', kb: 'me', todo: 'tasks', ideas: 'ideas', task: 'tasks', inbox: 'home', team: 'me', assign: 'work' }[c.name] || c.name;
+    var tabKey = { idea: 'ideas', new: 'ideas', project: 'work', stat: 'home', settings: 'me', kb: 'me', files: 'me', todo: 'tasks', ideas: 'ideas', task: 'tasks', inbox: 'home', team: 'me', assign: 'work' }[c.name] || c.name;
     var nT = vTasks().filter(function (t) { var nx = TM.nextForTask(S, t); return nx && nx.who === me; }).length;
-    var home = c.name === 'home' || c.name === 'new' || c.name === 'project' || c.name === 'tasks' || c.name === 'todo' || c.name === 'assign' || c.name === 'work' || c.name === 'ideas' || c.name === 'stat' || c.name === 'team' || c.name === 'me' || c.name === 'inbox' || c.name === 'idea' || c.name === 'kb' || c.name === 'task' || c.name === 'settings';
+    var home = c.name === 'home' || c.name === 'new' || c.name === 'project' || c.name === 'tasks' || c.name === 'todo' || c.name === 'assign' || c.name === 'work' || c.name === 'ideas' || c.name === 'stat' || c.name === 'team' || c.name === 'me' || c.name === 'inbox' || c.name === 'idea' || c.name === 'kb' || c.name === 'files' || c.name === 'task' || c.name === 'settings';
     document.body.classList.toggle('is-home', home);
     document.body.classList.toggle('home-lock', c.name === 'home'); document.documentElement.classList.toggle('home-lock', c.name === 'home'); // 旧 WebView 不支持 :has()
     document.body.classList.toggle('is-new', c.name === 'new' || c.name === 'project' || c.name === 'tasks' || c.name === 'todo' || c.name === 'assign' || c.name === 'work' || c.name === 'ideas' || c.name === 'stat' || c.name === 'team' || c.name === 'me' || c.name === 'inbox');
@@ -3410,6 +3434,9 @@
   };
   /* 使用帮助：按自己的角色讲能做什么、一件事怎么走完、常用功能和常见问题 */
   var HELP_ROLE = { owner: '记想法、拍板决策、看全局、最终验收、纠偏（暂停 / 取消项目、改派、撤销验收），管理成员和设置。', operator: '认领想法、改整理稿、派发或送老板决策、跟进项目、验收行政任务。', lead: '规划产品项目、拆任务派人、推进阶段、验收；有发起权时也可以记想法。', executor: '在「任务」里接收任务、开始执行、遇到问题报阻碍、做完提交成果。', admin: '管理成员和登录账号、流程设置、维护 AI 知识库（看不到想法内容）。' };
+  DO.flKind = function (el) { fl.k = el.dataset.k; render(); };
+  DO.flOpen = function (el) { var x = allFiles()[+el.dataset.i]; if (x) openMedia(x.m); };
+  document.addEventListener('input', function (e) { if (e.target && e.target.id === 'flq') { fl.q = e.target.value; clearTimeout(fl.t); fl.t = setTimeout(function () { var pos = e.target.selectionStart; render(); var q2 = document.getElementById('flq'); if (q2) { q2.focus(); try { q2.setSelectionRange(pos, pos); } catch (x) {} } }, 200); } });
   DO.meHelp = function () {
     var u = TM.user(S, me), sec2 = function (t, body) { return '<h3 class="hp-h">' + t + '</h3>' + body; }, li = function (xs) { return '<ul class="hp-l">' + xs.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>'; };
     openSheet('使用帮助', sec2('你的角色', u.roles.map(function (a) { return '<p class="hp-p"><b>' + L.role[a.role] + '</b>：' + HELP_ROLE[a.role] + '</p>'; }).join('')) +
