@@ -570,6 +570,7 @@
       case 'triage': return d.status === 'triage'; case 'awaiting': return d.status === 'awaiting_owner';
       case 'planned': return d.status === 'planned' && TM.ideaProgress(S, d.id) !== 1; case 'finished': return d.status === 'planned' && TM.ideaProgress(S, d.id) === 1;
       case 'closed': return d.status === 'on_hold' || d.status === 'declined';
+      case 'follow': return d.followerId === me && ['triage', 'awaiting_owner', 'planned'].indexOf(d.status) >= 0; // 运营者：我跟进的
       case 'mine': return S.suggestions.some(function (x) { return x.ideaId === d.id && x.authorId === me; }) || S.workItems.some(function (w) { return w.ideaId === d.id && S.tasks.some(function (t) { return t.workId === w.id && (t.ownerId === me || (t.collabs || []).indexOf(me) >= 0); }); });
       default: return true;
     }
@@ -613,7 +614,9 @@
       return '<button class="ib-tile id-tile it-' + t[0] + ' ' + x[3] + (f === t[0] && filt.ideasOpen ? ' on' : '') + (n ? '' : ' zero') + '" data-do="ideasTile" data-f="' + t[0] + '"><span class="ib-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + (t[0] === 'all' ? '<path d="M9 17.5h6M10 20.5h4"/><path d="M12 3.5a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.4 1.1 2.2v1h5v-1c0-.8.4-1.6 1.1-2.2A6 6 0 0 0 12 3.5z"/>' : x[2]) + '</svg></span>' + (act ? '<i class="ib-dot"></i>' : '') + '<b>' + n + '</b><span class="ib-l">' + t[1] + '</span><small>' + t[2] + '</small></button>';
     }).join('') + '</section>';
     var open = filt.ideasOpen, list2 = open ? all.filter(function (d) { return ideaMatch(d, f); }) : all.slice(0, 5);
-    var title = open ? (IDEA_TILE.concat(EXEC_TILE).find(function (t) { return t[0] === f; }) || IDEA_TILE[0])[1] : '最近动态';
+    var title = open ? (f === 'follow' ? '我跟进的' : (IDEA_TILE.concat(EXEC_TILE).find(function (t) { return t[0] === f; }) || IDEA_TILE[0])[1]) : '最近动态';
+    var nf = cp.claimIdeas ? all.filter(function (d) { return ideaMatch(d, 'follow'); }).length : 0;
+    if (nf && !(open && f === 'follow')) h += '<button class="id-follow" data-do="ideasTile" data-f="follow">我跟进的想法 <b>' + nf + '</b>' + hi('chev', 2) + '</button>';
     h += '<div class="ib-head"><b>' + title + '</b>' + (open ? '<span>' + list2.length + ' 个</span><button class="id-link" data-do="ideasRecent">返回动态</button>' : '<button class="id-link" data-do="ideasTile" data-f="all">查看全部' + hi('chev', 2) + '</button>') + '</div>';
     if (!list2.length) return h + emptyBox('这个分类下还没有想法。');
     return h + '<div class="id-list">' + list2.map(function (d) {
