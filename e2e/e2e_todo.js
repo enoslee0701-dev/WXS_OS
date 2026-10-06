@@ -22,6 +22,12 @@ await p.click('[data-do=tdShowDone]');ok(await p.locator('.t-card.done',{hasText
 await p.locator('.t-card',{hasText:'整理 Q3'}).locator('.t-main').click();await p.waitForSelector('.sheet h2:has-text("编辑待办")');
 await p.fill('.sheet input[name=time]','19:30');await p.click('.sheet footer button[type=submit]');await p.waitForTimeout(150);
 ok((await p.locator('.t-card',{hasText:'整理 Q3'}).textContent()).includes('19:30'),'编辑时间');
+// 设成每周重复，勾完成后自动出现下一次
+await p.locator('.t-card',{hasText:'整理 Q3'}).locator('.t-main').click();await p.waitForSelector('.sheet select[name=repeat]');await p.selectOption('.sheet select[name=repeat]','weekly');await p.click('.sheet footer button[type=submit]');await p.waitForTimeout(150);
+{ const n0=await p.evaluate(()=>window.__tm.S.todos.filter(x=>/整理 Q3/.test(x.title)).length);
+  await p.locator('.t-card',{hasText:'整理 Q3'}).locator('[data-do=tdToggle]').first().click();await p.waitForTimeout(200);
+  ok(await p.evaluate((n)=>{const xs=window.__tm.S.todos.filter(x=>/整理 Q3/.test(x.title));return xs.length===n+1&&xs.some(x=>!x.done&&x.repeat==='weekly');},n0),'重复待办完成后生成下一次');
+  ok(/下一次/.test(await p.textContent('#toast')),'提示下一次的日期'); }
 await p.screenshot({path:'td-group.png',fullPage:true});
 await p.click('#tkdays .today + button');ok(await p.locator('.t-card',{hasText:'准备周会资料'}).count()===1,'切到明天看到周会');
 // 两周日期条

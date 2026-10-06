@@ -820,5 +820,16 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
     ok(ids(v.tasks) === ids(ti) && ids(v.workItems) === ids(wi) && ids(v.ideas) === ids(ii), 'viewFor 与逐条判断一致：' + u.name);
   } }
 
+// ===== 重复待办 =====
+{ const rp = fresh();
+  ok(TM.nextDate('2026-10-09', 'weekdays') === '2026-10-12' && TM.nextDate('2026-01-31', 'monthly') === '2026-02-28' && TM.nextDate('2026-12-31', 'daily') === '2027-01-01' && TM.nextDate('2026-10-07', 'weekly') === '2026-10-14', '下一次日期计算（周五→周一、月底、跨年、每周）');
+  rej(TM.act(rp, O, 'todo.create', { title: '周会', date: '2026-10-07', repeat: 'yearly' }), '不支持的重复方式被拒');
+  const r1 = must(TM.act(rp, O, 'todo.create', { title: '周会纪要', date: '2026-10-07', repeat: 'weekly' }), '建每周重复待办');
+  const t1 = must(TM.act(rp, O, 'todo.toggle', { id: r1.id }), '完成');
+  const nx = rp.todos.find(x => x.id === t1.next);
+  ok(nx && nx.date === '2026-10-14' && !nx.done && nx.repeat === 'weekly' && nx.title === '周会纪要', '自动生成下一次');
+  must(TM.act(rp, O, 'todo.toggle', { id: r1.id }), '取消勾选'); must(TM.act(rp, O, 'todo.toggle', { id: r1.id }), '再勾上');
+  ok(rp.todos.filter(x => x.title === '周会纪要').length === 2, '反复勾选不会重复生成'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

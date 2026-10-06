@@ -1381,12 +1381,13 @@
     openSheet(own ? '编辑待办' : '待办', (own ? field('内容', '<input type="text" name="title" maxlength="50" value="' + esc(t.title) + '">') +
       '<div class="row2">' + field('日期', '<input type="date" name="date" value="' + t.date + '">') + field('时间', '<input type="time" name="time" value="' + esc(t.time) + '">') + '</div>' +
       '<div class="fld"><span>优先级</span><div class="opts tdpr">' + [['hi', '高'], ['mid', '中'], ['lo', '低']].map(function (p) { return opt('priority', p[0], p[1], '', t.priority === p[0]); }).join('') + '</div></div>' +
+      field('重复', '<select name="repeat"><option value="">不重复</option>' + Object.keys(TM.REPEATS).map(function (k) { return '<option value="' + k + '"' + (t.repeat === k ? ' selected' : '') + '>' + TM.REPEATS[k] + '</option>'; }).join('') + '</select>', '完成后自动生成下一次') +
       field('备注', '<textarea name="note" rows="2">' + esc(t.note) + '</textarea>') : '<div class="lead" style="font-size:18px">' + esc(t.title) + '</div><p class="muted">' + esc(nm(t.ownerId)) + ' 的待办，' + esc(tdTime({ date: t.date, time: t.time })) + '</p>') +
       (t.people.length ? '<div class="fld"><span>相关人</span><div class="who">' + t.people.map(function (u) { return '<label style="cursor:default">' + av(u, true) + esc(nm(u)) + '</label>'; }).join('') + '</div></div>' : '') +
       '<div class="fld"><span>评论 ' + t.comments.length + '</span>' + t.comments.map(function (c) { return '<div class="sug"><div class="h">' + av(c.by, true) + '<b>' + esc(nm(c.by)) + '</b><span>' + ago(c.at) + '</span></div><p class="b">' + esc(c.body) + '</p></div>'; }).join('') +
       '<div class="row2 mt"><input type="text" id="tdc" placeholder="写评论"><button type="button" class="btn" style="flex:0 0 auto" data-do="tdComment" data-id="' + t.id + '">发送</button></div></div>' +
       (own ? '<button type="button" class="btn danger block mt" data-do="tdDelete" data-id="' + t.id + '">删除待办</button>' : ''), own ? '保存' : '关闭',
-      function (o) { if (!own) return closeSheet(); act('todo.update', { id: t.id, title: o.title, date: o.date, time: o.time, priority: o.priority, note: o.note }, '已保存'); });
+      function (o) { if (!own) return closeSheet(); act('todo.update', { id: t.id, title: o.title, date: o.date, time: o.time, priority: o.priority, note: o.note, repeat: o.repeat || '' }, '已保存'); });
   }
   /* 新建待办：入口 */
   var TPLS = [
@@ -1530,7 +1531,7 @@
     tdFilter: function (el) { td.filter = el.dataset.f; render(); },
     tdShowDone: function () { td.showDone = !td.showDone; render(); },
     tdGroup: function (el) { td.view = 'list'; td.filter = el.dataset.g === 'hi' ? 'hi' : el.dataset.g === 'mine' ? 'mine' : 'all'; render(); },
-    tdToggle: function (el) { var r = TM.act(S, me, 'todo.toggle', { id: el.dataset.id }); if (!r.ok) return toast(r.error, true); save(); var t = S.todos.find(function (x) { return x.id === el.dataset.id; }); toast(t && t.done ? '已完成' : '已恢复为未完成'); render(); },
+    tdToggle: function (el) { var r = TM.act(S, me, 'todo.toggle', { id: el.dataset.id }); if (!r.ok) return toast(r.error, true); save(); var t = S.todos.find(function (x) { return x.id === el.dataset.id; }); toast(t && t.done ? (r.next ? '已完成，下一次在 ' + mdTxt(r.nextDate) : '已完成') : '已恢复为未完成'); render(); },
     tdOpen: function (el) { tdDetail(el.dataset.id); },
     tdComment: function (el) { var v = (document.getElementById('tdc') || {}).value; var r = TM.act(S, me, 'todo.comment', { id: el.dataset.id, body: v }); if (!r.ok) return toast(r.error, true); save(); tdDetail(el.dataset.id); render(); tdDetail(el.dataset.id); },
     tdDelete: function (el) { var id = el.dataset.id; askSheet('删除待办', '确定删除这条待办？', '删除', true).then(function (y) { if (y) act('todo.delete', { id: id }, '已删除'); }); },

@@ -647,6 +647,16 @@ var TM = (function () {
   /* 个人待办：只属于本人，不进入业务审计；可标注相关人 */
   function ensureTodos(s) { if (!s.todos) s.todos = []; if (!s.todoRecent) s.todoRecent = []; }
   var TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+  /* 重复待办：完成后自动生成下一次（每天 / 工作日 / 每周 / 每月） */
+  var REPEATS = { daily: '每天', weekdays: '工作日', weekly: '每周', monthly: '每月' };
+  function nextDate(ds, rule) {
+    var p = ds.split('-'), d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])), day = +p[2];
+    if (rule === 'daily') d.setUTCDate(d.getUTCDate() + 1);
+    else if (rule === 'weekdays') { do { d.setUTCDate(d.getUTCDate() + 1); } while (d.getUTCDay() === 0 || d.getUTCDay() === 6); }
+    else if (rule === 'weekly') d.setUTCDate(d.getUTCDate() + 7);
+    else if (rule === 'monthly') { d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() + 1); var last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate(); d.setUTCDate(Math.min(day, last)); }
+    return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+  }
   A['todo.create'] = function (s, uid, p) {
     ensureTodos(s); need(user(s, uid), '请先选择账号');
     var t = txt(p.title); need(t, '请填写待办内容'); need(t.length <= 50, '待办内容不超过 50 字');
@@ -654,23 +664,31 @@ var TM = (function () {
     if (p.time) need(TIME_RE.test(p.time), '时间格式应为 HH:MM');
     need(['hi', 'mid', 'lo'].indexOf(p.priority || 'mid') >= 0, '优先级不正确');
     need(['mine', 'team', 'other'].indexOf(p.scope || 'mine') >= 0, '归类不正确');
+    if (p.repeat) need(Object.prototype.hasOwnProperty.call(REPEATS, p.repeat), '重复方式不正确');
     var people = (p.people || []).filter(function (x) { return x !== uid && user(s, x); });
     var td = { id: nid(s, 'TD'), ownerId: uid, title: t, note: txt(p.note), date: p.date, time: p.time || '', priority: p.priority || 'mid', scope: people.length ? 'team' : (p.scope || 'mine'),
-      tags: (p.tags || []).map(txt).filter(Boolean).slice(0, 4), people: people, done: false, doneAt: null, comments: [], source: p.source || 'manual', at: now(s) };
+      tags: (p.tags || []).map(txt).filter(Boolean).slice(0, 4), people: people, done: false, doneAt: null, comments: [], source: p.source || 'manual', repeat: p.repeat || '', at: now(s) };
     s.todos.push(td);
     if (p.tpl) { s.todoRecent = s.todoRecent.filter(function (r) { return !(r.userId === uid && r.title === p.tpl.title); }); s.todoRecent.unshift({ userId: uid, tpl: p.tpl.key, title: p.tpl.title, at: now(s) }); s.todoRecent = s.todoRecent.slice(0, 12); }
     notify(s, people, uid, name(s, uid) + ' 把你加进了待办', t, '#/tasks');
     return { id: td.id };
   };
   function myTodo(s, uid, id) { ensureTodos(s); var td = get(s.todos, id, '待办'); need(td.ownerId === uid, '只能操作自己的待办'); return td; }
-  A['todo.toggle'] = function (s, uid, p) { var td = myTodo(s, uid, p.id); td.done = !td.done; td.doneAt = td.done ? now(s) : null; return {}; };
+  A['todo.toggle'] = function (s, uid, p) {
+    var td = myTodo(s, uid, p.id); td.done = !td.done; td.doneAt = td.done ? now(s) : null;
+    // 重复待办第一次完成时生成下一次（取消勾选再勾上不会重复生成）
+    if (td.done && td.repeat && !td.nextId) { var nx = { id: nid(s, 'TD'), ownerId: td.ownerId, title: td.title, note: td.note, date: nextDate(td.date, td.repeat), time: td.time, priority: td.priority, scope: td.scope, tags: td.tags.slice(), people: td.people.slice(), done: false, doneAt: null, comments: [], source: 'repeat', repeat: td.repeat, at: now(s) };
+      s.todos.push(nx); td.nextId = nx.id; return { next: nx.id, nextDate: nx.date }; }
+    return {};
+  };
   A['todo.update'] = function (s, uid, p) {
     var td = myTodo(s, uid, p.id);
     if ('title' in p) { var t = txt(p.title); need(t && t.length <= 50, '待办内容 1 到 50 字'); td.title = t; }
     if ('date' in p) { need(/^\d{4}-\d{2}-\d{2}$/.test(p.date), '日期不正确'); td.date = p.date; }
     if ('time' in p) { need(!p.time || TIME_RE.test(p.time), '时间格式应为 HH:MM'); td.time = p.time; }
     if ('priority' in p) { need(['hi', 'mid', 'lo'].indexOf(p.priority) >= 0, '优先级不正确'); td.priority = p.priority; }
-    if ('note' in p) td.note = txt(p.note);
+    if ('note' in p) td.note = txt(p.note).slice(0, 2000);
+    if ('repeat' in p) { need(!p.repeat || Object.prototype.hasOwnProperty.call(REPEATS, p.repeat), '重复方式不正确'); td.repeat = p.repeat || ''; }
     return {};
   };
   A['todo.delete'] = function (s, uid, p) { var td = myTodo(s, uid, p.id); s.todos.splice(s.todos.indexOf(td), 1); return {}; };
@@ -1488,7 +1506,7 @@ var TM = (function () {
 
   return {
     L: L, STAGES: STAGES, TONE: TONE, DAY: DAY, act: act, seed: seed, user: user, name: name, hasRole: hasRole, canInitiate: canInitiate, usersWith: usersWith,
-    primaryRole: primaryRole, NCATS: NCATS, ncat: ncat, activeUsers: activeUsers, live: live, openWorkOf: openWorkOf, followUsers: followUsers, canFollow: canFollow, leadUsers: leadUsers, briefStats: briefStats, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
+    primaryRole: primaryRole, REPEATS: REPEATS, nextDate: nextDate, NCATS: NCATS, ncat: ncat, activeUsers: activeUsers, live: live, openWorkOf: openWorkOf, followUsers: followUsers, canFollow: canFollow, leadUsers: leadUsers, briefStats: briefStats, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
     latestSummary: latestSummary, deriveAnalysis: deriveAnalysis, noteOf: noteOf, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, migrate: migrate, viewFor: viewFor, blank: blank, canCreateProject: canCreateProject, canAssign: canAssign, caps: caps, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
     nextForTask: nextForTask, PTYPE: PTYPE, GROUPS: GROUPS, seedTodos: seedTodos, ensureTodos: ensureTodos, nextForIdea: nextForIdea, ideaProgress: ideaProgress, workProgress: workProgress, TT: TT
   };
