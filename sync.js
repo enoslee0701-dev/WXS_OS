@@ -17,12 +17,19 @@ var TMS = (function () {
   // 服务器模式但没登录：清掉缓存，避免看到上一个人的数据或演示数据
   if (api.server && !api.token) { put(K, null); put(KU, null); }
 
-  function norm(u) { u = String(u || '').trim().replace(/\/+$/, ''); if (u && !/^https?:\/\//i.test(u)) u = 'http://' + u; return u; }
+  // 服务器地址容错：中文键盘打出的全角「：」「。」、空格、漏写 http://、漏写端口（局域网 IP 默认 8787）、局域网地址误写成 https
+  function norm(u) {
+    u = String(u || '').trim().replace(/[：]/g, ':').replace(/[。．]/g, '.').replace(/[／]/g, '/').replace(/\s+/g, '').replace(/\/+$/, '');
+    if (u && !/^https?:\/\//i.test(u)) u = 'http://' + u.replace(/^\/+/, '');
+    var m = /^(https?):\/\/((?:10|127|172\.(?:1[6-9]|2\d|3[01])|192\.168)(?:\.\d{1,3}){2,3})(:\d+)?(\/.*)?$/i.exec(u);
+    if (m) u = 'http://' + m[2] + (m[3] || ':8787') + (m[4] || '');
+    return u;
+  }
   function reqAt(base, method, path, body, token, wait) {
     var ctl = window.AbortController ? new AbortController() : null, tm = setTimeout(function () { if (ctl) ctl.abort(); }, wait || 15000);
     return fetch(base + path, { method: method, signal: ctl && ctl.signal, headers: Object.assign({ 'Content-Type': 'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}), body: body ? JSON.stringify(body) : undefined })
       .then(function (r) { clearTimeout(tm); return r.json().catch(function () { return {}; }).then(function (j) { if (!r.ok) { j.status = r.status; throw j; } return j; }); },
-        function () { clearTimeout(tm); throw { status: 0, error: '连不上服务器，请检查网络和服务器地址' }; });
+        function () { clearTimeout(tm); throw { status: 0, error: '连不上服务器。请检查：① 手机和服务器电脑连的是同一个 Wi-Fi（不是流量、不是访客 Wi-Fi）；② 关掉手机的 VPN / 代理；③ 地址形如 http://192.168.1.108:8787；④ 服务器电脑开着、没睡眠' }; });
   }
   function req(method, path, body, wait) { return reqAt(api.base, method, path, body, api.token, wait); }
   var AI_WAIT = 120000; // AI 生成要几十秒，不能用 15 秒的普通超时（客户端放弃了服务器照样跑完、照样扣次数）
