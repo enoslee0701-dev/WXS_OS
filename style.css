@@ -193,7 +193,7 @@ main{padding:2px 16px 24px}
 .fld > span{display:block;font-size:14px;font-weight:650;color:var(--ink2);margin-bottom:6px}
 .fld small{display:block;color:var(--ink3);font-size:13px;margin-top:5px;font-weight:400}
 input[type=text],input[type=number],input[type=date],input[type=url],textarea,select{width:100%;min-height:50px;border:1px solid transparent;border-radius:14px;background:var(--sunken);padding:12px 14px;font-size:16px}
-textarea{min-height:100px;resize:vertical;line-height:1.55}
+textarea{min-height:100px;resize:none;line-height:1.55}
 input:focus,textarea:focus,select:focus{outline:none;background:var(--surface);border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
 .opts{display:grid;gap:8px}
 .opt{display:flex;gap:12px;align-items:flex-start;border:1.5px solid var(--line);border-radius:18px;padding:14px 16px;cursor:pointer;min-height:44px;background:var(--surface)}
@@ -963,7 +963,7 @@ a.n-mode{text-decoration:none}
 .as-plist{display:grid;gap:8px}
 .as-pi{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:14px;border:1.5px solid #EEF1F5;cursor:pointer}
 .as-pi input{width:20px;height:20px;accent-color:#2563EB;flex:none;min-height:0}
-.as-pi span{flex:1;min-width:0}.as-pi b{display:block;font-size:15px}.as-pi small{font-size:12.5px;color:#7A8394}
+.as-pi > span:not(.av){flex:1;min-width:0}.as-pi b{display:block;font-size:15px}.as-pi small{font-size:12.5px;color:#7A8394}
 .as-pi:has(input:checked),.as-pi.is-checked{border-color:#3B76F0;background:#F5F8FF}
 
 /* ===== 项目列表 ===== */
@@ -2364,7 +2364,7 @@ body.demo-on main{padding-bottom:300px!important}
 .dz-more{margin-top:12px}
 .dz-form{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:end;margin-top:14px}
 .dz-form #replyHint{grid-column:1/-1}
-.dz-form textarea{width:100%;min-height:46px;border-radius:14px;border:1px solid #E1E6EF;background:#F8F9FC;padding:11px 14px;font:inherit;font-size:15px;resize:vertical}
+.dz-form textarea{width:100%;min-height:46px;border-radius:14px;border:1px solid #E1E6EF;background:#F8F9FC;padding:11px 14px;font:inherit;font-size:15px;resize:none}
 .dz-form .ix2-btn{height:46px}
 /* AI 讨论总结（老板） */
 .dg{margin:0 0 14px;padding:14px;border-radius:18px;background:linear-gradient(135deg,#F3F5FF,#F7F3FF)}
@@ -2603,7 +2603,7 @@ body.demo-on main{padding-bottom:300px!important}
 .me-team .me-ic{width:40px!important;height:40px!important;border-radius:12px!important}
 .me-team .me-ic svg{width:20px!important;height:20px!important}
 .me-team .me-tt b{font-size:15px!important}.me-team .me-tt small{font-size:12px!important}
-.me-team .h-stack .av,.me-team .w-more-n{width:24px!important;height:24px!important;font-size:10px!important}
+.me-team .h-stack .av,.me-team .w-more-n{width:26px!important;height:26px!important;font-size:11.5px!important}
 .me-sec{padding:12px 14px!important;border-radius:18px!important;margin-bottom:10px!important}
 .me-sh b{font-size:15px!important}.me-sh .me-ic{width:30px!important;height:30px!important;border-radius:9px!important}
 .me-info{padding:9px 0!important;font-size:13.5px!important;min-height:0!important}
@@ -2927,7 +2927,7 @@ textarea{min-height:76px;padding:9px 12px;font-size:15px;border-radius:12px}
 .kbv-hint{margin-top:4px;font-size:12.5px;color:#7A8395;line-height:1.55;max-width:300px}
 .kbv-eg{width:100%;margin-top:14px;padding:10px 12px;border-radius:14px;background:#F6F8FB;text-align:left}
 .kbv-eg span{font-size:11.5px;color:#8A93A6}.kbv-eg p{margin:4px 0 0;font-size:13px;color:#3A4358;line-height:1.5}
-.kbv-ta{width:100%;margin-top:8px;padding:10px 12px;border:1px solid #E3E7EF;border-radius:14px;background:#FAFBFD;font:14px/1.65 var(--font);color:#141B2D;resize:vertical;box-sizing:border-box}
+.kbv-ta{width:100%;margin-top:8px;padding:10px 12px;border:1px solid #E3E7EF;border-radius:14px;background:#FAFBFD;font:14px/1.65 var(--font);color:#141B2D;resize:none;box-sizing:border-box}
 .kbv-ops{display:flex;gap:8px;margin-top:8px}
 .kbv-ops button{display:inline-flex;align-items:center;gap:4px;height:32px;padding:0 12px;border:1px solid #E3E7EF;border-radius:999px;background:#fff;font:600 12.5px var(--font);color:#3A4358;cursor:pointer}
 .kbv-ops button svg{width:14px;height:14px;color:#6D4AE8}
@@ -3074,7 +3074,7 @@ html[data-nav=fade]::view-transition-new(root){animation:navFadeIn .24s cubic-be
 .dv-chip svg{width:16px;height:16px;flex:none}.dv-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* 演示模式提示（录音、视频、AI 页面） */
-.demo-tip{margin:10px 16px 0;padding:12px 14px;border-radius:16px;background:#FFF7E6;border:1px solid #F5D9A8;display:flex;flex-direction:column;gap:6px;position:relative;z-index:3}
+.demo-tip{margin:18px 16px 8px;padding:12px 14px;border-radius:16px;background:#FFF7E6;border:1px solid #F5D9A8;display:flex;flex-direction:column;gap:6px;position:relative;z-index:3}
 .demo-tip b{font-size:14.5px;color:#7A4A00}.demo-tip span{font-size:13.5px;color:#6B5320;line-height:1.55}
 .demo-tip .btn{align-self:flex-start;min-height:36px;padding:0 16px;font-size:14px}
 /* 首页背景铺满整屏（长屏手机上以前图只按宽度铺，卡片下面露出白底断层）；底部压暗一点，让白字看得清 */
@@ -3090,3 +3090,8 @@ body.is-home .dock{background:none}
 /* 已停用的成员：排在最后、变淡、名字旁标「已停用」 */
 .tm-card.off{opacity:.62}
 .tm-off{margin-left:6px;padding:1px 7px;border-radius:999px;background:#EEF0F3;color:#6B7280;font:600 11px/1.6 var(--font);font-style:normal}
+#replyHint .link{border:0;background:none;padding:0 0 0 6px;color:var(--accent,#2148C0);font:inherit;cursor:pointer}
+/* 横向滑动区：两侧渐隐。左边只盖住 16px 内边距（日期条不再露出前一张卡的残角），右边提示还能往右滑 */
+.w-chips,.np-types,.tk-days,.wd-mem{-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 30px),transparent)}
+.np-types{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 30px),transparent)}
+.tk-days{-webkit-mask-image:linear-gradient(90deg,transparent 0,transparent 13px,#000 16px,#000 calc(100% - 30px),transparent);mask-image:linear-gradient(90deg,transparent 0,transparent 13px,#000 16px,#000 calc(100% - 30px),transparent)}

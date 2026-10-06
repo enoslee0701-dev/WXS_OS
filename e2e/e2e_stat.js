@@ -44,5 +44,11 @@ await p.selectOption('[data-speriod]','1');await p.waitForTimeout(120);ok((await
 // 非老板
 await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("林晓")');await p.goto(URL+'#/me');await p.waitForTimeout(100);await p.click('a.me-ov[href="#/stat/decide"]');await p.waitForTimeout(120);
 ok((await p.textContent('.s-head h1'))==='等你处理','运营者看到「等你处理」');
+// 执行者有受阻且逾期的任务：首页不能说「都处理完了」，今天到期页列出逾期任务
+await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("周敏")');await p.waitForTimeout(150);
+await p.evaluate(()=>{const S=window.__tm.S,t=S.tasks.find(x=>x.ownerId==='u_admin_ex'&&!['done','cancelled'].includes(x.status));t.status='blocked';const d=new Date();d.setDate(d.getDate()-1);t.due=d.toISOString().slice(0,10);});
+await p.goto(URL+'#/me');await p.goto(URL+'#/home');await p.waitForTimeout(150);
+ok(!(await p.textContent('.hm-cards')).includes('都处理完了'),'执行者有受阻逾期任务时首页不说「都处理完了」：'+(await p.textContent('.hm-cards')).replace(/\s+/g,' ').slice(0,60));
+await p.goto(URL+'#/stat/due');await p.waitForTimeout(150);ok((await p.textContent('main')).includes('已逾期'),'今天到期页列出已逾期的任务');
 ok(errs.length===0,'无报错 '+errs.join('|'));
 console.log(`数据卡 E2E 通过 ${pass}，失败 ${fail}`);await b.close();process.exit(fail?1:0);})().catch(e=>{console.error(e);process.exit(1)});

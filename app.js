@@ -174,7 +174,7 @@
 
   /* ---------- 页面：登录 ---------- */
   var ROLE_DESC = {
-    u_owner: '录想法、做例外决策、查看全局、纠偏', u_op: '认领想法、复核整理稿、派发、跟进、验收行政',
+    u_owner: '录想法、做例外决策、查看全局、纠偏', u_op: '认领想法、复核整理稿、派发、跟进、验收行政任务',
     u_lead: '发起想法、规划产品事项、派执行人、验收', u_admin_ex: '行政执行：接收、执行、交付', u_design: '产品执行：原型与 UI',
     u_dev: '产品执行：开发', u_sys: '管理成员与配置，看不到想法内容'
   };
@@ -255,7 +255,7 @@
     [/（演示版不上传）。?/g, ''], [/演示版不会上传。/g, '会上传到团队服务器。'], [/演示版不上传/g, '会上传到团队服务器'],
     [/演示版没有上传，这个文件只在添加它的设备上、刷新前能打开/g, '这个文件还没上传完，或者已被删除'],
     [/演示版只能读取/g, '目前只能读取'],
-    [/演示版：AI 按关键词匹配资料段落，不是真正读懂全文。接入大模型（阶段 3）后，AI 会通读这些资料来理解公司和老板的思路。/g, '老板和管理员用 AI 时，Claude 会通读这些资料来理解公司和老板的思路。'],
+    [/演示版：AI 按关键词匹配资料段落，不是真正读懂全文。连接团队服务器并启用 AI 后，AI 会通读这些资料来理解公司和老板的思路。/g, '老板和管理员用 AI 时，Claude 会通读这些资料来理解公司和老板的思路。'],
     [/演示版能做这些：/g, '我能做这些：'], [/演示版推荐由规则计算/g, '推荐由规则计算'], [/演示版会把链接记进说明/g, '会把链接记进说明'],
     [/演示版为模板化建议；接入大模型后会结合你的公司方向和历史项目给出具体方案。/g, '目前为模板化建议。'],
     [/演示版不支持上传文件，可贴链接或写说明。/g, '可以贴链接或写说明。'],
@@ -336,6 +336,8 @@
     vTasks().forEach(function (t) {
       var nx = TM.nextForTask(S, t), w = W(t.workId);
       if (nx && nx.who === me) out.push({ title: (nx.what === '执行' ? '' : nx.what + '：') + t.title, tag: [L.kind[w.kind], w.kind === 'product' ? 'tg-blue' : 'tg-green'], prio: prioOf(t.due, t.status === 'blocked'), who: t.ownerId, due: dueLabel(t.due), href: '#/task/' + t.id, at: t.createdAt, date: actDate(t.due), comments: S.comments.filter(function (c) { return c.taskId === t.id; }).length, mine: t.ownerId === me, people: t.ownerId === me ? [] : [t.ownerId], kind: '任务' });
+      // 我负责但受阻（下一步等别人解除）：仍出现在我的待办里，不然首页会说「都处理完了」、任务页看不到自己逾期的任务
+      else if (nx && t.ownerId === me && t.status === 'blocked') out.push({ title: '受阻，等 ' + nm(nx.who) + ' 处理：' + t.title, tag: [L.kind[w.kind], w.kind === 'product' ? 'tg-blue' : 'tg-green'], prio: prioOf(t.due, true), who: t.ownerId, due: dueLabel(t.due), href: '#/task/' + t.id, at: t.createdAt, date: actDate(t.due), comments: S.comments.filter(function (c) { return c.taskId === t.id; }).length, mine: true, people: [], kind: '任务' });
       else if (t.status === 'done' && isToday(t.lastActivity) && (t.ownerId === me || t.reviewerId === me)) out.push({ done: true, title: t.title, tag: [L.kind[w.kind], w.kind === 'product' ? 'tg-blue' : 'tg-green'], prio: 'lo', who: t.ownerId, due: { t: '今天', bad: false }, href: '#/task/' + t.id, at: t.createdAt, date: TM.todayStr(S), doneAt: t.lastActivity, comments: 0, mine: t.ownerId === me, people: t.ownerId === me ? [] : [t.ownerId] });
     });
     if (isOwner()) S.decisions.filter(function (d) { return d.status === 'pending'; }).forEach(function (d) {
@@ -363,8 +365,10 @@
   function homeStats() {
     var todo = todoItems().filter(function (x) { return !x.done; });
     var s1 = isOwner() ? S.decisions.filter(function (d) { return d.status === 'pending'; }).length + vTasks().filter(function (t) { return t.status === 'owner_review'; }).length : todo.length;
-    var d1 = todo.filter(function (x) { return inWeek(x.at, 0); }).length - todo.filter(function (x) { return inWeek(x.at, 1); }).length;
-    var ns = S.notifications.filter(function (n) { return n.userId === me; });
+    // 趋势和主数字同一口径：老板看「本周新来的决策请求」比上周；其他人看待办
+    var src1 = isOwner() ? S.decisions : todo;
+    var d1 = src1.filter(function (x) { return inWeek(x.at, 0); }).length - src1.filter(function (x) { return inWeek(x.at, 1); }).length;
+    var ns = S.notifications.filter(function (n) { return n.userId === me && !n.read; }); // 未读通知：全部标为已读后趋势也归零
     var d2 = ns.filter(function (n) { return inWeek(n.at, 0); }).length - ns.filter(function (n) { return inWeek(n.at, 1); }).length;
     var sc = scopeTasks(), open = sc.filter(function (t) { return t.status !== 'done' && t.status !== 'cancelled'; });
     var dueToday = dueItems().length;
@@ -1721,17 +1725,18 @@
   /* 3. 今天到期 */
   function dueItems() {
     var t0 = TM.todayStr(S), out = [];
-    scopeTasks().forEach(function (t) { if (t.due === t0 && ['done', 'cancelled'].indexOf(t.status) < 0) { var w = W(t.workId); out.push({ kind: 'task', title: t.title, tags: [['任务', 'k-blue'], prTag(t.priority || prioOf(t.due, t.status === 'blocked'))], sub: w ? w.title : '', who: t.ownerId, time: '今天', href: '#/task/' + t.id }); } });
+    // 已逾期还没完成的也算「到期」，排在最前面（以前只数今天，逾期任务在这一页和任务页都看不到）
+    scopeTasks().forEach(function (t) { if (t.due && t.due <= t0 && ['done', 'cancelled'].indexOf(t.status) < 0) { var w = W(t.workId); out.push({ kind: 'task', title: t.title, tags: [['任务', 'k-blue'], prTag(t.priority || prioOf(t.due, t.status === 'blocked'))], sub: w ? w.title : '', who: t.ownerId, time: t.due < t0 ? '已逾期' : '今天', href: '#/task/' + t.id }); } });
     TM.ensureTodos(S); S.todos.forEach(function (x) { if (x.ownerId === me && x.date === t0 && !x.done) out.push({ kind: 'task', title: x.title, tags: [['待办', 'k-gray'], prTag(x.priority)], sub: x.tags[0] ? '个人待办 · ' + x.tags[0] : '个人待办', who: x.people[0] || me, time: '今天' + (x.time ? ' ' + x.time : ''), href: '#/tasks', todo: x.id }); });
     vWork().forEach(function (w) { (w.milestones || []).forEach(function (m) { if (m.date === t0 && !m.done) out.push({ kind: 'ms', title: m.title, tags: [['里程碑', 'k-blue'], prTag(w.priority || 'mid')], sub: w.title, who: w.leadId || w.operatorId, time: '今天', href: '#/work/' + w.id }); }); });
-    return out.sort(function (a, b) { return a.time.localeCompare(b.time); });
+    return out.sort(function (a, b) { return (b.time === '已逾期') - (a.time === '已逾期') || a.time.localeCompare(b.time); });
   }
   function prTag(p) { return p === 'hi' ? ['高优先级', 'k-red'] : p === 'lo' ? ['低优先级', 'k-gray'] : ['中优先级', 'k-orange']; }
   function viewDue() {
     var items = dueItems(), tasks = items.filter(function (x) { return x.kind === 'task'; }), ms = items.filter(function (x) { return x.kind === 'ms'; });
     var open = scopeTasks().filter(function (t) { return t.status !== 'done' && t.status !== 'cancelled'; }).length;
     var rows = st.due === 'task' ? tasks : st.due === 'ms' ? ms : items;
-    return sHead('今天到期', '<button class="circle s-more" data-do="sDueMore" aria-label="更多">' + ti('more', 1.6) + '</button>') + sHero('s-green', ai2('cal', 1.8), items.length, '今天到期', '共 ' + open + ' 项任务', DECO.cal) +
+    return sHead('今天到期', '<button class="circle s-more" data-do="sDueMore" aria-label="更多">' + ti('more', 1.6) + '</button>') + sHero('s-green', ai2('cal', 1.8), items.length, '今天到期', '其中已逾期 ' + items.filter(function (x) { return x.time === '已逾期'; }).length + ' 项 · 进行中共 ' + open + ' 项', DECO.cal) +
       '<div class="t-filters s-chips">' + [['all', '全部', items.length], ['task', '任务', tasks.length], ['ms', '项目里程碑', ms.length]].map(function (c) { return '<button class="' + (st.due === c[0] ? 'on' : '') + '" data-do="sDue" data-f="' + c[0] + '">' + c[1] + '（' + c[2] + '）</button>'; }).join('') + '</div>' +
       (rows.length ? '<section class="s-list">' + rows.map(function (x) { return '<div class="s-due">' + (x.todo ? '<button class="t-chk" data-do="tdToggle" data-id="' + x.todo + '" aria-label="标为完成"></button>' : '<span class="t-chk sys"></span>') + '<a href="' + x.href + '"><b>' + esc(x.title) + '</b><span class="t-tags">' + x.tags.map(function (g) { return '<i class="' + g[1] + '">' + g[0] + '</i>'; }).join('') + '</span><small>' + ai2(x.kind === 'ms' ? 'flagO' : 'doc2', 1.6) + esc(x.sub) + '</small></a><span class="s-dr">' + av(x.who, true) + '<time>' + esc(x.time) + '</time></span></div>'; }).join('') + '</section>' : emptyBox('今天没有到期的事。')) +
       '<button class="n-next s-fixed" data-do="sDueNew">' + ti('plus2', 2.4) + '新建任务</button>';
@@ -2212,7 +2217,7 @@
       var can = TM.canSuggest(S, me, d);
       var one = function (x, isReply) {
         return '<div class="sug' + (isReply ? ' reply' : '') + '"><div class="h">' + av(x.authorId, true) + '<b>' + esc(nm(x.authorId)) + '</b><span>' + ago(x.at) + '</span><span class="id">' + esc(x.id) + '</span></div><p class="b">' + esc(x.body) + '</p>' +
-          (can && !isReply ? '<button class="btn ghost" style="min-height:36px;padding:0;margin-top:2px" data-do="reply" data-id="' + x.id + '">回复</button>' : '') + '</div>';
+          (can && !isReply ? '<button class="btn ghost" style="min-height:36px;padding:0;margin-top:2px" data-do="reply" data-id="' + x.id + '" data-name="' + esc(nm(x.authorId)) + '">回复</button>' : '') + '</div>';
       };
       h += '<div class="card"><h3>团队建议 ' + sug.length + (d.shareAll ? '　分享给全体' : '　分享给 ' + d.shares.map(nm).join('、')) + '</h3>' +
         (sug.length ? tops.map(function (x) { return one(x) + sug.filter(function (r) { return r.replyTo === x.id; }).map(function (r) { return one(r, true); }).join(''); }).join('') : '<p class="muted">还没有建议。</p>') +
@@ -2421,7 +2426,7 @@
   function discHTML(d) {
     var sug = S.suggestions.filter(function (x) { return x.ideaId === d.id; }), can = TM.canSuggest(S, me, d);
     var tops = sug.filter(function (x) { return !x.replyTo; }).sort(function (x, y) { return y.at - x.at; });
-    var one = function (x, isReply) { return '<div class="dz-m' + (isReply ? ' re' : '') + '">' + av(x.authorId, true) + '<div><div class="dz-h"><b>' + esc(nm(x.authorId)) + '</b><span>' + ago(x.at) + '</span></div><p>' + esc(x.body) + '</p>' + (can && !isReply ? '<button class="dz-rep" data-do="reply" data-id="' + x.id + '">回复</button>' : '') + '</div></div>'; };
+    var one = function (x, isReply) { return '<div class="dz-m' + (isReply ? ' re' : '') + '">' + av(x.authorId, true) + '<div><div class="dz-h"><b>' + esc(nm(x.authorId)) + '</b><span>' + ago(x.at) + '</span></div><p>' + esc(x.body) + '</p>' + (can && !isReply ? '<button class="dz-rep" data-do="reply" data-id="' + x.id + '" data-name="' + esc(nm(x.authorId)) + '">回复</button>' : '') + '</div></div>'; };
     var threads = tops.map(function (x, k) { return '<div class="dz-t' + (k >= 2 ? ' more' : '') + '">' + one(x) + sug.filter(function (r) { return r.replyTo === x.id; }).sort(function (p, q) { return p.at - q.at; }).map(function (r) { return one(r, true); }).join('') + '</div>'; }).join('');
     var sm = TM.latestSummary(S, d.id, 'cocreate'), sumHTML = sm && d.status !== 'summary_ready' ? '<div class="dz-more">' + cocreateHTML(d, true) + '</div>' : '';
     var hidden = Math.max(0, tops.length - 2);
@@ -2755,9 +2760,11 @@
     wfDel: function (el) { var w = W(cur().id), m = (w.files || []).find(function (f) { return f.id === el.dataset.fid; }); if (!m) return; openSheet('删除文件', '<p style="margin:0;font-size:14px">确定删除「' + esc(m.name) + '」？删除后项目成员都看不到了。</p>', '删除', function () { act('work.detach', { id: w.id, fid: m.id }, '已删除'); }, true); },
     wShare: function () { var u = location.href; try { navigator.clipboard.writeText(u).then(function () { toast('链接已复制，同事登录后可查看（需有权限）'); }, function () { toast('请手动复制地址栏链接'); }); } catch (e) { toast('请手动复制地址栏链接'); } },
     wMore: function () {
-      var w = W(cur().id), ops = moreOps(w);
-      openSheet('更多操作', ops.length ? '<div class="wd-ops">' + ops.map(function (o) { return '<button type="button" class="btn block' + (o[1] === 'pause' ? ' danger' : '') + '" data-do="' + o[1] + '">' + o[0] + '</button>'; }).join('') + '</div>' : '<p class="muted">你在这个项目里没有可执行的操作。</p>', '关闭', function () { closeSheet(); });
+      // 没有可执行的操作时也给可做的事：复制链接、看动态（以前是一个空面板）
+      var w = W(cur().id), ops = moreOps(w).concat([['复制项目链接', 'wShare'], ['查看项目动态', 'wLog']]);
+      openSheet('更多操作', '<div class="wd-ops">' + ops.map(function (o) { return '<button type="button" class="btn block' + (o[1] === 'pause' || o[1] === 'cancelWork' ? ' danger' : '') + '" data-do="' + o[1] + '">' + o[0] + '</button>'; }).join('') + '</div>', '关闭', function () { closeSheet(); });
     },
+    wLog: function () { closeSheet(); var b = document.querySelector('[data-do=wTab][data-t=log]'); if (b) b.click(); },
     wCardMore: function (el) { var w = W(el.dataset.id); openSheet(w.title, '<div class="wd-ops"><a class="btn block" href="#/work/' + w.id + '">打开项目</a>' + (workActions(w).some(function (a) { return a[1] === 'goAssignWork'; }) ? '<button type="button" class="btn block" data-do="goAssignWork" data-arg="' + w.id + '">新建任务</button>' : '') + '</div>', '关闭', function () { closeSheet(); }); },
     wPri: function () { var w = W(cur().id); openSheet('项目优先级', '<div class="opts">' + [['hi', '高'], ['mid', '中'], ['lo', '低']].map(function (p) { return opt('priority', p[0], p[1], '', (w.priority || 'mid') === p[0]); }).join('') + '</div>', '保存', function (o) { act('work.update', { id: w.id, priority: o.priority }, '已更新优先级'); }); },
     wEditText: function (el) { var w = W(cur().id), k = el.dataset.k; openSheet(k === 'goal' ? '项目目标' : '关键成果', field(k === 'goal' ? '项目目标' : '关键成果', '<textarea name="v" rows="3" maxlength="200">' + esc(w[k] || '') + '</textarea>'), '保存', function (o) { var p = { id: w.id }; p[k] = o.v; act('work.update', p, '已保存'); }); },
@@ -2883,7 +2890,7 @@
     var layer = document.getElementById('layer');
     layer.innerHTML = '<div class="scrim" data-do="closeSheet"></div><form class="sheet" role="dialog" aria-modal="true" aria-label="' + esc(title) + '"><header><h2>' + esc(title) + '</h2><button type="button" class="circle" data-do="closeSheet" aria-label="关闭">×</button></header><div class="body">' + wordsFix(body) + '</div>' +
       // 只用来查看的面板（主按钮就是「关闭」）：不再多放一个作用相同的「取消」
-      '<footer>' + (submitLabel === '关闭' ? '' : '<button type="button" class="btn" data-do="closeSheet">取消</button>') + '<button type="submit" class="btn ' + (danger ? 'danger' : 'pri') + '">' + esc(submitLabel) + '</button></footer></form>';
+      '<footer>' + (/^(关闭|知道了|好的)$/.test(submitLabel) ? '' : '<button type="button" class="btn" data-do="closeSheet">' + (/取消/.test(submitLabel) ? '返回' : '取消') + '</button>') + '<button type="submit" class="btn ' + (danger ? 'danger' : 'pri') + '">' + esc(submitLabel) + '</button></footer></form>';
     sheetHandler = onSubmit;
     requestAnimationFrame(function () { var sc = layer.querySelector('.scrim'), sh = layer.querySelector('.sheet'); if (!sc || !sh) return; sc.classList.add('on'); sh.classList.add('on'); var f = layer.querySelector('.sheet .body input:not([type=hidden]):not([type=radio]):not([type=checkbox]),.sheet .body textarea'); if (f && window.innerWidth > 700) f.focus(); });
   }
@@ -2935,7 +2942,8 @@
     reset: function () { if (!myCaps().resetData) return toast('只有老板或管理员可以重置数据', true); askSheet('重置演示数据', '重置后，所有演示操作都会清空，回到初始示例数据。确定吗？', '重置', true).then(function (y) { if (y) { S = TM.seed(); save(); toast('已重置演示数据'); render(); } }); },
     recStart: startRec, recStop: stopRec,
     rmMedia: function (el) { newMedia.splice(+el.dataset.i, 1); render(); },
-    reply: function (el) { var f = document.querySelector('form[data-form=suggest]'); if (!f) return; f.replyTo.value = el.dataset.id; document.getElementById('replyHint').textContent = '回复 ' + el.dataset.id + '（点发送前可清空输入框改为新建议）'; f.body.focus(); },
+    reply: function (el) { var f = document.querySelector('form[data-form=suggest]'); if (!f) return; f.replyTo.value = el.dataset.id; document.getElementById('replyHint').innerHTML = '回复 ' + esc(el.dataset.name || '') + ' <button type="button" class="link" data-do="replyCancel">取消回复</button>'; f.body.focus(); },
+    replyCancel: function () { var f = document.querySelector('form[data-form=suggest]'); if (f) f.replyTo.value = ''; var h = document.getElementById('replyHint'); if (h) h.textContent = ''; },
     check: function (el) { act('task.check', { id: cur().id, itemId: el.dataset.id }); },
 
     editIdea: function () { var d = I(cur().id); openSheet('编辑草稿', field('标题', '<input type="text" name="title" value="' + esc(d.title) + '">') + field('想法', '<textarea name="note" rows="6">' + esc(d.note) + '</textarea>'), '保存', function (o) { act('idea.update', { id: d.id, title: o.title, note: o.note }, '已保存'); }); },
@@ -3018,7 +3026,7 @@
         (!done ? opt('action', 'reassign', '改派', '换一个主负责人，任务回到待接收', true) : '') + '</div>' + (!done ? field('改派给', userSelect('ownerId', people)) : '') + field('原因', '<textarea name="reason" rows="3"></textarea>'), '执行纠偏',
         function (o) { act('owner.override', { id: t.id, action: o.action, ownerId: o.ownerId, reason: o.reason }, '纠偏已执行，相关人已收到通知'); }, true);
     },
-    cancelTask: function () { openSheet('取消任务', field('原因', '<textarea name="reason" rows="3"></textarea>'), '取消任务', function (o) { act('task.transition', { id: cur().id, action: 'cancel', note: o.reason }, '任务已取消'); }, true); }
+    cancelTask: function () { openSheet('取消任务', field('原因', '<textarea name="reason" rows="3"></textarea>'), '确认取消任务', function (o) { act('task.transition', { id: cur().id, action: 'cancel', note: o.reason }, '任务已取消'); }, true); }
   };
   function escalateFields(d) {
     var sm = TM.latestSummary(S, d.id, 'analysis'), fl = sm && sm.payload.exception_flags && sm.payload.exception_flags[0];
@@ -3135,7 +3143,7 @@
     }
     // 演示模式下的录音 / 视频 / AI 页面：说清楚这里是模拟的，一键连接团队服务器（用户曾在演示模式里试视频，以为功能坏了）
     if (!SRV && /^#\/(new\/(voice|video|file)|project\/ai|todo\/new\/ai|kb\/voice)/.test(location.hash)) { var dtip = '<div class="demo-tip"><b>你正在用演示模式</b><span>这里的录音不会上传，视频里的话不会转成文字，AI 也是规则模拟。连接团队服务器后，录音和视频会自动转成文字，AI 会真正读懂内容。</span><button type="button" class="btn pri" data-do="srvConnect">连接团队服务器</button></div>';
-      var hEnd = body.indexOf('</section>'); body = hEnd >= 0 && hEnd < 4000 ? body.slice(0, hEnd + 10) + dtip + body.slice(hEnd + 10) : dtip + body; } // 放在页面大图下面，不挤掉大图
+      body = body + dtip; } // 放在页面最后：以前插在第一个区块后面，会把录音页的「话筒—计时—按钮」切开
     var u = TM.user(S, me);
     var tabKey = { idea: 'ideas', new: 'ideas', project: 'work', stat: 'home', settings: 'me', kb: 'me', todo: 'tasks', ideas: 'ideas', task: 'tasks', inbox: 'home', team: 'me', assign: 'work' }[c.name] || c.name;
     var nT = vTasks().filter(function (t) { var nx = TM.nextForTask(S, t); return nx && nx.who === me; }).length;
@@ -3384,7 +3392,7 @@
       (docs.length ? docs.map(function (k) { return '<div class="kb-row' + (k.on ? '' : ' off') + '"><a href="#/kb/' + k.id + '"><span class="ix-fi ix-d">' + ai2('doc2', 1.7) + '</span><span class="ix-ft"><b>' + esc(k.title) + '</b><small>' + (k.source === 'voice' ? '口述整理 · ' : '') + kbSize(k.size) + ' · ' + (k.scope === 'ai_only' ? '仅 AI 参考，成员看不到' : '全员可看') + ' · ' + ago(k.at) + '</small></span></a>' + (can ? '<button class="ix2-eye' + (k.on ? ' on' : '') + '" data-do="kbToggle" data-id="' + k.id + '" role="switch" aria-checked="' + k.on + '" aria-label="' + (k.on ? '停用' : '启用') + ' ' + esc(k.title) + '"><i></i><span>' + (k.on ? '启用' : '停用') + '</span></button>' : '') + '</div>'; }).join('') : '<p class="ix2-empty">还没有资料。</p>') + '</section>' +
       '<section class="ix2-card"><div class="ix2-sh"><b>' + hi('spark', 1.6) + '试一试：AI 会引用什么</b></div><div class="kb-try"><input type="text" id="kbq" value="' + esc(kbTry) + '" placeholder="例如：明年要不要招两个开发" maxlength="60"><button class="ix2-btn blue" data-do="kbAsk">查一下</button></div>' +
       (kbTry ? (TM.kbMatch(S, kbTry, 3).length ? refsHTML(TM.kbMatch(S, kbTry, 3), 'AI 会引用这些段落') : '<p class="ix2-empty" style="margin-top:10px">没有找到相关段落。可以补充资料，或换个说法。</p>') : '') + '</section>' +
-      '<p class="ix2-note" style="margin:0 6px 20px">演示版：AI 按关键词匹配资料段落，不是真正读懂全文。接入大模型（阶段 3）后，AI 会通读这些资料来理解公司和老板的思路。</p>';
+      '<p class="ix2-note" style="margin:0 6px 20px">演示版：AI 按关键词匹配资料段落，不是真正读懂全文。连接团队服务器并启用 AI 后，AI 会通读这些资料来理解公司和老板的思路。</p>';
     return h;
   }
   /* ---------- 口述成规则：老板录音 → 转文字 → AI 归类整理成条（演示：规则模拟） ---------- */
