@@ -652,5 +652,30 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   rej(TM.act(c, O, 'work.cancel', { id: cr.workId, reason: 'x' }), '已取消的不能再取消');
   must(TM.act(c, O, 'idea.delete', { id: ci.id, reason: '不做了' }), '项目取消后可以删除想法'); }
 
+// ===== 停用账号：不能再被派任务；交接手上的工作 =====
+{ const h = fresh();
+  const hi = must(TM.act(h, O, 'idea.create', { note: '整理仓库' }), '建想法'); must(TM.act(h, O, 'idea.submit', { id: hi.id, path: 'direct' }), '提交'); must(TM.act(h, OP, 'idea.claim', { id: hi.id }), '认领');
+  const hr = must(TM.act(h, OP, 'idea.route', { id: hi.id, kind: 'admin', title: '整理仓库', tasks: [{ title: '清点物资', ownerId: AX, expected: '清单', criteria: '齐全' }] }), '派给周敏');
+  const ht = h.tasks.find(t => t.workId === hr.workId); must(TM.act(h, AX, 'task.transition', { id: ht.id, action: 'accept' }), '周敏接收');
+  rej(TM.act(h, O, 'member.active', { id: AX, active: false }), '只有系统能标记停用');
+  const ha = must(TM.act(h, 'agent', 'member.active', { id: AX, active: false }), '系统标记周敏停用');
+  ok(ha.open >= 1 && h.users.find(u => u.id === AX).inactive, '停用后记下手上还有工作');
+  ok(h.notifications.some(n => n.userId === O && /周敏 的工作需要交接/.test(n.title)), '提醒老板交接');
+  ok(!TM.activeUsers(h).some(u => u.id === AX), '在职成员列表不含停用的人');
+  { const r2 = TM.act(h, OP, 'work.plan', { id: hr.workId, tasks: [{ title: 'x', ownerId: AX, expected: 'a', criteria: 'b' }] }); ok(!r2.ok && /停用/.test(r2.error || ''), '不能给停用的人派任务 ' + r2.error); }
+  rej(TM.act(h, 'agent', 'member.active', { id: O, active: false }), '不能停用老板');
+  rej(TM.act(h, AX, 'member.handover', { from: AX, to: DV }), '执行者不能交接');
+  rej(TM.act(h, O, 'member.handover', { from: AX, to: AX }), '不能交接给自己');
+  const hh = must(TM.act(h, O, 'member.handover', { from: AX, to: DV }), '老板把周敏的工作交接给刘洋');
+  const ht2 = h.tasks.find(t => t.id === ht.id);
+  ok(hh.tasks >= 1 && ht2.ownerId === DV && ht2.status === 'assigned' && !h.tasks.some(t => t.ownerId === AX && !['done','cancelled'].includes(t.status)), '任务转给接手人，重新待接收 ' + JSON.stringify(hh) + ht2.status);
+  ok(h.notifications.some(n => n.userId === DV && /接手了 周敏/.test(n.title)), '接手人收到通知');
+  rej(TM.act(h, O, 'member.handover', { from: AX, to: DV }), '没有工作时提示无需交接');
+  // 跟进人交接给不是运营者的人：保留并说明
+  const hi2 = must(TM.act(h, O, 'idea.create', { note: '换门禁' }), '建想法2'); must(TM.act(h, O, 'idea.submit', { id: hi2.id, path: 'direct' }), '提交2'); must(TM.act(h, OP, 'idea.claim', { id: hi2.id }), '认领2');
+  const hk = must(TM.act(h, O, 'member.handover', { from: OP, to: DV }), '运营者的工作交给执行者');
+  ok(hk.skipped.some(x => /不是运营者/.test(x)) && h.ideas.find(d => d.id === hi2.id).followerId === OP, '对方没有运营者角色：跟进的想法保留并说明');
+  must(TM.act(h, 'agent', 'member.active', { id: AX, active: true }), '恢复账号'); ok(!h.users.find(u => u.id === AX).inactive, '恢复后在职'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

@@ -333,7 +333,10 @@ const routes = {
     if (!isOwner(me.uid) && TM.hasRole(S, uid, 'admin')) return [403, { error: '管理员的账号只能由老板停用' }];
     q('UPDATE creds SET disabled=? WHERE uid=?').run(b.disabled ? 1 : 0, uid);
     if (b.disabled) { dropSessions('uid=?', uid); q('DELETE FROM devices WHERE uid=?').run(uid); }
-    return [200, { ok: true }];
+    // 团队数据里也标记停用：不再能被派任务；手上有工作时提醒老板交接
+    const n0 = S.notifications.length, r = TM.act(S, 'agent', 'member.active', { id: uid, active: !b.disabled });
+    if (r.ok) changed(n0);
+    return [200, { ok: true, open: r.ok ? r.open || 0 : 0 }];
   }
 };
 /* 没改初始密码前只能做这些 */

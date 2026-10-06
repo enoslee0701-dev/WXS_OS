@@ -33,6 +33,9 @@ var TM = (function () {
 
   /* ---------- 基础查询 ---------- */
   function user(s, id) { return s.users.find(function (u) { return u.id === id; }); }
+  // 在职：账号被停用 / 注销的成员（inactive）仍保留在团队记录里，但不再能被派任务、选为负责人或跟进人
+  function live(s, id) { var u = user(s, id); return !!u && !u.inactive; }
+  function activeUsers(s) { return s.users.filter(function (u) { return !u.inactive; }); }
   function name(s, id) { if (id === 'agent') return 'AI 助理'; if (id === 'system') return '系统'; var u = user(s, id); return u ? u.name : '—'; }
   function hasRole(s, uid, r) { var u = user(s, uid); return !!u && u.roles.some(function (a) { return a.role === r; }); }
   function canInitiate(s, uid) { var u = user(s, uid); return !!u && u.roles.some(function (a) { return a.role === 'owner' || (a.role === 'lead' && a.canInitiate); }); }
@@ -40,7 +43,7 @@ var TM = (function () {
   function followUsers(s) { var ops = usersWith(s, 'operator'); return ops.length ? ops : usersWith(s, 'owner'); }
   function leadUsers(s) { var l = usersWith(s, 'lead'); return l.length ? l : usersWith(s, 'owner'); }
   function canFollow(s, uid) { return hasRole(s, uid, 'operator') || (hasRole(s, uid, 'owner') && !usersWith(s, 'operator').length); }
-  function usersWith(s, r) { return s.users.filter(function (u) { return hasRole(s, u.id, r); }).map(function (u) { return u.id; }); }
+  function usersWith(s, r) { return s.users.filter(function (u) { return !u.inactive && hasRole(s, u.id, r); }).map(function (u) { return u.id; }); }
   function primaryRole(s, uid) { var order = ['owner', 'operator', 'lead', 'executor', 'admin']; for (var i = 0; i < order.length; i++) if (hasRole(s, uid, order[i])) return order[i]; return 'executor'; }
   function get(arr, id, what) { var x = arr.find(function (o) { return o.id === id; }); if (!x) deny('找不到该' + (what || '记录')); return x; }
   // 已删除的想法对所有人都不可见，任何操作都不能再动它
@@ -523,9 +526,9 @@ var TM = (function () {
   };
   function addTasks(s, uid, w, list) {
     list.forEach(function (x) {
-      need(txt(x.title), '任务需要标题'); need(x.ownerId && user(s, x.ownerId), '请选择主负责人');
+      need(txt(x.title), '任务需要标题'); need(x.ownerId && user(s, x.ownerId), '请选择主负责人'); need(live(s, x.ownerId), name(s, x.ownerId) + ' 的账号已停用，不能派任务');
       need(txt(x.expected), '请写预期成果'); need(txt(x.criteria), '请写验收标准');
-      var collabs = (x.collabs || []).filter(function (c, i, a) { return c !== x.ownerId && user(s, c) && a.indexOf(c) === i; });
+      var collabs = (x.collabs || []).filter(function (c, i, a) { return c !== x.ownerId && live(s, c) && a.indexOf(c) === i; });
       if (x.priority) need(['hi', 'mid', 'lo'].indexOf(x.priority) >= 0, '优先级不正确');
       if (txt(x.title).length > 50) deny('任务标题不超过 50 字');
       var t = { id: nid(s, 'T'), workId: w.id, title: txt(x.title), description: txt(x.description), ttype: x.ttype || '', priority: x.priority || 'mid', milestone: !!x.milestone, ownerId: x.ownerId, collabs: collabs, reviewerId: x.reviewerId || w.reviewerId,
@@ -931,7 +934,7 @@ var TM = (function () {
       ev(s, { taskId: t.id, workId: w.id, actor: uid, action: 'owner.override.revoke', from: from, to: 'in_progress', reason: r, text: '老板撤销验收：' + r });
       if (w.status === 'done') { w.status = 'active'; ev(s, { workId: w.id, actor: 'system', action: 'work.status', from: 'done', to: 'active', text: '因撤销验收，事项重新打开' }); }
     } else if (p.action === 'reassign') {
-      need(p.ownerId && user(s, p.ownerId) && p.ownerId !== t.ownerId, '请选择新的主负责人');
+      need(p.ownerId && live(s, p.ownerId) && p.ownerId !== t.ownerId, '请选择新的主负责人（不能是已停用的成员）');
       need(t.status !== 'done' && t.status !== 'cancelled', '已结束的任务不能改派');
       var old = t.ownerId; t.ownerId = p.ownerId; t.status = 'assigned';
       ev(s, { taskId: t.id, workId: w.id, actor: uid, action: 'owner.override.reassign', from: from, to: 'assigned', reason: r, text: '老板改派：' + name(s, old) + ' 改为 ' + name(s, p.ownerId) + '。原因：' + r });
@@ -1152,9 +1155,44 @@ var TM = (function () {
     return {};
   };
   /* 成员在 App 里注销账号（服务器以系统身份调用）：通知老板 */
+  // 手上还没结束的工作：交接时用
+  function openWorkOf(s, id) {
+    var open = function (x) { return ['done', 'cancelled'].indexOf(x.status) < 0; };
+    return { tasks: s.tasks.filter(function (t) { return open(t) && t.ownerId === id; }), works: s.workItems.filter(function (w) { return open(w) && (w.leadId === id || w.operatorId === id || w.reviewerId === id); }),
+      ideas: s.ideas.filter(function (d) { return !d.deleted && d.followerId === id && ['triage', 'awaiting_owner'].indexOf(d.status) >= 0; }) };
+  }
+  /* 账号停用 / 恢复（服务器在老板或管理员停用账号时以系统身份调用）：停用后不能再被派任务；提醒老板交接 TA 手上的工作 */
+  A['member.active'] = function (s, uid, p) {
+    need(uid === 'agent', '只有系统可以记录账号停用'); var u = user(s, p.id); need(u, '找不到该成员'); need(!hasRole(s, u.id, 'owner'), '不能停用老板');
+    var on = !!p.active; if (!on === !!u.inactive) return {};
+    u.inactive = !on; var ow = openWorkOf(s, u.id), n = ow.tasks.length + ow.works.length + ow.ideas.length;
+    ev(s, { actor: 'agent', action: 'member.active', text: u.name + (on ? ' 的账号已恢复' : ' 的账号已停用') });
+    if (!on && n) notify(s, usersWith(s, 'owner').concat(usersWith(s, 'admin')), null, u.name + ' 的工作需要交接', '账号已停用，TA 手上还有 ' + [ow.tasks.length && ow.tasks.length + ' 个任务', ow.works.length && ow.works.length + ' 个项目', ow.ideas.length && ow.ideas.length + ' 条跟进中的想法'].filter(Boolean).join('、') + '。到成员资料里一键交接。', '#/team');
+    return { open: n };
+  };
+  /* 交接：把一个人（通常是已停用的）手上未结束的任务、项目角色、跟进中的想法转给另一位在职成员；对方没有相应角色的部分保留并说明 */
+  A['member.handover'] = function (s, uid, p) {
+    need(hasRole(s, uid, 'owner') || hasRole(s, uid, 'admin'), '只有老板或管理员可以交接工作');
+    var from = user(s, p.from); need(from, '找不到要交接的成员'); need(p.to && p.to !== p.from && live(s, p.to), '请选择在职的接手人');
+    var to = p.to, ow = openWorkOf(s, from.id), r = { tasks: 0, works: 0, ideas: 0, skipped: [] };
+    ow.tasks.forEach(function (t) { t.ownerId = to; t.collabs = t.collabs.filter(function (c) { return c !== to; }); if (['accepted', 'in_progress', 'blocked'].indexOf(t.status) >= 0) t.status = 'assigned'; t.lastActivity = now(s); r.tasks++;
+      ev(s, { taskId: t.id, workId: t.workId, actor: uid, action: 'member.handover', text: '任务从 ' + from.name + ' 交接给 ' + name(s, to) }); });
+    s.tasks.forEach(function (t) { if (['done', 'cancelled'].indexOf(t.status) < 0 && t.collabs.indexOf(from.id) >= 0) t.collabs = t.collabs.filter(function (c) { return c !== from.id; }); });
+    ow.works.forEach(function (w) {
+      var did = false;
+      if (w.leadId === from.id) { if (leadUsers(s).indexOf(to) >= 0) { w.leadId = to; did = true; } else r.skipped.push('项目「' + w.title + '」的负责人（' + name(s, to) + ' 不是负责人角色）'); }
+      if (w.operatorId === from.id) { if (canFollow(s, to)) { w.operatorId = to; did = true; } else r.skipped.push('项目「' + w.title + '」的跟进运营（' + name(s, to) + ' 不是运营者）'); }
+      if (w.reviewerId === from.id) { w.reviewerId = to; did = true; }
+      if (did) { r.works++; ev(s, { workId: w.id, actor: uid, action: 'member.handover', text: from.name + ' 在项目里的角色交接给 ' + name(s, to) }); touchWork(s, w); }
+    });
+    ow.ideas.forEach(function (d) { if (canFollow(s, to)) { d.followerId = to; r.ideas++; touchIdea(s, d); ev(s, { ideaId: d.id, actor: uid, action: 'member.handover', text: '跟进人从 ' + from.name + ' 交接给 ' + name(s, to) }); } else r.skipped.push('想法「' + (d.title || '未命名') + '」的跟进（' + name(s, to) + ' 不是运营者）'); });
+    need(r.tasks + r.works + r.ideas || r.skipped.length, from.name + ' 手上没有需要交接的工作');
+    if (r.tasks + r.works + r.ideas) notify(s, [to], uid, '你接手了 ' + from.name + ' 的工作', [r.tasks && r.tasks + ' 个任务', r.works && r.works + ' 个项目', r.ideas && r.ideas + ' 条想法'].filter(Boolean).join('、'), '#/tasks');
+    return r;
+  };
   A['account.deactivated'] = function (s, uid, p) {
     need(uid === 'agent', '只有系统可以记录注销');
-    var u = user(s, p.id); need(u, '找不到该成员');
+    var u = user(s, p.id); need(u, '找不到该成员'); u.inactive = true;
     notify(s, usersWith(s, 'owner'), null, '成员注销了账号', u.name + ' 在 App 里注销了自己的账号，已无法登录。需要时可以在成员资料里恢复。', '#/team');
     ev(s, { actor: 'agent', action: 'account.deactivated', text: u.name + ' 注销了账号' });
     return {};
@@ -1308,7 +1346,7 @@ var TM = (function () {
 
   return {
     L: L, STAGES: STAGES, TONE: TONE, DAY: DAY, act: act, seed: seed, user: user, name: name, hasRole: hasRole, canInitiate: canInitiate, usersWith: usersWith,
-    primaryRole: primaryRole, followUsers: followUsers, canFollow: canFollow, leadUsers: leadUsers, briefStats: briefStats, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
+    primaryRole: primaryRole, activeUsers: activeUsers, live: live, openWorkOf: openWorkOf, followUsers: followUsers, canFollow: canFollow, leadUsers: leadUsers, briefStats: briefStats, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
     latestSummary: latestSummary, deriveAnalysis: deriveAnalysis, noteOf: noteOf, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, migrate: migrate, viewFor: viewFor, blank: blank, canCreateProject: canCreateProject, canAssign: canAssign, caps: caps, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
     nextForTask: nextForTask, PTYPE: PTYPE, GROUPS: GROUPS, seedTodos: seedTodos, ensureTodos: ensureTodos, nextForIdea: nextForIdea, ideaProgress: ideaProgress, workProgress: workProgress, TT: TT
   };

@@ -80,9 +80,11 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   // 6. 停用账号
   ok((await post('/api/accounts/disable', { uid: 'u_owner', disabled: true }, boss)).status === 400, '不能停用自己');
   ok((await post('/api/accounts/disable', { uid: li, disabled: true }, boss)).ok, '老板停用成员账号');
+  ok((await get('/api/state', boss)).state.users.find(u => u.id === li).inactive === true, '停用后团队数据里标记停用（不能再被派任务）');
   ok((await get('/api/state', liTok)).status === 401, '停用后原会话失效');
   ok((await post('/api/login', { login: 'xiaoli', password: 'li123456' })).status === 403, '停用后不能登录');
   await post('/api/accounts/disable', { uid: li, disabled: false }, boss);
+  ok(!(await get('/api/state', boss)).state.users.find(u => u.id === li).inactive, '恢复后团队数据里取消停用');
   ok((await post('/api/login', { login: 'xiaoli', password: 'li123456' })).status === 200, '恢复后可以登录');
   const list = await get('/api/accounts', boss);
   ok(list.accounts.length === 3 && list.accounts.every(a => !('hash' in a) && !('salt' in a)), '账号列表不含密码信息');

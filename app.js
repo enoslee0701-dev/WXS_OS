@@ -877,9 +877,9 @@
     pPick: function (el) { var k = el.dataset.k, ids, empty = '', t2;
       if (k === 'leadId') { ids = TM.leadUsers(S); t2 = '选择负责人'; if (TM.PTYPE[pd.ptype][1] !== 'product') empty = '不指定，由运营者推进'; }
       else if (k === 'operatorId') { ids = TM.followUsers(S); t2 = '选择跟进运营'; }
-      else { ids = S.users.filter(function (u) { return !u.roles.every(function (a) { return a.role === 'admin'; }); }).map(function (u) { return u.id; }); t2 = '选择验收人'; empty = '默认：负责人，没有时由运营者验收'; }
+      else { ids = TM.activeUsers(S).filter(function (u) { return !u.roles.every(function (a) { return a.role === 'admin'; }); }).map(function (u) { return u.id; }); t2 = '选择验收人'; empty = '默认：负责人，没有时由运营者验收'; }
       npPick(t2, ids, pd[k], empty, function (v) { pd[k] = v; }); },
-    pPickT: function (el) { var i = +el.dataset.i, ids = S.users.filter(function (u) { return u.roles.some(function (a) { return a.role === 'executor' || a.role === 'lead' || a.role === 'operator'; }); }).map(function (u) { return u.id; });
+    pPickT: function (el) { var i = +el.dataset.i, ids = TM.activeUsers(S).filter(function (u) { return u.roles.some(function (a) { return a.role === 'executor' || a.role === 'lead' || a.role === 'operator'; }); }).map(function (u) { return u.id; });
       npPick('选择执行人', ids, pd.tasks[i].ownerId, '', function (v) { if (v) pd.tasks[i].ownerId = v; }); },
     pDue: function (el) { pd.due = TM.dateAdd(S, +el.dataset.d); render(); },
     pPri: function (el) { pd.priority = el.dataset.v; render(); },
@@ -1195,7 +1195,7 @@
     txTag: function (el) { var t = el.dataset.t, i = tx.tags.indexOf(t); if (i >= 0) tx.tags.splice(i, 1); else if (tx.tags.length < 5) tx.tags.push(t); else toast('最多 5 个标签', true); txPersist(); closeSheet(); render(); },
     txTagMore: function () { openSheet('管理标签', '<div class="t-tagpick">' + TX_TAGS.map(function (x) { return x[0]; }).concat(['宣教', '活动', '培训', '探访', '媒体']).map(function (t) { return '<button type="button" class="' + (tx.tags.indexOf(t) >= 0 ? 'on' : '') + '" data-do="txTag" data-t="' + t + '">' + t + '</button>'; }).join('') + '</div><p class="muted" style="font-size:13px">最多选 5 个。</p>', '完成', function () { closeSheet(); render(); }); },
     txExpand: function () { tx.big = !tx.big; render(); },
-    txAt: function () { var us = S.users.filter(function (u) { return u.id !== me; }); openSheet('提到同事', '<div class="as-plist">' + us.map(function (u) { return '<label class="as-pi"><input type="radio" name="u" value="' + u.id + '">' + av(u.id, true) + '<span><b>' + esc(u.name) + '</b><small>' + esc(u.title) + '</small></span></label>'; }).join('') + '</div>', '插入', function (o) { var u = TM.user(S, o.u); if (!u) return toast('请选择一位同事', true); tx.note = (tx.note + (tx.note && !/\s$/.test(tx.note) ? ' ' : '') + '@' + u.name + ' ').slice(0, 2000); txPersist(); closeSheet(); render(); }); },
+    txAt: function () { var us = TM.activeUsers(S).filter(function (u) { return u.id !== me; }); openSheet('提到同事', '<div class="as-plist">' + us.map(function (u) { return '<label class="as-pi"><input type="radio" name="u" value="' + u.id + '">' + av(u.id, true) + '<span><b>' + esc(u.name) + '</b><small>' + esc(u.title) + '</small></span></label>'; }).join('') + '</div>', '插入', function (o) { var u = TM.user(S, o.u); if (!u) return toast('请选择一位同事', true); tx.note = (tx.note + (tx.note && !/\s$/.test(tx.note) ? ' ' : '') + '@' + u.name + ' ').slice(0, 2000); txPersist(); closeSheet(); render(); }); },
     txMic: function () {
       if (!SR) return toast('当前浏览器不支持语音输入（安卓 Chrome 支持）', true);
       if (tx.sr) { try { tx.sr.stop(); } catch (e) {} return; }
@@ -1389,7 +1389,7 @@
   var TAGS = ['工作', '沟通', '会议', '数据', '学习', '内容', '个人成长', '事工', '运维'];
   function viewTodoManual() {
     if (!tf) tf = freshTF('custom');
-    var dd = [0, 1, 2].map(dayInfo), others = S.users.filter(function (u) { return u.id !== me && !u.roles.every(function (a) { return a.role === 'admin'; }); });
+    var dd = [0, 1, 2].map(dayInfo), others = TM.activeUsers(S).filter(function (u) { return u.id !== me && !u.roles.every(function (a) { return a.role === 'admin'; }); });
     var seg = function (key, arr) { return '<div class="t-seg">' + arr.map(function (a) { return '<button type="button" class="' + (tf[key] === a[0] ? 'on' : '') + '" data-do="tfSet" data-k="' + key + '" data-v="' + a[0] + '">' + a[1] + '</button>'; }).join('') + '</div>'; };
     return pHead('手动创建', tf.tplName && tf.tplName !== '自定义模板' ? '模板：' + tf.tplName : '自由输入，结构清晰') +
       '<section class="p-card"><label class="p-fld"><span>待办内容 <em>*</em></span><input type="text" data-tf="title" maxlength="50" placeholder="比如：回复合作方邮件" value="' + esc(tf.title) + '"></label><div class="n-cnt" id="tfc">' + tf.title.length + '/50</div>' +
@@ -1557,7 +1557,7 @@
   function freshAsg(wid) { var ws = myWorks(), w = (wid && ws.find(function (x) { return x.id === wid; })) || ws[0]; return { tab: 'manual', title: '', desc: '', workId: w ? w.id : '', ttype: w && w.kind === 'product' ? '设计' : '其他', priority: 'mid', due: TM.dateAdd(S, 4), dueSet: false, milestone: false, ownerId: '', collabs: [], pick: '', aiCollabs: null, more: false, seed: 0 }; }
   function canAssign() { return myWorks().length > 0; }
   function fullDate(ds) { if (!ds) return '未设置'; var p = ds.split('-'), d = new Date(+p[0], p[1] - 1, +p[2]); return p[0] + '年' + +p[1] + '月' + +p[2] + '日 ' + WK[d.getDay()]; }
-  function asgPeople() { return S.users.filter(function (u) { return u.roles.some(function (a) { return a.role === 'executor' || a.role === 'lead' || a.role === 'operator'; }); }).map(function (u) { return u.id; }); }
+  function asgPeople() { return TM.activeUsers(S).filter(function (u) { return u.roles.some(function (a) { return a.role === 'executor' || a.role === 'lead' || a.role === 'operator'; }); }).map(function (u) { return u.id; }); }
   var SKILL = { '设计': /设计|UI/, '开发': /开发/, '测试': /开发|测试/, '产品': /负责人|产品/, '运营': /运营/, '文档': /./, '其他': /./ };
   function scoreOf(uid) {
     var u = TM.user(S, uid), w = W(asg.workId) || {}, rx = SKILL[asg.ttype] || /./;
@@ -1580,6 +1580,8 @@
   function viewAssign(wid) {
     if (!canAssign()) return pHead('分配任务', '让合适的人做合适的事') + emptyBox('你目前没有可以分配任务的项目。分配任务由项目负责人、跟进的运营者或老板完成。');
     if (!asg || (wid && asg.workId !== wid && !asg.title)) asg = freshAsg(wid);
+    if (asg.ownerId && !TM.live(S, asg.ownerId)) asg.ownerId = ''; // 预选的人已停用
+    asg.collabs = (asg.collabs || []).filter(function (c) { return TM.live(S, c); });
     var h = pHead('分配任务', asg.tab === 'manual' ? '让合适的人做合适的事' : '', '<button class="n-ai p-aibtn" data-do="quickAI">' + hi('spark', 1.6) + 'AI 助手</button>') +
       '<div class="as-tabs"><button class="' + (asg.tab === 'manual' ? 'on' : '') + '" data-do="asTab" data-t="manual">' + ti('person', 1.8) + '手动分配</button><button class="' + (asg.tab === 'ai' ? 'on ai' : '') + '" data-do="asTab" data-t="ai">' + hi('spark', 1.6) + 'AI 智能分配</button></div>';
     return h + (asg.tab === 'manual' ? viewAsgManual() : viewAsgAI());
@@ -1603,7 +1605,7 @@
     if (!asg.title.trim()) return '<section class="as-hero">' + '<div><h2>让 AI 帮你分配任务</h2><p>基于团队成员的能力、工作负载和历史表现<br>智能推荐最合适的人选</p></div>' + ROBOT + '</section>' + emptyBox('先在「手动分配」里写好任务标题和描述，AI 再为你推荐人选。') + '<button class="n-next" data-do="asTab" data-t="manual">去填写任务</button>';
     var rk = ranked(); if (!asg.pick || !rk.some(function (r) { return r.uid === asg.pick; })) asg.pick = rk[0].uid;
     if (!asg.aiCollabs) asg.aiCollabs = rk.filter(function (r) { return r.uid !== asg.pick; }).slice(0, 3).map(function (r) { return r.uid; });
-    var colOpts = S.users.filter(function (u) { return u.id !== asg.pick && !u.roles.every(function (a) { return a.role === 'admin'; }); }).map(function (u) { return u.id; });
+    var colOpts = TM.activeUsers(S).filter(function (u) { return u.id !== asg.pick && !u.roles.every(function (a) { return a.role === 'admin'; }); }).map(function (u) { return u.id; });
     var colShow = asg.aiCollabs.concat(colOpts.filter(function (u) { return asg.aiCollabs.indexOf(u) < 0; })).slice(0, 3);
     var days = estDays(asg.pick), due = asg.dueSet ? asg.due : TM.dateAdd(S, days);
     var tone = function (p) { return p >= 85 ? 'm-g' : p >= 75 ? 'm-o' : 'm-b'; };
@@ -1785,11 +1787,12 @@
   var tm = { group: 'all' };
   var SKC = ['k-blue', 'k-violet', 'k-green'];
   var PRES = { online: ['在线', '#16C47F'], away: ['离开', '#F59E0B'], busy: ['忙碌', '#F03E50'], offline: ['离线', '#9AA3B2'] };
+  function hoCount(uid) { var o = TM.openWorkOf(S, uid); return o.tasks.length + o.works.length + o.ideas.length; }
   function tCounts(uid) { var mine = S.tasks.filter(function (t) { return t.ownerId === uid; }); return { prog: mine.filter(function (t) { return ['done', 'cancelled'].indexOf(t.status) < 0; }).length, done: mine.filter(function (t) { return t.status === 'done'; }).length }; }
   function weekDue() { var ws = weekStart(0).getTime(), we = ws + 7 * 864e5; return scopeTasks().filter(function (t) { if (!t.due || ['done', 'cancelled'].indexOf(t.status) >= 0) return false; var p = t.due.split('-'), d = new Date(+p[0], p[1] - 1, +p[2]).getTime(); return d >= ws && d < we; }); }
   function viewTeamPage() {
-    var us = S.users, G = TM.GROUPS, sel = tm.group;
-    var rows = us.filter(function (u) { return sel === 'all' || u.group === sel; });
+    var us = TM.activeUsers(S), G = TM.GROUPS, sel = tm.group;
+    var rows = us.concat(S.users.filter(function (u) { return u.inactive; })).filter(function (u) { return sel === 'all' || u.group === sel; });
     var actProj = vWork().filter(function (w) { return ['active', 'blocked', 'planning', 'acceptance'].indexOf(w.status) >= 0; }).length;
     var wr = weekRate(0), eff = wr.rate == null ? '—' : wr.rate + '%';
     var tiles = [['tm-blue', '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.4" fill="currentColor"/><path d="M2.8 19.5c.6-3.6 3.2-5.6 6.2-5.6s5.6 2 6.2 5.6z" fill="currentColor"/><circle cx="16.8" cy="8.6" r="2.7" fill="currentColor" opacity=".7"/><path d="M15.6 13.9c2.9.2 4.9 2.1 5.6 5.6h-4.3" fill="currentColor" opacity=".7"/></svg>', us.length, '团队成员', 'tmMembers'],
@@ -1806,7 +1809,7 @@
   }
   function memberCard(u) {
     var c = tCounts(u.id), p = PRES[u.presence || 'offline'];
-    return '<article class="tm-card"><span class="tm-av">' + av(u.id) + '<i style="background:' + p[1] + '" title="' + p[0] + '"></i></span><div class="tm-mid"><div class="tm-name"><b>' + esc(u.name) + '</b>' + (TM.hasRole(S, u.id, 'owner') ? '<svg class="tm-crown" viewBox="0 0 24 24" aria-label="创始人"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z" fill="#F5B300"/></svg>' : '') + '<i>' + esc(u.title) + '</i></div>' +
+    return '<article class="tm-card' + (u.inactive ? ' off' : '') + '"><span class="tm-av">' + av(u.id) + '<i style="background:' + p[1] + '" title="' + p[0] + '"></i></span><div class="tm-mid"><div class="tm-name"><b>' + esc(u.name) + '</b>' + (u.inactive ? '<em class="tm-off">已停用</em>' : '') + (TM.hasRole(S, u.id, 'owner') ? '<svg class="tm-crown" viewBox="0 0 24 24" aria-label="创始人"><path d="M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z" fill="#F5B300"/></svg>' : '') + '<i>' + esc(u.title) + '</i></div>' +
       '<div class="tm-sub"><q>' + esc(u.motto || '还没有写一句话') + '</q>' + ((u.skills || []).length && !TM.hasRole(S, u.id, 'owner') ? '<span class="t-tags">' + u.skills.map(function (k, i) { return '<i class="' + SKC[i % 3] + '">' + esc(k) + '</i>'; }).join('') + '</span>' : '') + '</div></div>' +
       '<div class="tm-num"><span><b>' + c.prog + '</b><small>进行中</small></span><span><b>' + c.done + '</b><small>已完成</small></span></div><button class="w-more" data-do="tmMember" data-u="' + u.id + '" aria-label="' + esc(u.name) + ' 的更多操作">' + ti('more', 1.6) + '</button></article>';
   }
@@ -1831,9 +1834,18 @@
         (mg ? field('一句话', '<input type="text" name="motto" maxlength="30" value="' + esc(u.motto || '') + '">') + field('擅长领域（最多 3 个，用顿号分隔）', '<input type="text" name="skills" value="' + esc((u.skills || []).join('、')) + '">') +
           '<div class="fld"><span>状态</span><div class="opts tdpr">' + Object.keys(PRES).map(function (k) { return opt('presence', k, PRES[k][0], '', (u.presence || 'offline') === k); }).join('') + '</div></div>' : '<p class="tm-motto">“' + esc(u.motto || '') + '”</p>') +
         '<div class="fld"><span>手上的任务（' + c.prog + ' 项进行中，你能看到 ' + ts.length + ' 项）</span>' + (ts.length ? '<div class="list">' + ts.map(function (t) { return taskRow(t); }).join('') + '</div>' : '<p class="muted" style="font-size:13.5px">没有你能看到的进行中任务。</p>') + '</div>' +
-        (canAssign() && !TM.user(S, u.id).roles.every(function (a) { return a.role === 'admin' || a.role === 'owner'; }) ? '<button type="button" class="btn block mt" data-do="tmAssignTo" data-u="' + u.id + '">给 ' + esc(u.name) + ' 分配任务</button>' : '') +
+        ((isOwner() || TM.hasRole(S, me, 'admin')) && u.id !== me && hoCount(u.id) ? '<button type="button" class="btn block mt' + (u.inactive ? ' pri' : '') + '" data-do="tmHandover" data-u="' + u.id + '">交接 TA 手上的工作（' + hoCount(u.id) + ' 项）</button>' : '') +
+        (!u.inactive && canAssign() && !TM.user(S, u.id).roles.every(function (a) { return a.role === 'admin' || a.role === 'owner'; }) ? '<button type="button" class="btn block mt" data-do="tmAssignTo" data-u="' + u.id + '">给 ' + esc(u.name) + ' 分配任务</button>' : '') +
         (SRV && TMS.loggedIn() && (isOwner() || TM.hasRole(S, me, 'admin')) && (!TM.hasRole(S, u.id, 'owner') || u.id === me) ? '<button type="button" class="btn block mt" data-do="srvAccount" data-u="' + u.id + '">登录账号与密码</button>' : ''),
         mg ? '保存' : '关闭', function (o) { if (!mg) return closeSheet(); act('member.update', { id: u.id, motto: o.motto, skills: (o.skills || '').split(/[、,，\s]+/), presence: o.presence }, '资料已更新'); });
+    },
+    tmHandover: function (el) {
+      var u = TM.user(S, el.dataset.u), ow = TM.openWorkOf(S, u.id), to = TM.activeUsers(S).filter(function (x) { return x.id !== u.id && !x.roles.every(function (a) { return a.role === 'admin'; }); });
+      openSheet('交接 ' + u.name + ' 的工作', '<div class="callout">' + [ow.tasks.length && ow.tasks.length + ' 个未完成任务', ow.works.length && ow.works.length + ' 个项目里的负责人 / 跟进 / 验收角色', ow.ideas.length && ow.ideas.length + ' 条跟进中的想法'].filter(Boolean).join('、') + '，一起转给下面这位。接手人没有相应角色的部分会保留并告诉你。</div>' +
+        field('接手人', userSelect('to', to.map(function (x) { return x.id; }), (to[0] || {}).id)), '交接', function (o) {
+          var r = act('member.handover', { from: u.id, to: o.to }); if (!r.ok) return;
+          toast('已交接给 ' + nm(o.to) + (r.skipped && r.skipped.length ? '；未转：' + r.skipped.join('；') : ''), !!(r.skipped && r.skipped.length));
+        }, true);
     },
     tmAssignTo: function (el) { asg = freshAsg(); asg.ownerId = el.dataset.u; closeSheet(); location.hash = '#/assign'; },
     tmInvite: function () {
@@ -1996,7 +2008,7 @@
     botSay('<b>项目进度分析（' + ws2.length + ' 个）</b>' + rows.join('') + '<p><b>建议：</b>' + (hiRisk.length ? '优先处理「' + hiRisk.map(function (w) { return esc(w.title); }).join('」「') + '」，先解除受阻任务，再确认截止时间是否需要调整。' : '各项目节奏正常，保持每周检查里程碑即可。') + '</p>');
   }
   function capLoad() {
-    var ppl = S.users.filter(function (u) { return u.roles.some(function (a) { return a.role === 'executor' || a.role === 'lead' || a.role === 'operator'; }); }).map(function (u) { var c = tCounts(u.id); var bl = S.tasks.filter(function (t) { return t.ownerId === u.id && t.status === 'blocked'; }).length; return { u: u, n: c.prog, bl: bl }; }).sort(function (a, b) { return b.n - a.n; });
+    var ppl = TM.activeUsers(S).filter(function (u) { return u.roles.some(function (a) { return a.role === 'executor' || a.role === 'lead' || a.role === 'operator'; }); }).map(function (u) { var c = tCounts(u.id); var bl = S.tasks.filter(function (t) { return t.ownerId === u.id && t.status === 'blocked'; }).length; return { u: u, n: c.prog, bl: bl }; }).sort(function (a, b) { return b.n - a.n; });
     var busy = ppl.filter(function (x) { return x.n >= 3; }), idle = ppl.filter(function (x) { return x.n === 0; });
     botSay('<b>团队负载</b>' + li(ppl.map(function (x) { return esc(x.u.name) + '（' + esc(x.u.title) + '）：进行中 ' + x.n + ' 项' + (x.bl ? '，受阻 ' + x.bl + ' 项' : ''); })) + '<p><b>建议：</b>' + (busy.length ? esc(busy.map(function (x) { return x.u.name; }).join('、')) + ' 负载偏高，新任务可优先给 ' : '整体负载均衡，新任务可优先给 ') + (idle.length ? esc(idle.map(function (x) { return x.u.name; }).join('、')) : '手上任务最少的人') + '。' + (ppl.some(function (x) { return x.bl; }) ? '有受阻任务，跟进人需要尽快协助解除。' : '') + '</p>');
   }
@@ -2902,7 +2914,7 @@
   function field(label, inner, help) { return '<label class="fld"><span>' + label + '</span>' + inner + (help ? '<small>' + help + '</small>' : '') + '</label>'; }
   function taskFields(prefix, def) {
     def = def || {};
-    var execs = S.users.filter(function (u) { return u.roles.some(function (a) { return a.role === 'executor' || a.role === 'lead' || a.role === 'operator'; }); }).map(function (u) { return u.id; });
+    var execs = TM.activeUsers(S).filter(function (u) { return u.roles.some(function (a) { return a.role === 'executor' || a.role === 'lead' || a.role === 'operator'; }); }).map(function (u) { return u.id; });
     return field('任务', '<input type="text" name="' + prefix + 'title" value="' + esc(def.title || '') + '" required>') +
       field('主负责人', userSelect(prefix + 'ownerId', execs, def.ownerId)) +
       field('预期成果', '<input type="text" name="' + prefix + 'expected" value="' + esc(def.expected || '') + '" placeholder="比如：照片 + 测速截图">') +
@@ -2970,7 +2982,7 @@
     },
     plan: function () {
       var w = W(cur().id);
-      openSheet('添加任务', taskFields('', { reviewerId: w.reviewerId }) + field('验收人', userSelect('reviewerId', S.users.filter(function (u) { return u.roles.some(function (a) { return a.role !== 'admin'; }); }).map(function (u) { return u.id; }), w.reviewerId)), '派出任务',
+      openSheet('添加任务', taskFields('', { reviewerId: w.reviewerId }) + field('验收人', userSelect('reviewerId', TM.activeUsers(S).filter(function (u) { return u.roles.some(function (a) { return a.role !== 'admin'; }); }).map(function (u) { return u.id; }), w.reviewerId)), '派出任务',
         function (o) { act('work.plan', { id: w.id, tasks: [{ title: o.title, ownerId: o.ownerId, expected: o.expected, criteria: o.criteria, due: o.due, reviewerId: o.reviewerId }] }, '任务已派出'); });
     },
     stage: function () {
@@ -3001,7 +3013,7 @@
     ownerReview: function (el) { var v = el.dataset.arg; openSheet(v === 'owner_pass' ? '终验通过' : '终验退回', field('意见', '<textarea name="note" rows="3"></textarea>'), v === 'owner_pass' ? '通过' : '退回', function (o) { act('task.ownerReview', { id: cur().id, verdict: v, note: o.note }, '终验已记录'); }, v !== 'owner_pass'); },
     override: function () {
       var t = T(cur().id), done = t.status === 'done';
-      var people = S.users.filter(function (u) { return u.id !== t.ownerId && u.roles.some(function (a) { return a.role !== 'admin' && a.role !== 'owner'; }); }).map(function (u) { return u.id; });
+      var people = TM.activeUsers(S).filter(function (u) { return u.id !== t.ownerId && u.roles.some(function (a) { return a.role !== 'admin' && a.role !== 'owner'; }); }).map(function (u) { return u.id; });
       openSheet('老板纠偏', '<div class="callout warn">纠偏必须填写原因。相关人都会收到通知，原记录保留。</div><div class="opts">' + (done ? opt('action', 'revoke', '撤销验收', '任务回到执行中，事项重新打开', true) : '') +
         (!done ? opt('action', 'reassign', '改派', '换一个主负责人，任务回到待接收', true) : '') + '</div>' + (!done ? field('改派给', userSelect('ownerId', people)) : '') + field('原因', '<textarea name="reason" rows="3"></textarea>'), '执行纠偏',
         function (o) { act('owner.override', { id: t.id, action: o.action, ownerId: o.ownerId, reason: o.reason }, '纠偏已执行，相关人已收到通知'); }, true);
@@ -3014,7 +3026,7 @@
       field('要老板决定什么', '<textarea name="question" rows="2">' + esc('是否同意推进：' + d.title) + '</textarea>');
   }
   function submitSheet(id) {
-    var d = I(id), others = S.users.filter(function (u) { return u.id !== me && !u.roles.every(function (a) { return a.role === 'admin'; }); });
+    var d = I(id), others = TM.activeUsers(S).filter(function (u) { return u.id !== me && !u.roles.every(function (a) { return a.role === 'admin'; }); });
     openSheet('提交想法', '<div class="opts">' + opt('path', 'direct', '直接推进', 'AI 整理后进入运营待认领队列', true) + opt('path', 'cocreate', '先给团队共创', '团队提建议，结束后 AI 汇总，你确认一次方向') + '</div>' +
       '<div id="coBox" hidden><div class="fld"><span>分享给</span><div class="opts">' + opt('share', 'all', '全体成员', '', true) + opt('share', 'some', '指定人员', '') + '</div></div>' +
       '<div class="fld"><span>指定人员</span><div class="who">' + others.map(function (u) { return '<label><input type="checkbox" name="shares" value="' + u.id + '">' + av(u.id, true) + esc(u.name) + '</label>'; }).join('') + '</div></div>' +
@@ -3263,7 +3275,7 @@
       var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000); toast('已导出：' + name);
     }, function (e) { toast(e.error || '导出失败', true); });
   };
-  DO.srvDisable = function (el) { var uid = el.dataset.u, d = el.dataset.d === '1'; TMS.disable(uid, d).then(function () { closeSheet(); toast(d ? '已停用，对方会被立即登出' : '已恢复'); }, function (e) { toast(e.error || '操作失败', true); }); };
+  DO.srvDisable = function (el) { var uid = el.dataset.u, d = el.dataset.d === '1'; TMS.disable(uid, d).then(function (r) { closeSheet(); toast(d ? '已停用，对方会被立即登出' + (r && r.open ? '。TA 手上还有工作，可在成员资料里一键交接' : '') : '已恢复'); }, function (e) { toast(e.error || '操作失败', true); }); };
   DO.clearDemo = function () { openSheet('清理演示数据', '<p style="margin:0 0 8px">会清空所有想法、项目、任务、待办、通知和示例资料，<b>成员和设置保留</b>，你自己添加的知识库资料也保留。</p><div class="callout warn">清理后无法恢复。</div>', '确认清理', function () { act('data.clearDemo', {}, '演示数据已清理'); location.hash = '#/home'; }, true); };
   DO.hmTriage = function () { filt.ideas = 'triage'; filt.ideasOpen = true; location.hash = '#/ideas'; };
   DO.hmTasks = function () { location.hash = '#/tasks'; };

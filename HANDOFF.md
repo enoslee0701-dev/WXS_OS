@@ -212,14 +212,17 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
 - 清单（做完打勾，附提交号）：
   - [x] A1 只有老板的团队派发产品类走不通 → idea.route / routeSheet 用 leadUsers（老板自任）
   - [x] A2 取消项目：新增 work.cancel（老板/负责人/跟进人，必填原因，级联取消任务，想法转暂缓后可删除），更多操作入口
-  - [ ] A5 停用账号联动（引擎标记停用、候选列表排除、交接改派向导）
+  - [x] A5 停用账号联动：users[].inactive（服务器停用/注销时 member.active）、usersWith/选人列表只含在职、不能派给停用的人、提醒老板交接；member.handover 一键交接任务/项目角色/跟进想法；团队页停用的人排最后标「已停用」
   - [ ] A3/A4 真实团队可加管理员、可改成员角色
   - [ ] A6/A7 task.update 编辑任务；work.reassign 换负责人/跟进人/验收人
   - [ ] A8 导出/备份含附件；B1 操作日志界面
   - [ ] A9/A10 @提及通知、讨论回复通知；A11 老板可解除阻碍、代验收；A12 待接收任务算无动静、验收积压提醒
   - [ ] A17 成员联系方式和团队设置按权限下发
   - [ ] C 文档校正（测试数量、Node 版本、README 目录、HANDOFF 标题）
-  - [ ] 等引擎/界面/设备三路审计结果
+  - [ ] 引擎审计 P0：畸形 media 让 viewFor 抛异常、trScan 崩溃循环（清洗输入、防御性读取、处理器异常回 500、uncaughtException 兜底、act 后试算 viewFor）
+  - [ ] P1：发件箱幂等（opId）；换服务器清发件箱；老板能改别人私人草稿（tags/attach/retitle/mediaShow/detach）；task.check 校验清单归属；暂停期间禁止验收等、resume 重算
+  - [ ] P2：原型链枚举、文本长度上限、saveSummary 清洗、addTasks reviewerId/due 校验、附件字段校验、删除想法 mediaShow、claim 泄露姓名、删除事件老板可见、会话清理、ops 清理
+  - [ ] 等界面/设备两路审计结果
 - 不做（被安全策略拦下，待用户决定）：免密码老板快速入口（补丁 ~/Library/TeamOps/quick-login.patch，`git apply` 即可）、重置老板密码
 
 ## 待办

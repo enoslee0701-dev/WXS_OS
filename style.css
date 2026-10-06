@@ -3087,3 +3087,6 @@ body.is-home .dock{background:none}
 .hm-card.c1{background:linear-gradient(160deg,rgba(244,248,255,.95),rgba(232,239,252,.92))}
 .hm-card.c2{background:linear-gradient(160deg,rgba(255,250,242,.96),rgba(251,240,226,.93))}
 .hm-card small{color:#5B6475}
+/* 已停用的成员：排在最后、变淡、名字旁标「已停用」 */
+.tm-card.off{opacity:.62}
+.tm-off{margin-left:6px;padding:1px 7px;border-radius:999px;background:#EEF0F3;color:#6B7280;font:600 11px/1.6 var(--font);font-style:normal}

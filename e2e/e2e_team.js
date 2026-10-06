@@ -22,6 +22,14 @@ ok((await p.locator('.tm-card',{hasText:'Enos'}).textContent()).includes('建造
 await p.click('.tm-invite');await p.fill('.sheet input[name=name]','王五');await p.fill('.sheet input[name=title]','摄影师');await p.selectOption('.sheet select[name=group]','设计创意');await p.fill('.sheet input[name=skills]','摄影、剪辑');await sub();
 ok(await p.locator('.tm-card').count()===8 && (await p.textContent('.tm-count b')).includes('8'),'邀请新成员');
 await p.click('[data-do=tmSearch]');await p.fill('#tmq','设计');await p.waitForTimeout(100);ok(await p.locator('#tmr .tm-card').count()>=1,'搜索成员');await p.click('.sheet footer button[type=submit]');
+// 交接：老板把何静手上的工作交给刘洋；停用的成员排在最后、标「已停用」、不在选人列表里
+await p.goto(URL+'#/team');await p.waitForTimeout(100);await p.locator('.tm-card',{hasText:'何静'}).locator('[data-do=tmMember]').click();await p.waitForSelector('.sheet [data-do=tmHandover]');
+await p.click('.sheet [data-do=tmHandover]');await p.waitForSelector('.sheet h2:has-text("交接 何静")');await p.selectOption('.sheet select[name=to]','u_dev');await sub();await p.waitForTimeout(150);
+ok(await p.evaluate(()=>{const S=window.__tm.S;return !S.tasks.some(t=>t.ownerId==='u_design'&&!['done','cancelled'].includes(t.status));}),'交接后何静手上没有未完成任务');
+await p.evaluate(()=>{const S=window.__tm.S;S.users.find(u=>u.id==='u_design').inactive=true;});await p.goto(URL+'#/home');await p.goto(URL+'#/team');await p.waitForTimeout(150);
+ok(await p.evaluate(()=>{const c=[...document.querySelectorAll('.tm-card')];const last=c[c.length-1];return last.textContent.includes('何静')&&last.classList.contains('off')&&last.textContent.includes('已停用');}),'停用的成员排在最后并标「已停用」');
+await p.goto(URL+'#/assign');await p.waitForTimeout(150);ok(!(await p.evaluate(()=>document.body.innerText.includes('何静'))),'分配任务的选人列表不含停用的人');
+await p.evaluate(()=>{window.__tm.S.users.find(u=>u.id==='u_design').inactive=false;});
 await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("周敏")');await p.goto(URL+'#/team');await p.waitForTimeout(100);
 ok(await p.locator('.tm-invite').count()===0 && await p.locator('[data-do=tmInvite]').count()===0,'执行者看不到邀请入口');
 ok(errs.length===0,'无报错 '+errs.join('|'));
