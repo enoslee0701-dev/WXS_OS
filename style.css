@@ -3166,3 +3166,12 @@ input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none}
 .t-chk::before,.wd-dot::before{inset:-12px}
 /* 规范 §38：卡片、按钮按下时轻微缩小，给点击反馈 */
 .btn:active,.hm-card:active,.tk2-card .t-main:active,.w-card:active,.tm-card:active,a.row:active,button.row:active,.circle:active,.wx-edit:active{transform:scale(.98);transition:transform .08s}
+/* 字段级错误提示 */
+.f-err{border-color:#E5484D!important;box-shadow:0 0 0 3px rgba(229,72,77,.14)!important}
+.f-msg{display:block;margin:6px 4px 0;color:#C0392B;font-size:13px;line-height:1.4}
+/* 加载骨架 */
+.skel{display:flex;flex-direction:column;gap:10px;margin:8px 0}
+.skel i{display:block;height:64px;border-radius:18px;background:linear-gradient(90deg,#EEF1F5 25%,#F6F8FB 50%,#EEF1F5 75%);background-size:200% 100%;animation:skel 1.2s ease-in-out infinite}
+.skel i:nth-child(2){opacity:.8}.skel i:nth-child(3){opacity:.6}
+@keyframes skel{0%{background-position:100% 0}100%{background-position:-100% 0}}
+@media (prefers-reduced-motion:reduce){.skel i{animation:none}}

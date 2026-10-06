@@ -16,5 +16,8 @@ await p.click('[data-do=nFilter][data-f=all]');
 await p.click('.n-all');await p.waitForTimeout(100);ok(await p.locator('.n-row.unread').count()===0 && await p.locator('.n-all').isDisabled(),'全部标为已读');
 await p.click('.n-stat[href="#/stat/rate"]');await p.waitForTimeout(100);ok(p.url().endsWith('#/stat/rate'),'数据卡可点');
 await p.goto(URL+'#/me');await p.click('.me-round[href="#/inbox"]');await p.waitForTimeout(100);ok(p.url().endsWith('#/inbox'),'我的页铃铛进入通知');
+await p.evaluate(()=>{window.__tm.S.notifications=window.__tm.S.notifications.filter(n=>n.userId!=='u_owner');window.__tm.S.loading=true;});await p.goto(URL+'#/home');await p.goto(URL+'#/inbox');await p.waitForTimeout(150);
+ok(await p.locator('.skel').count()>0&&await p.locator('.empty').count()===0,'数据还在载入时显示骨架，不显示「没有…」');
+await p.evaluate(()=>{window.__tm.S.loading=false;});await p.goto(URL+'#/home');await p.goto(URL+'#/inbox');await p.waitForTimeout(150);ok(await p.locator('.skel').count()===0,'载入完显示正常内容');
 ok(errs.length===0,'无报错 '+errs.join('|'));
 console.log(`通知 E2E 通过 ${pass}，失败 ${fail}`);await b.close();process.exit(fail?1:0);})().catch(e=>{console.error(e);process.exit(1)});

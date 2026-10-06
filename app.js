@@ -77,6 +77,14 @@
       (rows.length ? '<div class="list wf-list fl-list">' + rows.slice(0, 200).map(function (x, i) { var meta = [x.src, x.by ? nm(x.by) : '', x.at ? ago(x.at) : ''].filter(Boolean).join(' · ');
         return '<div class="row wf"><button class="wf-o" data-do="flOpen" data-i="' + all.indexOf(x) + '">' + wfIcon(x.m) + '<span class="wf-t"><b>' + esc(x.m.name) + '</b><small>' + esc(meta) + '</small></span></button><a class="fl-go" href="' + x.href + '" aria-label="去所在的地方">' + hi('chev', 2) + '</a></div>'; }).join('') + '</div>' : emptyBox(all.length ? '没有符合条件的文件。' : '还没有文件。在项目、任务交付或想法里上传后，会集中显示在这里。'));
   }
+  /* 表单错误：标红那个输入框、在下面写明原因、滚过去并聚焦（规范 §45：错误要明确，不能只靠一闪而过的提示） */
+  function fieldErr(sel, msg) {
+    var el = document.querySelector(sel); toast(msg, true); if (!el) return;
+    el.classList.add('f-err'); el.setAttribute('aria-invalid', 'true');
+    var tip = el.parentNode.querySelector('.f-msg'); if (!tip) { tip = document.createElement('small'); tip.className = 'f-msg'; tip.setAttribute('role', 'alert'); el.insertAdjacentElement('afterend', tip); } tip.textContent = msg;
+    try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { el.scrollIntoView(); } setTimeout(function () { try { el.focus({ preventScroll: true }); } catch (e) {} }, 250);
+    el.addEventListener('input', function clr() { el.classList.remove('f-err'); el.removeAttribute('aria-invalid'); if (tip.parentNode) tip.remove(); el.removeEventListener('input', clr); });
+  }
   function openFile(u, name) {
     if (typeof TMN !== 'undefined' && TMN.native && /^blob:/.test(u) && TMN.canShareFile) {
       return fetch(u).then(function (r) { return r.blob(); }).then(function (b) { return TMN.shareFile(b, name); }).catch(function () { toast('这个文件打不开', true); });
@@ -186,7 +194,8 @@
     return '<a class="row" href="#/idea/' + (d ? d.id : '') + '"><div class="t"><span>' + esc(dc.question) + '</span><span class="pill t-wait">' + esc(L.decision[dc.kind]) + '</span></div><div class="m"><span>' + esc(TM.name(S, dc.requestedBy)) + ' 上报</span><span>' + ago(dc.at) + '</span></div></a>';
   }
   var INBOX = '<svg viewBox="0 0 24 24" fill="none" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 2h6l1-2h5"/></svg>';
-  function emptyBox(msg) { return '<div class="empty">' + INBOX + '<span>' + esc(msg) + '</span></div>'; }
+  // 启动时还在从服务器 / 本机缓存读数据：显示骨架，不显示「没有…」（规范 §35：空状态不能当加载用）
+  function emptyBox(msg) { if (S.loading) return '<div class="skel" aria-busy="true" aria-label="正在载入"><i></i><i></i><i></i></div>'; return '<div class="empty">' + INBOX + '<span>' + esc(msg) + '</span></div>'; }
   function list(rows, emptyMsg) { return rows.length ? '<div class="list">' + rows.join('') + '</div>' : emptyBox(emptyMsg); }
   var IC = {
     gavel: '<path d="M14 4l6 6M12 6l6 6M4 20l8-8M9 9l6 6"/>', alert: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/>', inbox: '<path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 2h6l1-2h5"/>',
@@ -970,7 +979,7 @@
     pPrev: function () { pd.step = Math.max(1, pd.step - 1); render(); window.scrollTo(0, 0); },
     pNext: function () {
       if (rec) return toast('请先停止录音', true);
-      if (pd.step === 1) { if (!pd.title.trim()) return toast('请填写项目名称', true); if (!pd.note.trim()) return toast('请简单描述一下项目', true); }
+      if (pd.step === 1) { if (!pd.title.trim()) return fieldErr('[data-pd="title"]', '请填写项目名称'); if (!pd.note.trim()) return fieldErr('[data-pd="note"]', '请简单描述一下项目'); }
       if (pd.step === 2) {
         if (TM.PTYPE[pd.ptype][1] === 'product' && !pd.leadId) return toast('产品开发项目请指定项目负责人', true);
         var bad = pd.tasks.find(function (t) { return t.title.trim() && (!t.expected.trim() || !t.criteria.trim()); });
@@ -1684,7 +1693,7 @@
   }
   function asgCreate(ownerId, collabs, due, by) {
     var w = W(asg.workId); if (!w) return toast('请选择所属项目', true);
-    if (!asg.title.trim()) return toast('请填写任务标题', true);
+    if (!asg.title.trim()) return fieldErr('[data-as="title"]', '请填写任务标题');
     if (!ownerId) return toast('请选择负责人', true);
     var r = TM.act(S, me, 'work.plan', { id: w.id, tasks: [{ title: asg.title, description: asg.desc, ttype: asg.ttype, priority: asg.priority, milestone: asg.milestone, ownerId: ownerId, collabs: collabs, due: due, expected: asg.desc.trim() ? '按任务描述交付成果' : '完成「' + asg.title.trim() + '」并提交成果', criteria: asg.desc.trim() || '由验收人确认达到任务要求', assignedBy: by }] });
     if (!r.ok) return toast(r.error, true);
