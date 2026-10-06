@@ -14,11 +14,14 @@ const FAKE = (opts) => {
   const M = (n, ms) => ({ name: n, methods: ms.map(x => ({ name: x, rtype: 'promise' })).concat([{ name: 'addListener', rtype: 'callback' }, { name: 'removeListener', rtype: 'promise' }, { name: 'removeAllListeners', rtype: 'promise' }]) });
   window.webkit = { messageHandlers: { bridge: { postMessage() {} } } };
   window.Capacitor = {
-    PluginHeaders: [M('Preferences', ['get', 'set', 'remove', 'keys']), M('Clipboard', ['write', 'read']), M('App', ['exitApp']), M('StatusBar', ['setStyle']), M('Keyboard', ['setAccessoryBarVisible']), M('SplashScreen', ['hide', 'show']), M('Speech', ['available', 'checkPermissions', 'requestPermissions', 'start', 'stop']), M('PushNotifications', ['checkPermissions', 'requestPermissions', 'register']), M('Haptics', ['impact', 'notification'])],
+    PluginHeaders: [M('LocalNotifications', ['schedule', 'checkPermissions', 'requestPermissions']), M('Preferences', ['get', 'set', 'remove', 'keys']), M('Clipboard', ['write', 'read']), M('App', ['exitApp']), M('StatusBar', ['setStyle']), M('Keyboard', ['setAccessoryBarVisible']), M('SplashScreen', ['hide', 'show']), M('Speech', ['available', 'checkPermissions', 'requestPermissions', 'start', 'stop']), M('PushNotifications', ['checkPermissions', 'requestPermissions', 'register']), M('Haptics', ['impact', 'notification'])],
     nativeCallback(pl, m, a, cb) { const k = pl + ':' + a.eventName; (subs[k] = subs[k] || []).push(cb); return String(++cid); },
     nativePromise(pl, m, a) {
       F.calls.push(pl + '.' + m);
       if (pl === 'Preferences') { const p = P(); if (m === 'get') return Promise.resolve({ value: p[a.key] == null ? null : p[a.key] }); if (m === 'set') { p[a.key] = a.value; setP(p); } if (m === 'remove') { delete p[a.key]; setP(p); } return Promise.resolve({}); }
+      if (pl === 'LocalNotifications' && m === 'checkPermissions') return Promise.resolve({ display: 'prompt' });
+      if (pl === 'LocalNotifications' && m === 'requestPermissions') return Promise.resolve({ display: 'granted' });
+      if (pl === 'LocalNotifications' && m === 'schedule') { F.ln = (F.ln || []).concat(a.notifications); return Promise.resolve({}); }
       if (pl === 'Haptics') { F.haptics = (F.haptics || []).concat(m + ':' + (a.type || a.style)); return Promise.resolve(); }
       if (pl === 'Clipboard' && m === 'write') { F.clip = a.string; return Promise.resolve(); }
       if (pl === 'Speech' && m === 'requestPermissions') return Promise.resolve({ speech: F.perm, microphone: F.perm });
@@ -177,5 +180,17 @@ const c0route = (p) => p.context().route('http://join.test:8787/**', r => r.fulf
     ok(await p.locator('form[data-form=srvLogin]').count() === 1, '退出后停在登录页');
     ok(p.errs.length === 0, '推送流程无报错 ' + p.errs.join('|'));
     await c3.close(); }
+  // 系统通知（App 在后台时）：先申请权限，再发；超过 3 条合成一条；点通知打开对应页面
+  { const q = await mk(); await q.waitForTimeout(300);
+    await q.evaluate(() => TMN.localNotify([{ title: '新任务派给你', body: '买投影', link: '#/task/T1' }]));
+    await q.waitForTimeout(100);
+    const ln = await q.evaluate(() => window.__fake.ln || []);
+    ok(ln.length === 1 && ln[0].title === '新任务派给你' && ln[0].extra.link === '#/task/T1' && (await q.evaluate(() => window.__fake.calls.includes('LocalNotifications.requestPermissions'))), '后台收到新通知：申请权限后发到通知栏');
+    await q.evaluate(() => TMN.localNotify([1, 2, 3, 4].map(i => ({ title: '通知' + i, body: '', link: '#/inbox' }))));
+    await q.waitForTimeout(100); const ln2 = await q.evaluate(() => window.__fake.ln);
+    ok(ln2.length === 2 && /4 条新通知/.test(ln2[1].title), '一次很多条时合成一条');
+    await q.evaluate(() => window.__fake.emit('LocalNotifications', 'localNotificationActionPerformed', { notification: { extra: { link: '#/inbox' } } })); await q.waitForTimeout(150);
+    ok(await q.evaluate(() => location.hash) === '#/inbox', '点通知打开对应页面');
+    await q.context().close(); }
   console.log(`原生桥接 E2E 通过 ${pass}，失败 ${fail}`); await b.close(); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

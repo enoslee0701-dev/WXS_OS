@@ -124,8 +124,18 @@ var TMS = (function () {
     if (cur && JSON.stringify(cur) === JSON.stringify(st)) return;
     window.__tm.setState(st);
   }
+  // App 在后台时收到新的未读通知：发到手机通知栏（静音的类别已标为已读，不会弹）
+  var seenN = null;
+  function trayNotify(st) {
+    if (!st || !Array.isArray(st.notifications) || typeof TMN === 'undefined' || !TMN.localNotify) return;
+    var me = g(KU), mine = st.notifications.filter(function (n) { return n.userId === me && !n.read; });
+    if (seenN === null) { seenN = {}; mine.forEach(function (n) { seenN[n.id] = 1; }); var c = window.__tm && window.__tm.S; (c && c.notifications || []).forEach(function (n) { seenN[n.id] = 1; }); }
+    var fresh = mine.filter(function (n) { return !seenN[n.id]; }); fresh.forEach(function (n) { seenN[n.id] = 1; });
+    if (fresh.length && document.hidden) TMN.localNotify(fresh.map(function (n) { return { title: n.title, body: n.body, link: n.link }; }));
+  }
   function accept(v, st) {
     if (typeof v === 'number') { if (v < api.version) return; /* 迟到的旧数据：不能覆盖新的 */ api.version = v; put('tm_ver', v); }
+    try { trayNotify(st); } catch (e) {}
     if (api.outbox.length || busy) return; // 后面还有本地操作在排队：等最后一个回执再应用
     if (st) apply(st);
   }

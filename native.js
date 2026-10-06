@@ -175,6 +175,18 @@ var TMN = (function () {
   }, true);
   api.canShareFile = !!(Fs && Shr);
   var sharing = false; // 系统分享面板还开着时再点一次：忽略（否则系统报「正在分享」）
+  /* 系统通知（App 在后台还没被系统关掉时）：新通知出现在手机通知栏，点一下打开对应页面。Android 没有推送时靠它提醒 */
+  var LN = plug('LocalNotifications'), lnAsked = false, lnOk = null, lnSeq = 1;
+  if (LN && LN.addListener) try { LN.addListener('localNotificationActionPerformed', function (e) { var l = e && e.notification && e.notification.extra && e.notification.extra.link; if (l && /^#\//.test(l)) location.hash = l; }); } catch (e) {}
+  api.canLocalNotify = !!LN;
+  api.localNotify = function (list) {
+    if (!LN || !list || !list.length) return Promise.resolve();
+    var go = function () { if (!lnOk) return; var xs = list.length > 3 ? [{ title: list.length + ' 条新通知', body: list.slice(0, 3).map(function (n) { return n.title; }).join('、'), link: '#/inbox' }] : list;
+      return LN.schedule({ notifications: xs.map(function (n) { return { id: (Date.now() % 100000) * 10 + (lnSeq++ % 10), title: String(n.title || '团队协同').slice(0, 60), body: String(n.body || '').slice(0, 120), extra: { link: n.link || '#/inbox' } }; }) }).catch(function () {}); };
+    if (lnOk != null) return Promise.resolve(go());
+    if (lnAsked) return Promise.resolve(); lnAsked = true;
+    return LN.checkPermissions().then(function (p) { if (p.display === 'granted') return p; return LN.requestPermissions(); }).then(function (p) { lnOk = p && p.display === 'granted'; return go(); }, function () { lnOk = false; });
+  };
   api.shareFile = function (blob, name) {
     if (!Fs || !Shr) return Promise.reject(new Error('unsupported'));
     if (sharing) return Promise.resolve(); sharing = true; var done = function (v) { sharing = false; return v; }, fail = function (e) { sharing = false; throw e; };

@@ -256,6 +256,7 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
   - [ ] UI 规范待用户决定：G1 页面整体 zoom .8（按设计图复刻的紧凑尺寸，正文实际约 13px，低于规范 16px）——改动会影响所有页面外观，等用户确认；G13 横屏首页；G22 深色模式
   - [x] P2-26 大文件断点续传：超过 4MB 分 2MB 一段（GET /api/files/:id/upload 查已收到多少，PUT /api/files/:id/chunk?offset=&total= 追加；位置不对回 409 带正确位置；7 天未完成的分段由日常清理删除）
   - [x] P2-27 `scripts/backup-mac.sh`：每月异地备份（VACUUM INTO 一致性快照 + 附件，保留 12 份）。**没有替用户安装**，要选目标文件夹：`scripts/backup-mac.sh install <文件夹>`
+  - [x] 手机通知栏提醒（@capacitor/local-notifications）：App 在后台（还没被系统关掉）时，收到新的未读通知就发到手机通知栏，点一下打开对应页面；多条合成一条；静音类别不弹。Android 没有推送时靠它（真正的离线推送仍需 Firebase / 苹果推送）
 - 不做（被安全策略拦下，待用户决定）：免密码老板快速入口（补丁 ~/Library/TeamOps/quick-login.patch，`git apply` 即可）、重置老板密码
 
 ## 待办
