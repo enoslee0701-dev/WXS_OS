@@ -72,14 +72,17 @@ var TM = (function () {
     return false;
   }
   function deptLead(s, uid, deptId) { var u = user(s, uid); return !!u && u.roles.some(function (a) { return a.role === 'lead' && a.dept === deptId; }); }
-  function canViewWork(s, uid, w) {
+  // ctx（可选，viewFor 批量判断时传入预先建好的索引，避免每条都全表扫描）：myWorks = 我有任务的项目，workById = 项目索引
+  function canViewWork(s, uid, w, ctx) {
     if (hasRole(s, uid, 'owner')) return true;
     if (w.operatorId === uid || w.leadId === uid || w.reviewerId === uid) return true;
     if (deptLead(s, uid, w.dept)) return true;
+    if (ctx && ctx.myWorks) return !!ctx.myWorks[w.id];
     return s.tasks.some(function (t) { return t.workId === w.id && (t.ownerId === uid || t.collabs.indexOf(uid) >= 0); });
   }
-  function canViewTask(s, uid, t) {
-    var w = s.workItems.find(function (x) { return x.id === t.workId; });
+  function canViewTask(s, uid, t, ctx) {
+    var w = ctx && ctx.workById ? ctx.workById[t.workId] : s.workItems.find(function (x) { return x.id === t.workId; });
+    if (ctx && ctx.W) return !!w && !!ctx.W[w.id] && (hasRole(s, uid, 'owner') || w.operatorId === uid || w.leadId === uid || deptLead(s, uid, w.dept) || t.reviewerId === uid || t.ownerId === uid || t.collabs.indexOf(uid) >= 0);
     if (!w || !canViewWork(s, uid, w)) return false;
     return hasRole(s, uid, 'owner') || w.operatorId === uid || w.leadId === uid || deptLead(s, uid, w.dept) || t.reviewerId === uid || t.ownerId === uid || t.collabs.indexOf(uid) >= 0;
   }
@@ -1113,15 +1116,21 @@ var TM = (function () {
 
   /* ---------- 按身份裁剪数据：服务器只下发这个人能看到的内容 ---------- */
   function viewFor(s, uid) {
-    var I = {}, W = {}, T = {};
-    s.ideas.forEach(function (d) { if (canViewIdea(s, uid, d)) I[d.id] = 1; });
-    s.workItems.forEach(function (w) { if (canViewWork(s, uid, w)) W[w.id] = 1; });
-    s.tasks.forEach(function (t) { if (W[t.workId] && canViewTask(s, uid, t)) T[t.id] = 1; });
+    var I = {}, W = {}, T = {}, ctx = { myWorks: {}, workById: {}, W: W }, ideaById = {};
+    s.tasks.forEach(function (t) { if (t.ownerId === uid || t.collabs.indexOf(uid) >= 0) ctx.myWorks[t.workId] = 1; });
+    s.workItems.forEach(function (w) { ctx.workById[w.id] = w; });
+    s.ideas.forEach(function (d) { ideaById[d.id] = d; if (canViewIdea(s, uid, d)) I[d.id] = 1; });
+    s.workItems.forEach(function (w) { if (canViewWork(s, uid, w, ctx)) W[w.id] = 1; });
+    s.tasks.forEach(function (t) { if (W[t.workId] && canViewTask(s, uid, t, ctx)) T[t.id] = 1; });
     var kb = {}; kbVisible(s, uid).forEach(function (k) { kb[k.id] = 1; });
-    var v = JSON.parse(JSON.stringify(stripFns(s)));
+    // 先在原数据上筛出能看的，再只深拷贝这一部分（以前先拷整个状态再筛，大团队时很慢）
+    var src = stripFns(s), pre = {};
+    Object.keys(src).forEach(function (k) { pre[k] = src[k]; });
+    pre.ideas = s.ideas.filter(function (d) { return I[d.id]; }); pre.workItems = s.workItems.filter(function (w) { return W[w.id]; }); pre.tasks = s.tasks.filter(function (t) { return T[t.id]; });
+    pre.notifications = s.notifications.filter(function (n) { return n.userId === uid; });
+    var v = JSON.parse(JSON.stringify(pre));
     var byIdea = function (x) { return !x.ideaId || I[x.ideaId]; };
-    v.ideas = v.ideas.filter(function (d) { return I[d.id]; });
-    v.ideas.forEach(function (d) { var o = s.ideas.find(function (x) { return x.id === d.id; }); d.media = (d.media || []).filter(function (m) { return canSeeMediaItem(s, uid, o, m); }); });
+    v.ideas.forEach(function (d) { var o = ideaById[d.id]; d.media = (d.media || []).filter(function (m) { return canSeeMediaItem(s, uid, o, m); }); });
     v.suggestions = v.suggestions.filter(byIdea);
     var own = hasRole(s, uid, 'owner');
     // 讨论总结只给老板看

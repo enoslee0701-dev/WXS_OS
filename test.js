@@ -813,5 +813,12 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   ok(rf.ideas.find(d => d.id === di.id).followerId === op2.id && rf.notifications.some(n => n.userId === op2.id && /交给你跟进/.test(n.title)), '跟进人已换，新跟进人收到通知');
   must(TM.act(rf, op2.id, 'idea.route', { id: di.id, kind: 'admin', title: '换打印机', tasks: [{ title: '买', ownerId: AX, expected: '发票', criteria: '能用' }] }), '新跟进人可以派发'); }
 
+// ===== viewFor 优化前后口径一致：每个人看到的想法 / 项目 / 任务和逐条判断完全相同 =====
+{ for (const st of [fresh(), s]) for (const u of st.users) {
+    const v = TM.viewFor(st, u.id), ids = (a) => a.map(x => x.id).sort().join();
+    const ti = st.tasks.filter(t => TM.canViewTask(st, u.id, t)), wi = st.workItems.filter(w => TM.canViewWork(st, u.id, w)), ii = st.ideas.filter(d => TM.canViewIdea(st, u.id, d));
+    ok(ids(v.tasks) === ids(ti) && ids(v.workItems) === ids(wi) && ids(v.ideas) === ids(ii), 'viewFor 与逐条判断一致：' + u.name);
+  } }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);
