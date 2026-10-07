@@ -606,6 +606,10 @@
   }
   // 阶段名：项目完成 / 取消后不再显示最初的阶段（以前产品项目完成后仍显示「需求澄清阶段」）
   function wStage(w) { return w.status === 'done' ? '已完成' : w.status === 'cancelled' ? '已取消' : TM.stageName(w.kind, w.stage); }
+  // 字体大小（每台设备自己记）
+  function fsGet() { try { return localStorage.getItem('tm_fs') || ''; } catch (e) { return ''; } }
+  function fsApply() { var v = fsGet(), h = document.documentElement; h.classList.toggle('fs-l', v === 'l'); h.classList.toggle('fs-xl', v === 'xl'); }
+  fsApply();
   function viewIdeas() {
     var all = vIdeas().sort(byRecent), f = filt.ideas || 'all';
     var h = projHeader('ideas');
@@ -2026,6 +2030,7 @@
         '<button class="me-info me-out" data-do="srvLogout">' + hi('chev', 1.7) + '<span>退出登录</span><b></b>' + hi('chev', 2) + '</button>' + (isOwner() ? '' : '<button class="me-info me-del" data-do="srvDeactivate">' + hi('chev', 1.7) + '<span>注销账号</span><b>停用后无法登录</b>' + hi('chev', 2) + '</button>') + '</section>' : '') +
       '<section class="me-sec"><div class="me-sh">' + ic(ti('more', 1.6)).replace('me-ic', 'me-ic blue') + '<b>通用</b></div>' +
       (SRV && isOwner() && S.real && !onboardSteps().every(function (x) { return x[3]; }) ? '<button class="me-info" data-do="onboard">' + hi('flag', 1.7) + '<span>开始使用</span><b>还有 ' + onboardSteps().filter(function (x) { return !x[3]; }).length + ' 步</b>' + hi('chev', 2) + '</button>' : '') +
+      '<div class="me-info me-fs">' + ai2('edit', 1.7) + '<span>字体大小</span><span class="fs-seg" role="group" aria-label="字体大小">' + [['', '标准'], ['l', '大'], ['xl', '特大']].map(function (x) { return '<button type="button" class="' + (fsGet() === x[0] ? 'on' : '') + '" data-do="fsSet" data-v="' + x[0] + '">' + x[1] + '</button>'; }).join('') + '</span></div>' +
       '<button class="me-info" data-do="quickAI">' + hi('spark', 1.7) + '<span>AI 助手</span><b>整理、分析、建议、创作</b>' + hi('chev', 2) + '</button>' +
       '<a class="me-info" href="#/inbox">' + hi('bell', 1.7) + '<span>通知中心</span><b>' + (nU ? nU + ' 条未读' : '全部已读') + '</b>' + hi('chev', 2) + '</a>' +
       (can ? '<a class="me-info" href="#/settings">' + ai2('ctx', 1.7) + '<span>更多设置</span><b>终验、标签、提醒、演示工具</b>' + hi('chev', 2) + '</a>' : '') +
@@ -3505,6 +3510,7 @@
   DO.flOpen = function (el) { var x = allFiles()[+el.dataset.i]; if (x) openMedia(x.m); };
   document.addEventListener('input', function (e) { if (e.target && e.target.id === 'flq') { fl.q = e.target.value; clearTimeout(fl.t); fl.t = setTimeout(function () { var pos = e.target.selectionStart; render(); var q2 = document.getElementById('flq'); if (q2) { q2.focus(); try { q2.setSelectionRange(pos, pos); } catch (x) {} } }, 200); } });
   DO.pwEye = function (el) { var i = el.previousElementSibling; if (!i) return; var show = i.type === 'password'; i.type = show ? 'text' : 'password'; el.classList.toggle('on', show); el.setAttribute('aria-label', show ? '隐藏密码' : '显示密码'); };
+  DO.fsSet = function (el) { try { if (el.dataset.v) localStorage.setItem('tm_fs', el.dataset.v); else localStorage.removeItem('tm_fs'); } catch (e) {} fsApply(); render(); toast('字体已调整'); };
   DO.meHelp = function () {
     var u = TM.user(S, me), sec2 = function (t, body) { return '<h3 class="hp-h">' + t + '</h3>' + body; }, li = function (xs) { return '<ul class="hp-l">' + xs.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>'; };
     openSheet('使用帮助', sec2('你的角色', u.roles.map(function (a) { return '<p class="hp-p"><b>' + L.role[a.role] + '</b>：' + HELP_ROLE[a.role] + '</p>'; }).join('')) +

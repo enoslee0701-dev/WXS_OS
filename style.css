@@ -546,7 +546,7 @@ body.is-home{background:#F4F7FB!important}
 .n-next svg{width:22px;height:22px}
 .n-form .media{background:#F4F6F9}
 :root{--hero:url("__HERO__")}
-.is-new main{zoom:.8}
+.is-new main{zoom:var(--pz,.8)}
 .n-hero{background-position:50% 6%!important;background-size:150% auto!important}
 .n-hero::before{background:
   linear-gradient(90deg,rgba(244,247,251,.92) 0%,rgba(244,247,251,.78) 40%,rgba(244,247,251,.35) 70%,rgba(244,247,251,.25) 100%),
@@ -1391,7 +1391,7 @@ a.h-stat{text-decoration:none;cursor:pointer}
 .ai-proj span{font-size:13px;color:#4A5568}
 .ai-proj em{font-style:normal;font-size:13px}.ai-proj em.bad{color:#E5303F}.ai-proj em.good{color:#16A34A}
 .ai-proj a{font-size:13px}
-.ai-panel{zoom:.86}
+.ai-panel{zoom:var(--az,.86)}
 /* 今日待办：可展开日历 */
 .t-calbtn{display:flex;align-items:center;justify-content:center;gap:4px;margin:6px auto 0;height:30px;padding:0 14px;border-radius:15px;border:0;background:rgba(255,255,255,.75);font:600 12.5px var(--font);color:#4A5568;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .t-calbtn svg{width:16px;height:16px}
@@ -2980,7 +2980,7 @@ html{background:transparent!important}
 body::before{top:calc(-1 * var(--sat))}
 
 /* 这些页面 main 有 zoom:.8，安全区的负外边距和内边距会被一起缩小：按比例补偿，让大图顶到屏幕最上方、内容避开状态栏 */
-.is-new main .tk2-hero,.is-new main .wp-hero,.is-new main .tm-hero,.is-new main .n-hero,.is-new main .vr-hero{margin-top:calc(-1 * var(--sat) / .8)!important;padding-top:calc(var(--sat) / .8 + 16px)!important}
+.is-new main .tk2-hero,.is-new main .wp-hero,.is-new main .tm-hero,.is-new main .n-hero,.is-new main .vr-hero{margin-top:calc(-1 * var(--sat) / var(--pz,.8))!important;padding-top:calc(var(--sat) / var(--pz,.8) + 16px)!important}
 /* 首页 main 有 zoom:.86：最小高度按比例放大，铺满整屏 */
 body.home-lock .hm{min-height:calc(100vh / .86)}
 
@@ -3187,3 +3187,13 @@ input[type=search]::-webkit-search-cancel-button{-webkit-appearance:none}
 .dz-meta{margin:2px 2px 10px;font-size:13px;color:#5B6475}
 .tm-offn{font-size:12px;font-weight:500;opacity:.75;margin-left:2px}
 .cx-draft{border:0;background:none;padding:6px 4px;font:inherit;font-size:inherit;color:#2148C0;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+
+/* 字体大小（我的 → 通用）：标准 = 设计图尺寸；大 / 特大 = 整页按比例放大，照顾看小字吃力的同事（规范 §45） */
+html.fs-l{--pz:.9;--az:.95}
+html.fs-xl{--pz:1;--az:1.04}
+.fs-seg{display:inline-flex;gap:2px;padding:3px;border-radius:999px;background:#EEF1F5}
+.fs-seg button{border:0;background:none;padding:5px 12px;border-radius:999px;font:600 13px var(--font);color:#5B6475;cursor:pointer}.fs-seg button.on{background:#fff;color:#141B2D;box-shadow:0 1px 3px rgba(20,27,45,.12)}
+.me-fs{cursor:default}.me-fs .fs-seg{margin-left:auto}
+.me-info.me-fs{display:flex!important;align-items:center;gap:12px;grid-template-columns:none}.me-fs > span:nth-child(2){flex:1;min-width:0;white-space:nowrap}
+.fs-seg{flex:none}.fs-seg button{white-space:nowrap;padding:5px 11px}
+.me-info .fs-seg{width:auto;font-weight:500}

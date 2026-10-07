@@ -38,5 +38,10 @@ await p.goto(URL+'#/me');await p.waitForTimeout(100);await p.click('a[href="#/fi
 { const n=await p.locator('.fl-list .row').count();ok(n>=1&&(await p.textContent('main')).includes('全部文件'),'全部文件列出附件 '+n);
   await p.click('[data-do=flKind][data-k=img]');await p.waitForTimeout(80);const ni=await p.locator('.fl-list .row').count();
   await p.click('[data-do=flKind][data-k=all]');await p.fill('#flq','不存在的文件名xyz');await p.waitForTimeout(400);ok(await p.locator('.fl-list .row').count()===0&&ni<=n,'按类型筛选、按名字搜');await p.fill('#flq','');await p.waitForTimeout(300); }
+// 字体大小：特大 → 页面按比例放大；切回标准恢复设计图尺寸；刷新后仍记得
+await p.goto(URL+'#/me');await p.waitForTimeout(150);await p.evaluate(()=>document.querySelector('[data-do=fsSet][data-v=xl]').click());await p.waitForTimeout(150);
+ok(await p.evaluate(()=>document.documentElement.classList.contains('fs-xl')&&getComputedStyle(document.querySelector('main')).zoom==='1'),'字体特大：页面放大');
+await p.reload();await p.waitForTimeout(400);ok(await p.evaluate(()=>document.documentElement.classList.contains('fs-xl')),'刷新后仍是特大');
+await p.evaluate(()=>document.querySelector('[data-do=fsSet][data-v=""]').click());await p.waitForTimeout(150);ok(await p.evaluate(()=>!document.documentElement.classList.contains('fs-xl')&&getComputedStyle(document.querySelector('main')).zoom==='0.8'),'切回标准');
 ok(errs.length===0,'无报错 '+errs.join('|'));
 console.log(`我的 E2E 通过 ${pass}，失败 ${fail}`);await b.close();process.exit(fail?1:0);})().catch(e=>{console.error(e);process.exit(1)});
