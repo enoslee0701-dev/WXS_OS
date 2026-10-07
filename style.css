@@ -2168,17 +2168,18 @@ body:has(.np-hero){background:#F2F4F8!important}
 .me-demo .me-tt{flex:1}
 .me-ic.dk{background:#141B2D;color:#fff}
 .me-ic.dk svg{width:18px;height:18px}
-body.demo-on .actions,body.demo-on .dock{display:none!important}
-body.demo-on main{padding-bottom:300px!important}
-#demo-coach{position:fixed;left:12px;right:12px;bottom:calc(12px + var(--sab));z-index:900;max-width:520px;margin:0 auto;padding:16px 18px 18px;border-radius:24px;background:rgba(20,27,45,.94);color:#fff;box-shadow:0 18px 50px rgba(10,15,30,.35);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+body.demo-on .dock{display:none!important}
+body.demo-on main{padding-top:var(--dmh,220px)!important;padding-bottom:140px!important}
+body.demo-on .top{top:calc(var(--sat) + var(--dmh,220px))}
+#demo-coach{position:fixed;left:12px;right:12px;top:calc(8px + var(--sat));z-index:900;max-width:520px;margin:0 auto;padding:16px 18px 18px;border-radius:24px;background:rgba(20,27,45,.94);color:#fff;box-shadow:0 18px 50px rgba(10,15,30,.35);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
 #demo-coach .dc-top{display:flex;justify-content:space-between;align-items:center}
 #demo-coach .dc-step{font-size:13px;color:#A9B4CC;letter-spacing:.5px}
 #demo-coach .dc-x{border:0;background:rgba(255,255,255,.12);color:#fff;border-radius:999px;padding:6px 12px;font:inherit;font-size:13px}
 #demo-coach .dc-who{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:14px;color:#D7DEEA}
 #demo-coach .dc-who b{color:#fff}
 #demo-coach h3{margin:10px 0 6px;font-size:19px;font-weight:700}
-#demo-coach p{margin:0;font-size:14.5px;line-height:1.6;color:#D7DEEA}
-#demo-coach .dc-bar{height:4px;border-radius:4px;background:rgba(255,255,255,.15);margin:14px 0;overflow:hidden}
+#demo-coach p{margin:0;font-size:14px;line-height:1.5;color:#D7DEEA}
+#demo-coach .dc-bar{height:4px;border-radius:4px;background:rgba(255,255,255,.15);margin:10px 0;overflow:hidden}
 #demo-coach .dc-bar i{display:block;height:100%;background:#7FA8FF;border-radius:4px;transition:width .3s}
 #demo-coach .dc-go{width:100%;height:50px;border:0;border-radius:16px;background:#fff;color:#141B2D;font:inherit;font-size:16px;font-weight:700}
 .cx-undo{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin-top:12px;height:44px;border:1px dashed #C9D2E3;border-radius:14px;background:transparent;color:#3B4A66;font:inherit;font-size:14.5px}
@@ -3226,3 +3227,13 @@ html.fs-xl{--pz:1;--az:1.04}
 /* 邀请链接页 / 账号卡片里的链接 */
 .cred-link{word-break:break-all;font-size:13px}
 .login.join p a{margin-left:6px;color:var(--pri,#4F6EF7)}
+/* 演示向导：高亮该点的按钮、操作提示、两个按钮 */
+.dm-target{position:relative;z-index:850;outline:3px solid #7FA8FF;outline-offset:3px;border-radius:14px;animation:dmPulse 1.2s ease-in-out infinite}
+@keyframes dmPulse{0%,100%{box-shadow:0 0 0 0 rgba(127,168,255,.55)}50%{box-shadow:0 0 0 12px rgba(127,168,255,0)}}
+#demo-coach .dc-hint{margin-top:8px;padding:8px 12px;border-radius:12px;background:rgba(127,168,255,.16);font-size:13.5px;line-height:1.5;color:#EAF0FF}
+#demo-coach .dc-hint b{display:block;color:#fff;margin-bottom:2px}
+#demo-coach .dc-hint small{display:block;margin-top:6px;color:#A9B4CC;font-size:12.5px}
+#demo-coach .dc-hint.ok{background:rgba(70,200,140,.18)}
+#demo-coach .dc-btns{display:flex;gap:10px}
+#demo-coach .dc-alt{flex:1;height:50px;border:0;border-radius:16px;background:rgba(255,255,255,.14);color:#fff;font:inherit;font-size:15px;font-weight:600}
+#demo-coach .dc-btns .dc-go{flex:1.4}

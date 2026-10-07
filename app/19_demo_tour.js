@@ -1,62 +1,94 @@
 /* app/19_demo_tour.js — 演示向导、window.__tm。所有 app/*.js 按文件名顺序拼进同一个闭包（build.js），共享变量；不要在这里再包一层 function */
   /* ---------- 演示向导：一键走完「想法 → 验收」 ---------- */
+  /* 演示向导：给老板看的「跟着做」教程。每一步都指着真实的按钮让人自己点（页面上会有高亮和说明），
+     也可以点「替我点一下」自动完成。向导会在不同的人之间切换视角（老板 → 运营者 → 负责人 → 执行者），
+     做完的判断看的是数据本身（例如想法有没有被认领），所以自己点和自动点都算数。只在演示版（本机数据）里提供 */
   var dm = null;
   var DM_ROLE = { u_owner: '老板', u_op: '运营者', u_lead: '项目负责人', u_dev: '执行者' };
+  function dmIdea() { return dm && dm.idea ? S.ideas.find(function (x) { return x.id === dm.idea; }) : null; }
+  function dmTask() { return dm && dm.task ? S.tasks.find(function (x) { return x.id === dm.task; }) : null; }
+  function dmWork() { return dm && dm.work ? S.workItems.find(function (x) { return x.id === dm.work; }) : null; }
   function dmSteps() {
-    var g = function () { return dm; };
+    var g = function () { return dm; }, ideaH = function () { return '#/idea/' + g().idea; }, workH = function () { return '#/work/' + g().work; }, taskH = function () { return '#/task/' + g().task; };
     return [
-      { who: null, t: '演示开始', d: '接下来用一个例子「明年开发团队扩编」，自动切换不同的人，一步一步走完从想法到验收的全过程。每一步你都能看到页面变化。' },
-      { who: 'u_owner', t: '老板写想法并提交', d: '老板记录想法，AI 先帮他理顺；点提交后，想法进入「待整理」，摆到运营者面前。', run: function () {
-        var r = TM.act(S, me, 'idea.create', { title: '【演示】明年开发团队扩编', note: '考虑明年再招两名开发，一攻一守。先出一份招聘方案。', tags: ['演示'] }); if (!r.ok) return r; g().idea = r.id;
-        r = TM.act(S, me, 'idea.submit', { id: g().idea, path: 'direct' }); return r.ok ? { ok: true, hash: '#/idea/' + g().idea } : r; } },
-      { who: 'u_op', t: '运营者认领', d: '林晓在待整理里看到这条想法，点「认领跟进」，这件事就归她盯了，同时生成正式的 AI 整理稿。', run: function () { var r = TM.act(S, me, 'idea.claim', { id: g().idea }); return r.ok ? { ok: true, hash: '#/idea/' + g().idea } : r; } },
-      { who: 'u_op', t: '运营者报老板决策', d: '扩编属于「人事决定」，是例外情况，运营者不能自己做主，要先报给老板拍板。', run: function () { var r = TM.act(S, me, 'idea.requestDecision', { id: g().idea, kind: 'personnel', question: '是否同意明年增招两名开发（一攻一守）？' }); if (r.ok) g().dec = r.id; return r.ok ? { ok: true, hash: '#/idea/' + g().idea } : r; } },
-      { who: 'u_owner', t: '老板批准', d: '老板收到「待决策」通知，看完后点批准。想法回到运营者手里，可以派发了。', run: function () { var r = TM.act(S, me, 'decision.decide', { id: g().dec, status: 'approved' }); return r.ok ? { ok: true, hash: '#/idea/' + g().idea } : r; } },
-      { who: 'u_op', t: '运营者派发，形成项目', d: '林晓把它派给项目负责人陈立。想法正式变成「项目」：负责人陈立、运营者林晓、验收人陈立。', run: function () { var r = TM.act(S, me, 'idea.route', { id: g().idea, kind: 'product', leadId: 'u_lead', title: '明年开发团队扩编' }); if (r.ok) g().work = r.workId; return r.ok ? { ok: true, hash: '#/work/' + g().work } : r; } },
-      { who: 'u_lead', t: '负责人拆任务', d: '陈立把项目拆成具体任务，写清：谁做、交什么、怎样算合格、哪天截止。这里派给刘洋写招聘方案。', run: function () {
-        var due = TM.todayStr ? TM.todayStr(S) : null;
-        var r = TM.act(S, me, 'work.plan', { id: g().work, tasks: [{ title: '写开发岗位招聘方案', ownerId: 'u_dev', expected: '一份招聘方案文档', criteria: '包含岗位职责、预算和时间表', priority: 'hi', due: due }] }); if (!r.ok) return r;
-        var t = S.tasks.filter(function (x) { return x.workId === g().work; }).pop(); g().task = t.id; return { ok: true, hash: '#/work/' + g().work }; } },
-      { who: 'u_dev', t: '执行者接收并开始', d: '刘洋在自己的任务页看到这条任务，点「接收」，再点「开始」，状态变成进行中，跟进的人都能看到。', run: function () { var r = TM.act(S, me, 'task.transition', { id: g().task, action: 'accept' }); if (!r.ok) return r; r = TM.act(S, me, 'task.transition', { id: g().task, action: 'start' }); return r.ok ? { ok: true, hash: '#/task/' + g().task } : r; } },
-      { who: 'u_dev', t: '执行者提交成果', d: '刘洋做完，点「提交成果」，附上说明。球踢到验收人那边。', run: function () { var r = TM.act(S, me, 'task.transition', { id: g().task, action: 'submit', note: '招聘方案已完成：两个岗位职责、预算、三个月时间表' }); return r.ok ? { ok: true, hash: '#/task/' + g().task } : r; } },
-      { who: 'u_lead', t: '验收人验收任务', d: '陈立看成果，觉得可以就点「通过」（不行就「退回」并写原因，执行者改完再交）。', run: function () { var r = TM.act(S, me, 'task.review', { id: g().task, verdict: 'pass', note: '方案清楚，可以执行' }); return r.ok ? { ok: true, hash: '#/task/' + g().task } : r; } },
-      { who: 'u_owner', t: '老板终验', d: '设置里开了「老板终验」，所以负责人验收后还要老板再过一道。', skip: function () { var t = S.tasks.find(function (x) { return x.id === dm.task; }); return !t || t.status !== 'owner_review'; }, run: function () { var r = TM.act(S, me, 'task.ownerReview', { id: g().task, verdict: 'owner_pass', note: '同意' }); return r.ok ? { ok: true, hash: '#/task/' + g().task } : r; } },
-      { who: 'u_lead', t: '确认项目完成', d: '所有任务都通过了，项目自动进入「待验收」。验收人点「确认项目完成」，整件事收尾。', run: function () { var r = TM.act(S, me, 'work.close', { id: g().work, note: '招聘方案通过，进入执行' }); return r.ok ? { ok: true, hash: '#/idea/' + g().idea } : r; } },
-      { who: 'u_owner', t: '流程走完了', d: '已切回老板。看顶部进度条：想法 → 整理 → 项目 → 执行 → 验收，五格全部完成。点「查看操作记录」可以看到每一步是谁、什么时候做的。', end: true }
+      { who: null, t: '欢迎看演示', d: '接下来用一个例子「明年开发团队扩编」，走一遍这个 App 的核心：老板说一件事 → AI 整理 → 运营者派发 → 负责人拆任务 → 执行者做完 → 验收。向导会自动切换到不同同事的视角。每一步，页面上会高亮该点的按钮，你自己点；想快一点就按「替我点一下」。', hint: '按「开始」' },
+      { who: 'u_owner', t: '老板随手记一个想法', d: '老板不用写方案，说一句话、拍段视频或打几个字就行。这里用文字：提交后 AI 会把它整理成「整理稿」，摆到运营者面前。', hash: '#/new/text', target: '[data-cap="tx.note"]',
+        hint: '在文字框里写：「考虑明年再招两名开发，一攻一守，先出一份招聘方案」→ 点下面的「下一步 · 让 AI 整理这条想法」→ 面板里点「提交」',
+        done: function () { var d = S.ideas.filter(function (x) { return x.creatorId === 'u_owner' && !x.deleted && x.status !== 'draft' && x.createdAt >= g().t0; }).pop(); if (d) { g().idea = d.id; return true; } return false; }, after: ideaH,
+        run: function () { var r = TM.act(S, me, 'idea.create', { title: '【演示】明年开发团队扩编', note: '考虑明年再招两名开发，一攻一守。先出一份招聘方案。', tags: ['演示'] }); if (!r.ok) return r; g().idea = r.id; return TM.act(S, me, 'idea.submit', { id: g().idea, path: 'direct' }); } },
+      { who: 'u_owner', t: '看 AI 整理稿', d: '这就是 AI 整理出来的：概述、目标、问题、建议的任务，还有「建议送老板决策」之类的判断。老板什么都不用做，往下看就行。', hash: ideaH, target: '.ix2-aiwrap', hint: '往下滑，看「AI 智能整理」这一块，然后按「下一步」', done: function () { return true; }, look: true },
+      { who: 'u_op', t: '运营者认领', d: '现在切到运营者林晓的视角。她的首页会提示「有想法待认领」。认领之后，这件事就归她盯到底。', hash: ideaH, target: '[data-do=claim]', hint: '点「认领跟进」', done: function () { var d = dmIdea(); return !!(d && d.followerId); },
+        run: function () { return TM.act(S, me, 'idea.claim', { id: g().idea }); } },
+      { who: 'u_op', t: '例外情况要报老板', d: '招人属于「人事决定」，App 规定这类事（超预算、人事、战略调整、对外发布）运营者不能自己拍板，必须上报老板。', hash: ideaH, target: '[data-do=ideaMore]', hint: '点「更多」→ 选「上报老板决策」→ 类型选「人事决定」→ 写上「是否同意明年增招两名开发？」→ 点「上报」',
+        done: function () { var dc = S.decisions.filter(function (x) { return x.ideaId === g().idea; }).pop(); if (dc) { g().dec = dc.id; return true; } return false; },
+        run: function () { var r = TM.act(S, me, 'idea.requestDecision', { id: g().idea, kind: 'personnel', question: '是否同意明年增招两名开发（一攻一守）？' }); if (r.ok) g().dec = r.id; return r; } },
+      { who: 'u_owner', t: '老板拍板', d: '切回老板。老板收到「待你决策」的通知，看一眼整理稿和运营者的问题，点批准或拒绝。老板只在这种例外时出手，其余不用管。', hash: ideaH, target: '[data-do=decide]', hint: '点「做决定」→ 选「批准」→ 可以写一句意见 → 确定',
+        done: function () { var dc = S.decisions.find(function (x) { return x.id === g().dec; }); return !!(dc && dc.status !== 'pending'); },
+        run: function () { return TM.act(S, me, 'decision.decide', { id: g().dec, status: 'approved' }); } },
+      { who: 'u_op', t: '运营者派发，形成项目', d: '老板批准后，林晓把想法派出去。这件事是产品类，交给项目负责人陈立规划；行政类的小事她会直接派给执行人。从这一刻起，想法变成了「项目」。', hash: ideaH, target: '[data-do=route]', hint: '点「派发」→ 项目类型选「产品」→ 项目负责人选「陈立」→ 点「派发」',
+        done: function () { var w = S.workItems.find(function (x) { return x.ideaId === g().idea; }); if (w) { g().work = w.id; return true; } return false; }, after: workH,
+        run: function () { var r = TM.act(S, me, 'idea.route', { id: g().idea, kind: 'product', leadId: 'u_lead', title: '明年开发团队扩编' }); if (r.ok) g().work = r.workId; return r; } },
+      { who: 'u_lead', t: '负责人拆任务', d: '切到负责人陈立。他把项目拆成具体任务：谁做、交什么、怎样算合格、哪天截止。这里派给刘洋写招聘方案。', hash: workH, target: '[data-do=goAssignWork]', hint: '点「新建任务」→ 任务写「写开发岗位招聘方案」→ 负责人选「刘洋」→ 预期成果、验收标准各写一句 → 派出',
+        done: function () { var t = S.tasks.filter(function (x) { return x.workId === g().work && x.status !== 'cancelled'; })[0]; if (t) { g().task = t.id; return true; } return false; }, after: workH,
+        run: function () { var r = TM.act(S, me, 'work.plan', { id: g().work, tasks: [{ title: '写开发岗位招聘方案', ownerId: 'u_dev', expected: '一份招聘方案文档', criteria: '包含岗位职责、预算和时间表', priority: 'hi', due: TM.todayStr(S) }] }); if (r.ok) g().task = S.tasks.filter(function (x) { return x.workId === g().work; }).pop().id; return r; } },
+      { who: 'u_dev', t: '执行者接收、开始', d: '切到执行者刘洋。他的「任务」页只有派给他的事，不会被别的信息打扰。接收、开始，跟进的人都能看到他动起来了。', hash: taskH, target: '[data-do=tt]', hint: '点「接收任务」，再点「开始执行」',
+        done: function () { var t = dmTask(); return !!(t && ['in_progress', 'submitted', 'owner_review', 'done'].indexOf(t.status) >= 0); },
+        run: function () { var r = TM.act(S, me, 'task.transition', { id: g().task, action: 'accept' }); if (!r.ok) return r; return TM.act(S, me, 'task.transition', { id: g().task, action: 'start' }); } },
+      { who: 'u_dev', t: '执行者提交成果', d: '做完了就提交：写一句说明，可以附照片、文件或链接。球踢到验收人那边，他会收到通知。', hash: taskH, target: '[data-do=submit]', hint: '点「提交成果」→ 写「招聘方案已完成」→ 提交',
+        done: function () { var t = dmTask(); return !!(t && ['submitted', 'owner_review', 'done'].indexOf(t.status) >= 0); },
+        run: function () { return TM.act(S, me, 'task.transition', { id: g().task, action: 'submit', note: '招聘方案已完成：两个岗位职责、预算、三个月时间表' }); } },
+      { who: 'u_lead', t: '验收', d: '切回陈立。他对照验收标准看成果：合格就通过，不合格就退回并写明原因，刘洋改完再交。每一次验收都留记录。', hash: taskH, target: '[data-do=review][data-arg=pass]', hint: '点「验收通过」→ 写一句意见 → 通过',
+        done: function () { var t = dmTask(); return !!(t && ['owner_review', 'done'].indexOf(t.status) >= 0); },
+        run: function () { return TM.act(S, me, 'task.review', { id: g().task, verdict: 'pass', note: '方案清楚，可以执行' }); } },
+      { who: 'u_owner', t: '老板终验', d: '这个团队在设置里开了「产品任务老板终验」，所以负责人通过后老板再看一眼。不想每件事都过手，关掉这个开关就行。', hash: taskH, target: '[data-do=ownerReview][data-arg=owner_pass]', hint: '点「终验通过」→ 确定',
+        skip: function () { var t = dmTask(); return !t || t.status !== 'owner_review'; }, done: function () { var t = dmTask(); return !!(t && t.status === 'done'); },
+        run: function () { return TM.act(S, me, 'task.ownerReview', { id: g().task, verdict: 'owner_pass', note: '同意' }); } },
+      { who: 'u_lead', t: '确认项目完成', d: '所有任务都通过后，项目自动进入「待验收」，负责人确认一下，整件事收尾。老板会收到「项目完成」的通知。', hash: workH, target: '[data-do=closeWork]', hint: '点「确认完成」',
+        done: function () { var w = dmWork(); return !!(w && w.status === 'done'); }, after: ideaH,
+        run: function () { return TM.act(S, me, 'work.close', { id: g().work, note: '招聘方案通过，进入执行' }); } },
+      { who: 'u_owner', t: '一件事走完了', d: '切回老板。看顶部的进度条：想法 → 整理 → 项目 → 执行 → 验收，五格全部点亮。往下的「落实过程」记着每一步是谁、什么时候做的。老板全程只做了两件事：说一句话、拍一次板。', hash: ideaH, target: '.fl-card', hint: '按「结束演示」。想再看一遍，到「我的 → 演示向导」', end: true }
     ];
   }
-  function dmGo(h) { if (location.hash === h) render(); else location.hash = h; }
+  function dmGo(h) { if (typeof h === 'function') h = h(); if (!h) return; if (location.hash === h) render(); else location.hash = h; }
+  function dmSwitch(uid) { if (uid && me !== uid && TM.user(S, uid)) { me = uid; try { localStorage.setItem(KU, me); } catch (e) {} closeSheet(); return true; } return false; }
+  /* 每次页面渲染后：检查这一步做完没有、高亮该点的按钮、刷新面板 */
   function dmPanel() {
-    var el = document.getElementById('demo-coach');
+    var el = document.getElementById('demo-coach'), old = document.querySelector('.dm-target'); if (old) old.classList.remove('dm-target');
     if (!dm) { if (el) el.remove(); document.body.classList.remove('demo-on'); return; }
     var st = dmSteps(), s = st[dm.i], total = st.filter(function (x) { return x.run; }).length, n = st.slice(0, dm.i + 1).filter(function (x) { return x.run; }).length;
+    if (s.done && !dm.ran && s.done()) { dm.ran = true; if (s.after && !s.look) { dmGo(s.after); return; } }
     if (!el) { el = document.createElement('div'); el.id = 'demo-coach'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', '演示向导'); document.body.appendChild(el); }
     document.body.classList.add('demo-on');
-    var u = s.who ? TM.user(S, s.who) : null;
-    var done = dm.ran;
-    el.innerHTML = '<div class="dc-top"><span class="dc-step">' + (s.run ? '第 ' + n + ' / ' + total + ' 步' : s.end ? '完成' : '演示向导') + '</span>' +
+    var u = s.who ? TM.user(S, s.who) : null, done = dm.ran, tgt = !done && s.target ? document.querySelector(s.target) : null;
+    if (tgt) { tgt.classList.add('dm-target'); try { tgt.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {} }
+    el.innerHTML = '<div class="dc-top"><span class="dc-step">' + (s.run ? '第 ' + n + ' / ' + total + ' 步' : s.end ? '完成' : '演示向导') + (dm.auto ? ' · 已替你点' : '') + '</span>' +
       '<button class="dc-x" data-do="demoExit" aria-label="退出演示">退出</button></div>' +
-      (u ? '<div class="dc-who">' + av(u.id, true) + '<span>' + (done ? '刚才' : '现在') + '是 <b>' + esc(u.name) + '</b>（' + (DM_ROLE[u.id] || '') + '）</span></div>' : '') +
+      (u ? '<div class="dc-who">' + av(u.id, true) + '<span>现在是 <b>' + esc(u.name) + '</b>（' + (DM_ROLE[u.id] || '') + '）的视角</span></div>' : '') +
       '<h3>' + (done ? '✓ ' : '') + esc(s.t) + '</h3><p>' + esc(s.d) + '</p>' +
+      (!done && s.hint ? '<div class="dc-hint"><b>' + (s.run ? (tgt ? '现在请你点：' : '怎么做：') : '') + '</b>' + esc(s.hint) + (s.run && !tgt && !s.look ? '<small>找不到该点的按钮？可能已经做过了，或者页面还没切好，按「替我点一下」也行</small>' : '') + '</div>' : '') +
+      (done && s.run ? '<div class="dc-hint ok">做到了。看一眼页面的变化，再往下。</div>' : '') +
       '<div class="dc-bar"><i style="width:' + Math.round(n / total * 100) + '%"></i></div>' +
-      '<button class="dc-go" data-do="' + (s.end ? 'demoExit' : 'demoNext') + '">' + (s.end ? '结束演示' : !s.run ? '开始' : done ? '下一步' : '执行这一步') + '</button>';
+      '<div class="dc-btns">' +
+      '<button class="dc-go" data-do="' + (s.end ? 'demoExit' : done || !s.run ? 'demoNext' : 'demoAuto') + '">' + (s.end ? '结束演示' : !s.run ? (s.look ? '下一步' : '开始') : done ? '下一步' : '替我点一下') + '</button></div>';
+    document.body.style.setProperty('--dmh', (el.offsetHeight + 28) + 'px'); /* 面板在顶部，页面内容往下让 */
   }
   DO.demoStart = function () {
+    if (SRV) return toast('演示向导只在演示版里提供（正式团队用真实数据）', true);
     if (!TM.user(S, 'u_dev') || !TM.user(S, 'u_lead') || !TM.user(S, 'u_op')) return toast('演示需要默认团队成员，请先在设置里重置演示数据', true);
-    dm = { i: 0, ran: false }; dmPanel();
+    dm = { i: 0, ran: false, t0: Date.now(), auto: false }; dmPanel();
   };
-  DO.demoExit = function () { dm = null; dmPanel(); render(); };
+  DO.demoExit = function () { dm = null; dmSwitch('u_owner'); dmPanel(); render(); };
+  /* 替我点一下：以这一步的人的身份直接执行 */
+  DO.demoAuto = function () {
+    var st = dmSteps(), s = st[dm.i]; if (!s.run || dm.ran) return;
+    dmSwitch(s.who); var r = s.run(); if (!r.ok) { toast(r.error, true); return; }
+    save(); dm.ran = true; dm.auto = true; dmGo(s.after || s.hash); dmPanel();
+  };
+  /* 下一步：切到下一步的人，跳到该去的页面，高亮该点的按钮 */
   DO.demoNext = function () {
-    var st = dmSteps(), s = st[dm.i];
-    if (s.run && !dm.ran) {
-      me = s.who; try { localStorage.setItem(KU, me); } catch (e) {}
-      var r = s.run(); if (!r.ok) { toast(r.error, true); return; }
-      save(); dm.ran = true; dmGo(r.hash); dmPanel(); return;
-    }
-    var j = dm.i + 1; while (st[j] && st[j].skip && st[j].skip()) j++;
-    dm.i = j; dm.ran = false; var ns = st[j];
-    if (ns.who && !ns.run) { me = ns.who; try { localStorage.setItem(KU, me); } catch (e) {} render(); }
-    dmPanel();
+    var st = dmSteps(); var j = dm.i + 1; while (st[j] && st[j].skip && st[j].skip()) j++;
+    dm.i = j; dm.ran = false; dm.auto = false; var ns = st[j];
+    dmSwitch(ns.who); dmGo(ns.hash || null); if (!ns.hash) render(); dmPanel();
   };
   document.addEventListener('click', function (e) {
     var el = e.target.closest('[data-do]'); if (!el) return;

@@ -17,7 +17,7 @@ const { chromium } = require('playwright');
     if (h.includes('派发') && !shots.w) { shots.w = 1; await p.screenshot({ path: 'demo_work.png' }); }
     if (h.includes('确认项目完成') && h.includes('✓')) await p.screenshot({ path: 'demo_done.png' });
   }
-  ok((await p.textContent('#demo-coach h3')).includes('流程走完了'), '走到结尾');
+  ok((await p.textContent('#demo-coach h3')).includes('走完了'), '走到结尾');
   const st = await p.evaluate(() => { const s = JSON.parse(localStorage.getItem('tm_demo_v3')); const i = s.ideas.find(x => x.title.includes('【演示】')); const w = s.workItems.find(x => x.ideaId === i.id); return { i: i.status, w: w.status, me: localStorage.getItem('tm_user_v3') }; });
   ok(st.w === 'done', '项目完成 ' + st.w); ok(st.me === 'u_owner', '切回老板');
   await p.screenshot({ path: 'demo_end.png' });
@@ -26,6 +26,17 @@ const { chromium } = require('playwright');
   await p.click('.fl-card [data-do=ixFold]'); const ft = await p.textContent('.fl-full');
   ok(['认领跟进','报老板决策','批准','形成项目','开始做','提交成果','验收通过','确认项目完成'].every(x=>ft.includes(x)), '展开后完整显示谁接手每一步');
   await p.click('#demo-coach .dc-go'); ok(!(await p.isVisible('#demo-coach')), '退出后面板消失');
+  // 跟着做：高亮真实按钮，自己点也算数（不用「替我点」）
+  await p.evaluate(() => { localStorage.clear(); localStorage.setItem('tm_user_v3', 'u_owner'); }); await p.reload(); await p.goto((require('./_env').URL+'#/me')); await p.waitForTimeout(300);
+  await p.click('[data-do=demoStart]'); await p.click('#demo-coach .dc-go'); await p.waitForTimeout(300);
+  ok((await p.evaluate(() => location.hash)) === '#/new/text' && await p.locator('.dm-target[data-cap="tx.note"]').count() === 1 && /现在请你点/.test(await p.textContent('#demo-coach .dc-hint')), '第 1 步：跳到文字记录页，高亮文字框，说明该怎么做');
+  await p.fill('[data-cap="tx.note"]', '考虑明年再招两名开发，一攻一守，先出一份招聘方案'); await p.evaluate(() => document.querySelector('[data-do=capNext]').click()); await p.waitForSelector('#layer .sheet'); await p.evaluate(() => document.querySelector('#layer .sheet footer button[type=submit]').click()); await p.waitForTimeout(400);
+  ok((await p.textContent('#demo-coach h3')).includes('✓') && (await p.textContent('#demo-coach .dc-go')).includes('下一步') && (await p.evaluate(() => location.hash)).startsWith('#/idea/'), '自己点完提交，向导识别到做完了');
+  await p.click('#demo-coach .dc-go'); await p.waitForTimeout(200); await p.click('#demo-coach .dc-go'); await p.waitForTimeout(300); // 看整理稿 → 认领
+  ok(await p.evaluate(() => localStorage.getItem('tm_user_v3')) === 'u_op' && await p.locator('.dm-target[data-do=claim]').count() === 1, '切到运营者视角，高亮「认领跟进」');
+  await p.click('[data-do=claim]'); await p.waitForTimeout(300);
+  ok((await p.textContent('#demo-coach h3')).includes('✓ 运营者认领'), '自己点认领也算做完');
+  await p.click('#demo-coach .dc-x'); await p.waitForTimeout(200); ok(!(await p.isVisible('#demo-coach')) && await p.evaluate(() => localStorage.getItem('tm_user_v3')) === 'u_owner', '退出演示后切回老板');
   ok(!errs.length, '无脚本错误 ' + errs.join(';'));
   console.log('通过', pass, '失败', fail); await b.close();
 })();
