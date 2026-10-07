@@ -218,6 +218,21 @@ async function team(api) {
     ok(ri.status === 200 && rq.messages[0].content[0].type === 'image' && rq.messages[0].content[0].source.media_type === 'image/png' && /## 原文/.test(rq.system[0].text), '拍照识别：图片交给 Claude，要求转录原文、要点、待办'); }
   { const rw = await api5('POST', '/api/ai/write', { kind: 'task', title: '布置会场', note: '所属项目：感恩晚会' }, t5.boss), rq = seen[seen.length - 1].body;
     ok(rw.status === 200 && /任务描述/.test(rq.system[0].text) && /感恩晚会/.test(rq.messages[0].content), '分配任务：Claude 写任务描述（带上所属项目）'); }
+  // 视频想法（闭环实测发现）：提交后服务器转写视频，转写完成后整理稿必须换成 AI 版，不能被「10 分钟只跑一次」挡掉
+  { const BIN = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-trbin-'));
+    fs.writeFileSync(path.join(BIN, 'ffmpeg'), '#!/bin/sh\nfor a in "$@"; do last="$a"; done\nhead -c 4096 /dev/zero > "$last"\n');
+    fs.writeFileSync(path.join(BIN, 'whisper'), '#!/bin/sh\nsleep 1\necho "年终客户答谢会定在十一月二十日，预算五万元以内。"\n');
+    fs.chmodSync(path.join(BIN, 'ffmpeg'), 0o755); fs.chmodSync(path.join(BIN, 'whisper'), 0o755); fs.writeFileSync(path.join(BIN, 'm.bin'), 'm');
+    const s6 = await start({ ANTHROPIC_API_KEY: 'sk-test', ANTHROPIC_BASE_URL: MOCK, TRANSCRIBE: '', WHISPER_BIN: path.join(BIN, 'whisper'), WHISPER_MODEL: path.join(BIN, 'm.bin'), FFMPEG: path.join(BIN, 'ffmpeg') }); const api6 = mkApi(s6.B), t6 = await team(api6);
+    const vi = await api6('POST', '/api/act', { name: 'idea.create', payload: { title: '答谢会', note: '', media: [{ kind: 'video', name: '老板口述.mp4', localId: 'f_vidloop01' }] } }, t6.boss);
+    await api6('POST', '/api/act', { name: 'idea.submit', payload: { id: vi.r.id, path: 'direct' } }, t6.boss);
+    await fetch(s6.B + '/api/files/f_vidloop01', { method: 'PUT', headers: { Authorization: 'Bearer ' + t6.boss, 'Content-Type': 'video/mp4', 'X-Name': encodeURIComponent('老板口述.mp4') }, body: Buffer.alloc(2048, 1) });
+    let fin = null; for (let i = 0; i < 80 && !fin; i++) { const st = (await api6('GET', '/api/state', null, t6.boss)).state, d = st.ideas.find(x => x.id === vi.r.id), sm = st.summaries.filter(x => x.ideaId === vi.r.id && x.kind === 'analysis').pop(); if (d.media[0].transcriptStatus === 'done' && sm && sm.payload.simulated === false) fin = { d, sm }; else await new Promise(r => setTimeout(r, 100)); }
+    ok(fin && /答谢会/.test(fin.d.media[0].transcript), '视频想法：转写完成后整理稿换成 AI 版（不被 10 分钟限制挡掉）');
+    ok(seen.some(x => x.body.output_config && x.body.output_config.format && x.body.output_config.format.schema.properties.suggested_route && JSON.stringify(x.body.messages).includes('十一月二十日')), 'AI 整理时看到了视频转写内容');
+    s6.kill(); fs.rmSync(s6.DIR, { recursive: true, force: true }); fs.rmSync(BIN, { recursive: true, force: true }); }
+  { const A = require('./server/ai.js'), t = '2026-10-07'; // 会议拆任务：模型给的各种日期写法统一换算（闭环实测：本机模型给「10月20日」被当成无效清空）
+    ok(JSON.stringify(['2026-10-20', '10月20日', '10月20号', '2026/11/5', '10-01', '下周五', '', '2025-12-01'].map(x => A.normDue(x, t))) === JSON.stringify(['2026-10-20', '2026-10-20', '2026-10-20', '2026-11-05', '2027-10-01', '', '', '']), '会议拆任务：日期写法统一成 YYYY-MM-DD，过去的日期清空'); }
   s5.kill(); fs.rmSync(s5.DIR, { recursive: true, force: true });
   s2.kill(); fs.rmSync(s2.DIR, { recursive: true, force: true }); mock.close();
   console.log(`\nAI 代理 通过 ${pass}，失败 ${fail}`); process.exit(fail ? 1 : 0);

@@ -290,14 +290,26 @@ var TM = (function () {
     oq.forEach(function (q) { if (r.checks.length < 5 && !r.checks.some(function (c) { return c.slice(0, 2) === q.slice(0, 2); })) r.checks.push(q.replace(/[？?]$/, '')); });
     return r;
   }
+  function ideaText(d) { return (d.title || '') + ' ' + noteOf(d); }
+  /* 原文里提到的金额（「5万」「3000元」「五万元」）有没有超过老板设的预算阈值；没设阈值就不算超预算 */
+  function overBudget(s, t) {
+    var lim = s.settings.budgetThreshold; if (!lim) return false;
+    var cn = { '一': 1, '两': 2, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10 }, re = /(\d+(?:\.\d+)?|[一两二三四五六七八九十]+)\s*(万|千|元|块)/g, m;
+    while ((m = re.exec(String(t || '')))) {
+      var n = /\d/.test(m[1]) ? parseFloat(m[1]) : m[1].split('').reduce(function (a, c) { return c === '十' ? (a || 1) * 10 : a + cn[c]; }, 0);
+      if (n * (m[2] === '万' ? 10000 : m[2] === '千' ? 1000 : 1) > lim) return true;
+    }
+    return false;
+  }
+  var CAT_ADMIN = ['网线', '网速', '采购', '场地', '报销', '办公', '打印', '订', '搬', '装修', '物资', '年会', '证件', '投影', '坏了', '维修', '饮水', '墨盒', '签到', '会议室', '设备', '换一'],
+    CAT_PRODUCT = ['App', 'app', '产品', '原型', '功能', '开发', '系统', '小程序', '灵修', '网站', '官网', '界面'];
+  function ruleCat(t) { return has(t, CAT_ADMIN) ? 'admin' : has(t, CAT_PRODUCT) ? 'product' : 'other'; }
   function mockAnalysis(s, d) {
     var t = (d.title || '') + ' ' + noteOf(d);
-    var cat = has(t, ['网线', '网速', '采购', '场地', '报销', '办公', '打印', '订', '搬', '装修', '物资', '年会', '证件', '投影', '坏了', '维修', '饮水', '墨盒', '签到', '会议室', '设备', '换一']) ? 'admin'
-      : has(t, ['App', 'app', '产品', '原型', '功能', '开发', '系统', '小程序', '灵修', '网站', '官网', '界面']) ? 'product' : 'other';
+    var cat = ruleCat(t);
     var flags = [];
     if (has(t, ['战略', '转型', '方向调整', '砍掉'])) flags.push('strategy_change');
-    var m = t.match(/(\d+(?:\.\d+)?)\s*(万|元)/);
-    if (m) { var amt = parseFloat(m[1]) * (m[2] === '万' ? 10000 : 1); if (s.settings.budgetThreshold && amt > s.settings.budgetThreshold) flags.push('over_budget'); }
+    if (overBudget(s, t)) flags.push('over_budget');
     if (has(t, ['招聘', '招人', '招两', '辞退', '调岗', '人事', '加薪'])) flags.push('personnel');
     if (has(t, ['对外发布', '官网', '公开发布', '上架', '发布会'])) flags.push('major_release');
     var dv = deriveAnalysis(d);
@@ -305,7 +317,7 @@ var TM = (function () {
     var title = d.title || aiTitle(d);
     var oq = [];
     if (!has(t, ['天', '周', '月', '前', '截止'])) oq.push('期望什么时候完成？');
-    if (!m && (cat === 'admin' || flags.length)) oq.push('预算上限是多少？');
+    if (!/(\d+(?:\.\d+)?|[一两二三四五六七八九十]+)\s*(万|千|元|块)/.test(t) && (cat === 'admin' || flags.length)) oq.push('预算上限是多少？');
     if (txt(d.note).length < 12) oq.push('原始描述较短，背景和目标需要发起人补充。');
     return {
       simulated: true, title: title, summary: txt(d.note).slice(0, 60) || title,
@@ -608,8 +620,15 @@ var TM = (function () {
     ev(s, { ideaId: d.id, workId: w.id, actor: uid, action: 'idea.route', from: 'triage', to: 'planned', text: '形成项目「' + title + '」（' + L.kind[kind] + '）' + (w.leadId ? '，交 ' + name(s, w.leadId) : '') });
     if (kind === 'product') notify(s, [w.leadId], uid, '新项目待你规划', title, '#/work/' + w.id);
     else addTasks(s, uid, w, p.tasks);
+    // 发起人（常常是老板）知道自己的想法已经落地成项目（闭环实测：之前发起人收不到任何消息）
+    if (d.creatorId !== uid) notify(s, [d.creatorId], uid, '你的想法已立项', '「' + title + '」' + (kind === 'product' ? '交 ' + name(s, w.leadId) + ' 规划' : '已派出 ' + (p.tasks || []).length + ' 个任务') + '，由 ' + name(s, uid) + ' 跟进', '#/work/' + w.id);
     return { workId: w.id };
   };
+  /* 默认验收人是项目的验收人；任务正好派给验收人自己时，换成负责人 / 跟进人 / 老板，不能自己验收自己（闭环实测发现） */
+  function defReviewer(s, w, ownerId) {
+    if (w.reviewerId !== ownerId) return w.reviewerId;
+    return [w.leadId, w.operatorId].concat(usersWith(s, 'owner')).filter(function (id) { return id && id !== ownerId && live(s, id); })[0] || w.reviewerId;
+  }
   function addTasks(s, uid, w, list) {
     list.forEach(function (x) {
       need(txt(x.title), '任务需要标题'); need(x.ownerId && user(s, x.ownerId), '请选择主负责人'); need(live(s, x.ownerId), name(s, x.ownerId) + ' 的账号已停用，不能派任务');
@@ -619,7 +638,7 @@ var TM = (function () {
       if (txt(x.title).length > 50) deny('任务标题不超过 50 字');
       if (x.reviewerId) { need(live(s, x.reviewerId), '验收人不存在或已停用'); need(x.reviewerId !== x.ownerId, '验收人不能是执行人自己'); }
       if (x.due) need(typeof x.due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x.due), '截止日期不正确');
-      var t = { id: nid(s, 'T'), workId: w.id, title: txt(x.title), description: txt(x.description).slice(0, 2000), ttype: typeof x.ttype === 'string' ? x.ttype.slice(0, 20) : '', priority: x.priority || 'mid', milestone: !!x.milestone, ownerId: x.ownerId, collabs: collabs, reviewerId: x.reviewerId || w.reviewerId,
+      var t = { id: nid(s, 'T'), workId: w.id, title: txt(x.title), description: txt(x.description).slice(0, 2000), ttype: typeof x.ttype === 'string' ? x.ttype.slice(0, 20) : '', priority: x.priority || 'mid', milestone: !!x.milestone, ownerId: x.ownerId, collabs: collabs, reviewerId: x.reviewerId || defReviewer(s, w, x.ownerId),
         due: x.due || (w.due && w.due >= todayStr(s) ? w.due : dateAdd(s, 7)), expected: txt(x.expected), /* 每个任务都要有截止（文档 5.4）：没填就用项目截止，再没有就一周后 */ criteria: txt(x.criteria), status: 'assigned', blockedReason: '', assignedBy: x.assignedBy || 'manual', lastActivity: now(s), createdAt: now(s) };
       s.tasks.push(t);
       ev(s, { workId: w.id, taskId: t.id, actor: uid, action: 'task.assign', to: 'assigned', text: (t.assignedBy === 'ai' ? '按 AI 推荐（人工确认）' : '') + '派给 ' + name(s, t.ownerId) + (t.collabs.length ? '，协作者 ' + t.collabs.map(function (c) { return name(s, c); }).join('、') : '') + '，验收人 ' + name(s, t.reviewerId) + (t.milestone ? '（里程碑）' : '') });
@@ -1298,7 +1317,7 @@ var TM = (function () {
     var t = txt(p.text).slice(0, 20000); m.transcript = t; m.transcriptAt = now(s);
     ev(s, { ideaId: d.id, actor: 'agent', action: 'idea.transcript', text: (m.kind === 'video' ? '视频' : '录音') + '「' + m.name + '」转写完成（' + t.length + ' 字）' });
     var sm = latestSummary(s, d.id, 'analysis');
-    var fresh = d.status === 'triage' && (!sm || (sm.authorType === 'agent' && sm.payload && sm.payload.simulated)) && !s.workItems.some(function (w) { return w.ideaId === d.id; });
+    var fresh = d.status === 'triage' && (!sm || sm.authorType === 'agent') && !s.workItems.some(function (w) { return w.ideaId === d.id; }) && !s.decisions.some(function (x) { return x.ideaId === d.id; }); // AI 版整理稿也要重做（之前没看到转写内容）；人改过的不动
     if (t && fresh && d.submittedAt) { addSummary(s, d, 'analysis', mockAnalysis(s, d), 'agent'); d.aiStatus = 'ready'; return { reanalyzed: true }; }
     return {};
   };
@@ -1309,23 +1328,24 @@ var TM = (function () {
     need(sm && sm.id === p.summaryId && sm.authorType === 'agent', '整理稿已经更新过，不覆盖');
     // 运营者已经据此派发、或已送老板 / 老板已决定：整理稿是当时决定的依据，不再改
     need(d.status === 'triage' && !s.workItems.some(function (w) { return w.ideaId === d.id; }) && !s.decisions.some(function (x) { return x.ideaId === d.id && x.status !== 'pending'; }), '想法已经往前推进，不再替换整理稿');
-    var a = p.payload || {}, str = function (v, n) { return txt(v).slice(0, n); }, arr = function (v, n, m) { return (Array.isArray(v) ? v : []).map(function (x) { return str(x, m); }).filter(Boolean).slice(0, n); };
+    var a = p.payload || {}, str = function (v, n) { var x = txt(v); return /^[（(]?(无|暂无|没有|未提及|未说明|未知|不详|n\/?a|none)[）)]?[。.]?$/i.test(x) ? '' : x.slice(0, n); }, /* 模型常把没说的写成「无」，当作没填 */ arr = function (v, n, m) { return (Array.isArray(v) ? v : []).map(function (x) { return str(x, m); }).filter(Boolean).slice(0, n); };
     var np = Object.assign({}, sm.payload, {
       simulated: false, model: str(p.model, 40),
       title: str(a.title, 30) || sm.payload.title, summary: str(a.summary, 120), background: str(a.background, 1000), problem: str(a.problem, 500),
       goal: str(a.goal, 300), overview: str(a.overview, 600), issues: arr(a.issues, 6, 80), directions: arr(a.directions, 6, 80),
-      category: AI_CAT.indexOf(a.category) >= 0 ? a.category : sm.payload.category,
+      category: a.category === 'product' && !has(ideaText(d), CAT_PRODUCT) ? ruleCat(ideaText(d)) : AI_CAT.indexOf(a.category) >= 0 ? a.category : sm.payload.category, /* 小模型常把活动说成产品：原文没有研发类字眼就按规则判断 */
       relation_to_direction: str(a.relation_to_direction, 300) || sm.payload.relation_to_direction,
       open_questions: arr(a.open_questions, 5, 80),
-      exception_flags: (Array.isArray(a.exception_flags) ? a.exception_flags : []).filter(function (x, i, l) { return AI_FLAGS.indexOf(x) >= 0 && l.indexOf(x) === i; }),
+      exception_flags: (Array.isArray(a.exception_flags) ? a.exception_flags : []).filter(function (x, i, l) { return AI_FLAGS.indexOf(x) >= 0 && l.indexOf(x) === i && (x !== 'over_budget' || overBudget(s, ideaText(d))); }), /* 超预算按原文金额和老板设的阈值核对，不信模型的猜测 */
       suggested_route: AI_ROUTE.indexOf(a.suggested_route) >= 0 ? a.suggested_route : sm.payload.suggested_route,
       suggested_tasks: (Array.isArray(a.suggested_tasks) ? a.suggested_tasks : []).slice(0, 6).map(function (t) { return { title: str(t && t.title, 50), expected_output: str(t && t.expected_output, 100), acceptance_criteria: str(t && t.acceptance_criteria, 100), suggested_due_days: Math.max(1, Math.min(90, Math.round(+(t && t.suggested_due_days) || 7))) }; }).filter(function (t) { return t.title; }),
       confidence: Math.max(0, Math.min(1, +a.confidence || 0.7))
     });
     if (!np.suggested_tasks.length) np.suggested_tasks = sm.payload.suggested_tasks;
+    if (!np.overview) np.overview = np.summary || sm.payload.overview; if (!np.summary) np.summary = sm.payload.summary;
     sm.payload = np;
     if (d.titleSource === 'ai' && np.title) d.title = np.title;
-    ev(s, { ideaId: d.id, actor: 'agent', action: 'ai.analyze.real', text: 'Claude 完成整理 · 建议：' + L.route[np.suggested_route] });
+    ev(s, { ideaId: d.id, actor: 'agent', action: 'ai.analyze.real', text: (/^本机/.test(np.model) ? '本机 AI' : 'Claude') + ' 完成整理 · 建议：' + L.route[np.suggested_route] });
     return {};
   };
   /* 老板早报：今天需要老板关注的事（服务器每天早上以系统身份发一条通知） */
@@ -1394,7 +1414,7 @@ var TM = (function () {
     var d = s.ideas.find(function (x) { return x.id === p.id; }); need(d && !d.deleted, '想法不存在'); need(d.status === 'summary_ready', '方向已经确认，不再替换汇总');
     var sm = latestSummary(s, d.id, 'cocreate'); need(sm && sm.id === p.summaryId && sm.payload.simulated, '汇总已经更新过，不覆盖');
     var ids = s.suggestions.filter(function (x) { return x.ideaId === d.id; }).map(function (x) { return x.id; });
-    var a = p.payload || {}, str = function (v, n) { return txt(v).slice(0, n); }, src = function (v) { return (Array.isArray(v) ? v : []).map(String).filter(function (x, i, l) { return ids.indexOf(x) >= 0 && l.indexOf(x) === i; }).slice(0, 10); };
+    var a = p.payload || {}, str = function (v, n) { var x = txt(v); return /^[（(]?(无|暂无|没有|未提及|未说明|未知|不详|n\/?a|none)[）)]?[。.]?$/i.test(x) ? '' : x.slice(0, n); }, /* 模型常把没说的写成「无」，当作没填 */ src = function (v) { return (Array.isArray(v) ? v : []).map(String).filter(function (x, i, l) { return ids.indexOf(x) >= 0 && l.indexOf(x) === i; }).slice(0, 10); };
     var pts = function (v, needSrc) { return (Array.isArray(v) ? v : []).slice(0, 8).map(function (x) { return { point: str(x && x.point, 120), src: src(x && x.src) }; }).filter(function (x) { return x.point && (!needSrc || x.src.length); }); };
     var np = { simulated: false, model: str(p.model, 40), consensus: pts(a.consensus, true), risks: pts(a.risks, true), open_questions: pts(a.open_questions, false),
       divergences: (Array.isArray(a.divergences) ? a.divergences : []).slice(0, 5).map(function (v) { return { point: str(v && v.point, 120), positions: (Array.isArray(v && v.positions) ? v.positions : []).slice(0, 4).map(function (q) { return { view: str(q && q.view, 120), src: src(q && q.src) }; }).filter(function (q) { return q.view && q.src.length; }) }; }).filter(function (v) { return v.point && v.positions.length; }),

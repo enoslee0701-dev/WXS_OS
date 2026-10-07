@@ -162,7 +162,7 @@ const ANALYSIS_SCHEMA = {
     overview: { type: 'string', description: '核心概述，2–3 句' },
     issues: { type: 'array', items: { type: 'string' }, description: '目前的问题或没说清楚的地方，最多 5 条' },
     directions: { type: 'array', items: { type: 'string' }, description: '推进的步骤或方向，最多 5 条' },
-    category: { type: 'string', enum: ['admin', 'product', 'other'], description: 'admin=行政事务，product=产品开发，other=其他' },
+    category: { type: 'string', enum: ['admin', 'product', 'other'], description: 'admin=行政事务（活动、会议、采购、招待、培训、行政杂事）；product=做软件 / App / 网站 / 实体产品等需要研发的事；other=其他' },
     relation_to_direction: { type: 'string', description: '和公司方向、老板资料的关系；没有就说没有' },
     open_questions: { type: 'array', items: { type: 'string' }, description: '需要发起人补充的问题' },
     exception_flags: { type: 'array', items: { type: 'string', enum: ['strategy_change', 'over_budget', 'personnel', 'major_release'] }, description: '需要老板决策的例外：战略调整、超预算、人事、重要对外发布' },
@@ -179,7 +179,7 @@ async function analyzeIdea(S, ideaId) {
   const L = TM.L;
   const system = [
     { type: 'text', text: `你是团队协同 App 的 AI 助理，负责把成员提交的想法整理成清楚的「整理稿」，交给运营者跟进、老板决策。
-要求：用简体中文；忠于原文，不编造人名、金额、日期；原文没说的写进 open_questions；预算超过 ${S.settings.budgetThreshold || '（未设置）'} 元算 over_budget。
+要求：用简体中文；忠于原文，不编造人名、金额、日期；原文没说的写进 open_questions，对应字段留空字符串，不要写「无」；${S.settings.budgetThreshold ? '原文明确提到的金额超过 ' + S.settings.budgetThreshold + ' 元才算 over_budget' : '老板没设预算阈值，不要标 over_budget'}。
 团队成员：${S.users.map(u => u.name + '（' + u.roles.map(r => L.role[r.role]).join('、') + '）').join('，')}。
 公司方向：${S.settings.direction || '（未填写）'}` + kbBlock(view, owner, S), cache_control: { type: 'ephemeral' } }
   ];
@@ -321,6 +321,17 @@ async function parseTodos(S, uid, text) {
 }
 
 /* 会议纪要 / 录音转写 → 项目任务（谁、做什么、什么时候、交付什么、怎样算完成） */
+/* 模型给的日期不一定是 YYYY-MM-DD（「10月20日」「2026/10/20」「10-20」）：统一换算；早于今天或认不出就留空 */
+function normDue(v, today) {
+  const t = String(v || '').trim(); let y = +today.slice(0, 4), m, d, r;
+  if ((r = /^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})/.exec(t))) { y = +r[1]; m = +r[2]; d = +r[3]; }
+  else if ((r = /^(\d{1,2})[-/.月](\d{1,2})/.exec(t))) { m = +r[1]; d = +r[2]; }
+  else return '';
+  if (!(m >= 1 && m <= 12 && d >= 1 && d <= 31)) return '';
+  let iso = y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  if (iso < today && !/^\d{4}/.test(t)) iso = (y + 1) + iso.slice(4); // 没写年份、日期已过：指明年
+  return iso >= today ? iso : '';
+}
 async function parseMeeting(S, workId, text) {
   const w = S.workItems.find(x => x.id === workId); if (!w) throw { status: 404, error: '项目不存在' };
   const today = TM.todayStr(S), wd = '日一二三四五六'[new Date(today + 'T00:00:00').getDay()];
@@ -331,7 +342,7 @@ async function parseMeeting(S, workId, text) {
   const r = await call({ system: [{ type: 'text', text: `你把一次会议的记录拆成可以派出去的任务。今天是 ${today}（星期${wd}）。项目：「${w.title}」${w.goal ? '，目标：' + w.goal : ''}。团队成员：${people.map(u => u.name + '（' + (u.title || '') + '）').join('、')}。规则：只拆会上明确要做的事，每件事一条，最多 10 条；不编造会上没说的事、人和时间；「周五」指本周或下一个周五。用简体中文。` }], messages: [{ role: 'user', content: String(text).slice(0, 8000) }], schema, effort: 'low', maxTokens: 4000 });
   let o; try { o = JSON.parse(r.text); } catch (e) { throw { status: 502, error: 'AI 返回的格式不对' }; }
   const byName = (n) => { const u = people.find(x => x.name === String(n || '').trim()); return u ? u.id : ''; };
-  const items = (o.items || []).slice(0, 10).map(x => ({ title: String(x.title || '').trim().slice(0, 50), ownerId: byName(x.owner), due: /^\d{4}-\d{2}-\d{2}$/.test(x.due) && x.due >= today ? x.due : '', expected: String(x.expected || '').slice(0, 100), criteria: String(x.criteria || '').slice(0, 100) })).filter(x => x.title);
+  const items = (o.items || []).slice(0, 10).map(x => ({ title: String(x.title || '').trim().slice(0, 50), ownerId: byName(x.owner), due: normDue(x.due, today), expected: String(x.expected || '').slice(0, 100), criteria: String(x.criteria || '').slice(0, 100) })).filter(x => x.title);
   return { items, usage: r.usage };
 }
 
@@ -354,6 +365,6 @@ async function pdfToMarkdown(base64, name) {
   return { text: r.text, truncated: r.truncated, usage: r.usage };
 }
 
-module.exports = { enabled, provider, claudeOn, allowed, readImage, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, cocreateSummary, parseMeeting, parseProject, parseTodos, writeHelper, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };
+module.exports = { normDue, enabled, provider, claudeOn, allowed, readImage, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, cocreateSummary, parseMeeting, parseProject, parseTodos, writeHelper, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };
 // 模型名：Claude 或本机模型（界面和用量统计里显示）
 Object.defineProperty(module.exports, 'MODEL', { get: () => claudeOn() ? MODEL : '本机 ' + LLM.NAME, enumerable: true });

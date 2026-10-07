@@ -3216,3 +3216,8 @@ html.fs-xl{--pz:1;--az:1.04}
 .tp-pick b{font-size:15.5px;display:flex;align-items:center;gap:6px}.tp-pick b em{font-style:normal;font:600 11.5px var(--font);color:#2148C0;background:#EEF3FF;border-radius:999px;padding:1px 7px}
 .tp-pick small{font-size:12.5px;color:#5B6475}.tp-pick span{font-size:13px;color:#3E4A63;line-height:1.5}
 .tp-del{flex:none;width:40px;border:0;border-radius:14px;background:#F4F6FA;color:#6B7586;cursor:pointer;display:grid;place-items:center}.tp-del svg{width:16px;height:16px}
+/* 派发：AI 建议的多个任务一次派完 */
+.rt-h { margin: 14px 0 4px; font-size: 13px; font-weight: 600; color: var(--sub, #667085); }
+.rt-more { border-top: 1px dashed var(--line, #e4e7ec); margin-top: 10px; }
+.rt-on { display: flex; align-items: center; gap: 8px; }
+.rt-on input { width: 18px; height: 18px; }

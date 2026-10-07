@@ -27,10 +27,10 @@
   TM.migrate(S);
   var PHOTOS = { u_owner: '__ENOS__' };
   /* 真实 AI：服务器模式下老板 / 管理员可用（服务器配置了密钥时）；否则一律规则模拟 */
-  var AI_ON = false; var TR_ON = false, APPV = '', AI_LOCAL = false, AI_MODEL = ''; // AI_LOCAL：没有 Claude 密钥，用的是服务器本机的开源模型 // APPV：安装的 App 版本号（原生 App 才有）
+  var AI_ON = false, AI_CFG = false; var TR_ON = false, APPV = '', AI_LOCAL = false, AI_MODEL = ''; // AI_LOCAL：没有 Claude 密钥，用的是服务器本机的开源模型 // APPV：安装的 App 版本号（原生 App 才有）
   if (typeof TMN !== 'undefined' && TMN.appInfo) TMN.appInfo().then(function (i) { if (i && i.version) APPV = i.version; });
   // 团队服务器装了语音转写（录音 / 视频自动转文字）
-  if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.aiStatus().then(function (r) { AI_ON = !!(r && r.enabled); TR_ON = !!(r && r.transcribe); AI_LOCAL = !!(r && r.provider === 'local'); AI_MODEL = r && r.model || ''; if (AI_ON && aiS && aiS.open) renderAI(); });
+  if (typeof TMS !== 'undefined' && TMS.loggedIn()) TMS.aiStatus().then(function (r) { AI_ON = !!(r && r.enabled); AI_CFG = !!(r && r.configured); TR_ON = !!(r && r.transcribe); AI_LOCAL = !!(r && r.provider === 'local'); AI_MODEL = r && r.model || ''; if (AI_ON && aiS && aiS.open) renderAI(); else if (AI_ON || TR_ON) { var fe = document.activeElement; if (!fe || !/^(INPUT|TEXTAREA|SELECT)$/.test(fe.tagName)) render(); } /* 拿到 AI 状态后刷新一次：「本机 AI」字样、AI 按钮 */ });
   /* 头像：裁成正方形、压到 256 像素再上传（服务器模式）；演示模式只存在本机 */
   function avatarPick(f) {
     if (!/^image\//.test(f.type)) return toast('请选一张图片', true);
@@ -2827,26 +2827,40 @@
   function mtParse(text, w) {
     var ppl = TM.activeUsers(S).filter(function (u) { return !u.roles.every(function (a) { return a.role === 'admin'; }); });
     var VERB = /(做|出|写|准备|联系|确认|采购|买|订|安排|整理|提交|设计|开发|测试|上线|发布|对接|跟进|核对|统计|汇总|通知|布置|搭建|印|拍|剪辑|修改|完善|落实|负责)/;
-    var out = [];
+    var out = [], prev = null;
     String(text || '').split(/[。；;！!？?\n：:]+/).map(function (x) { return x.trim(); }).filter(function (x) { return x.length >= 4; }).forEach(function (sen) {
       sen.split(/[，,]?(?:另外|然后|还有|再由|再让)/).forEach(function (c) {
         c = c.trim(); if (out.length >= 10 || c.length < 4) return;
-        var who = ppl.filter(function (u) { return c.indexOf(u.name) >= 0; })[0];
+        var who = ppl.filter(function (u) { return c.indexOf(u.name) >= 0; })[0], last = prev; prev = null;
+        /* 没提到人、只补了时间的半句（「张伟联系酒店：下周五前签好合同」）：并进上一个任务，当它的截止时间 */
+        if (!who && last && !last.due && /(今天|明天|后天|下周|这周|本周|周[一二三四五六日天]|星期[一二三四五六日天]|\d{1,2}月\d{1,2}[日号])/.test(c)) {
+          var more = c.replace(/(今天|明天|后天|(下|这|本)?(周|星期)[一二三四五六日天]|\d{1,2}月\d{1,2}[日号])(之前|以前|前)?/g, '').replace(/^(请|就|先|再|然后|并且|要|把)+/, '').replace(/^[，,、\s]+|[，,、\s]+$/g, '');
+          last.due = parseWhen(c).date; if (more.length >= 2) last.title = (last.title + '，' + more).slice(0, 40); return;
+        }
         if (!who && !VERB.test(c)) return;
         var hasDate = /(今天|明天|后天|下周|这周|本周|周[一二三四五六日天]|星期[一二三四五六日天]|\d{1,2}月\d{1,2}[日号])/.test(c);
         var title = c.replace(who ? new RegExp('(由|让|请|麻烦)?' + who.name + '(来|去|负责|那边)?') : /^$/, '').replace(/(今天|明天|后天|(下|这|本)?(周|星期)[一二三四五六日天]|\d{1,2}月\d{1,2}[日号])(之前|以前|前)?/g, '').replace(/^(请|由|让|麻烦|就|先|再|然后|并且|我们|大家)+/, '').replace(/^[，,、\s]+|[，,、\s]+$/g, '').slice(0, 40);
         if (title.length < 3) return;
-        out.push({ title: title, ownerId: who ? who.id : '', due: hasDate ? parseWhen(c).date : '', expected: '', criteria: '', on: true });
+        prev = { title: title, ownerId: who ? who.id : '', due: hasDate ? parseWhen(c).date : '', expected: '', criteria: '', on: true }; out.push(prev);
       });
     });
     return out;
+  }
+  /* AI 拆出的任务没带时间时（小模型常漏）：用规则识别出的同一负责人、标题最像的那条的时间补上 */
+  function mtFillDue(items, rule) {
+    var sim = function (a, b) { var n = 0; for (var i = 0; i < a.length; i++) if (b.indexOf(a[i]) >= 0) n++; return n; };
+    items.forEach(function (x) {
+      if (x.due) return;
+      var best = null, bs = 0; rule.forEach(function (r) { if (!r.due || (x.ownerId && r.ownerId && r.ownerId !== x.ownerId)) return; var v = sim(x.title, r.title) + (r.ownerId === x.ownerId ? 2 : 0); if (v > bs) { bs = v; best = r; } });
+      if (best && bs >= 3) x.due = best.due;
+    });
   }
   function mtOwnerDefault(w) { var ex = TM.usersWith(S, 'executor'); return w.kind === 'product' && w.leadId ? (ex[0] || w.leadId) : (ex[0] || w.operatorId); }
   function mtBody() {
     var w = W(mt.wid), ppl = TM.activeUsers(S).filter(function (u) { return !u.roles.every(function (a) { return a.role === 'admin'; }); });
     if (!mt.items) return '<p class="muted" style="margin:0 0 8px;font-size:14px">把会议录音或会议纪要交给 AI，它会找出「谁、做什么、什么时候」，你核对后一次派出去。</p>' +
       '<textarea id="mt-text" rows="7" placeholder="例如：周五前刘洋把报名页面做出来；何静下周一给出海报初稿；场地由周敏这周确认，预算不超过 3000。">' + esc(mt.text) + '</textarea>' +
-      '<div class="mt-row">' + (canSrvTr() || TR_ON || (typeof TMS !== 'undefined' && TMS.loggedIn && TMS.loggedIn()) ? '<button type="button" class="btn" data-do="mtRec">' + (mt.rec ? '■ 停止录音（' + '<span id="mt-sec">0</span> 秒）' : ni('mic', 1.6) + ' 录一段会议') + '</button>' : '') +
+      '<div class="mt-row">' + (canSrvTr() || TR_ON || (typeof TMS !== 'undefined' && TMS.loggedIn && TMS.loggedIn()) ? '<button type="button" class="btn" data-do="mtRec">' + (mt.rec ? '■ 停止录音（' + '<span id="mt-sec">0</span> 秒）' : ni('mic', 1.6) + ' 录一段会议') + '</button>' + (mt.rec ? '' : '<label class="btn">' + ai2('doc2', 1.6) + ' 上传录音<input type="file" accept="audio/*,video/*" data-mtfile="1" hidden></label>') : '') +
       '<button type="button" class="btn pri" data-do="mtGo"' + (mt.busy ? ' disabled' : '') + '>' + (mt.busy ? '正在拆解…' : hi('spark', 1.6) + ' 拆成任务') + '</button></div>';
     var on = mt.items.filter(function (x) { return x.on; }).length;
     return '<p class="muted" style="margin:0 0 8px;font-size:14px">拆出 ' + mt.items.length + ' 个任务' + (mt.src ? '（' + mt.src + '）' : '') + '，核对负责人和时间后派出；不要的取消勾选。</p><div class="mt-list">' + mt.items.map(function (x, i) {
@@ -2861,7 +2875,11 @@
   MTX.wTplSave = function () { var w = W(cur().id); openSheet('存为模板', '<p class="muted" style="margin:0 0 8px;font-size:14px">把这个项目的任务、验收标准和里程碑存成模板，下次新建同类项目时一键带出（日期按相对天数换算）。</p>' + field('模板名称', '<input type="text" name="name" maxlength="20" value="' + esc(w.title.slice(0, 20)) + '" required>'), '保存模板', function (o) { act('template.save', { id: w.id, name: o.name }, '已存为模板，新建项目时可以选'); }); };
   MTX.wMeeting = function () {
     var w = W(cur().id); if (!canPlanWork(w)) return toast('只有能给这个项目派任务的人可以用', true);
-    mt = { wid: w.id, text: '', items: null, rec: null, busy: false };
+    mt = { wid: w.id, text: '', items: null, rec: null, busy: false }; mtOpen();
+  };
+  /* 打开（或转文字后重新打开）会议拆任务面板：转文字时会临时换成「正在转文字」面板 */
+  function mtOpen() {
+    var w = W(mt.wid); if (!w) return;
     openSheet('会议拆任务', mtBody(), '关闭', function () {
       if (!mt.items) return closeSheet();
       var pick = mt.items.filter(function (x) { return x.on && x.title.trim(); });
@@ -2870,15 +2888,16 @@
       var r = act('work.plan', { id: w.id, tasks: pick.map(function (x) { return { title: x.title.trim(), ownerId: x.ownerId, due: x.due || undefined, expected: x.expected || ('完成「' + x.title.trim() + '」并提交成果说明'), criteria: x.criteria || '验收人确认达到要求', assignedBy: 'ai' }; }) });
       if (r.ok) { closeSheet(); toast('已派出 ' + pick.length + ' 个任务，负责人都收到了通知'); }
     });
-  };
+    mtRender();
+  }
   MTX.mtBack = function () { mt.items = null; mtRender(); };
   MTX.mtGo = function () {
     var ta = document.getElementById('mt-text'); mt.text = ta ? ta.value : mt.text; var w = W(mt.wid);
     if (mt.text.trim().length < 6) return fieldErr('#mt-text', '先写或录一段会议内容');
     var useRule = function (why) { mt.items = mtParse(mt.text, w); mt.src = why || '规则识别'; mt.items.forEach(function (x) { if (!x.ownerId) x.ownerId = mtOwnerDefault(w); }); mt.busy = false; if (!mt.items.length) { mt.items = null; mtRender(); return toast('没有识别出要做的事，试着写成「谁 + 什么时候 + 做什么」', true); } mtRender(); };
-    if (AI_ON && typeof TMS !== 'undefined' && TMS.aiMeeting) {
+    if ((AI_ON || AI_CFG) && typeof TMS !== 'undefined' && TMS.aiMeeting) /* 会议拆任务服务器对负责人、运营者开放 */ {
       mt.busy = true; mtRender();
-      TMS.aiMeeting(w.id, mt.text).then(function (r) { mt.busy = false; mt.items = (r.items || []).map(function (x) { return { title: x.title, ownerId: x.ownerId || mtOwnerDefault(w), due: x.due, expected: x.expected, criteria: x.criteria, on: true }; }); mt.src = AI_LOCAL ? '本机 AI' : 'Claude'; if (!mt.items.length) return useRule('AI 没拆出来，改用规则识别'); mtRender(); }, function () { useRule('AI 暂时不可用，改用规则识别'); });
+      TMS.aiMeeting(w.id, mt.text).then(function (r) { mt.busy = false; mt.items = (r.items || []).map(function (x) { return { title: x.title, ownerId: x.ownerId || mtOwnerDefault(w), due: x.due, expected: x.expected, criteria: x.criteria, on: true }; }); mt.src = AI_LOCAL ? '本机 AI' : 'Claude'; if (!mt.items.length) return useRule('AI 没拆出来，改用规则识别'); mtFillDue(mt.items, mtParse(mt.text, w)); mtRender(); }, function () { useRule('AI 暂时不可用，改用规则识别'); });
     } else useRule();
   };
   MTX.mtRec = function () {
@@ -2891,7 +2910,7 @@
       mr.onstop = function () { stream.getTracks().forEach(function (t) { t.stop(); }); clearInterval(mt.rec.timer); mt.rec = null; mtRender();
         var blob = new Blob(chunks, { type: mr.mimeType || 'audio/webm' });
         if (!canSrvTr()) return toast('录好了，但这里没法转文字：请连接团队服务器，或用输入法的话筒说到文字框里', true);
-        srvTr(blob, '会议录音').then(function (t) { if (!t) return toast('录音里没有识别到说话', true); mt.text = (mt.text ? mt.text + '\n' : '') + t; mtRender(); toast('已转成文字，可以点「拆成任务」'); }, function () {}); };
+        srvTr(blob, '会议录音').then(function (t) { if (!t) { mtOpen(); return toast('录音里没有识别到说话', true); } mt.text = (mt.text ? mt.text + '\n' : '') + t; mtOpen(); toast('已转成文字，可以点「拆成任务」'); }, function () { mtOpen(); /* 转失败也回到会议面板，已写的内容还在 */ }); };
       mr.start(); mtRender();
     }).catch(function () { toast('没有拿到麦克风权限，请在设置里允许后再试', true); });
   };
@@ -3302,13 +3321,15 @@
       function (o) {
         var p = { id: d.id, path: o.path };
         if (o.path === 'cocreate') { p.shareAll = o.share !== 'some'; p.shares = [].concat(o.shares || []); p.deadline = o.deadline || null; }
-        var r = act('idea.submit', p, o.path === 'direct' ? '已提交，AI 已整理，等待运营者认领' : '已开启共创，团队已收到邀请');
+        var r = act('idea.submit', p, o.path === 'direct' ? (SRV && AI_ON ? '已提交，AI 正在整理，稍后进入运营待认领' : '已提交，AI 已整理，等待运营者认领') : '已开启共创，团队已收到邀请');
         if (r.ok) location.hash = '#/idea/' + d.id;
       });
   }
   function routeSheet(id) {
     var d = I(id), sm = TM.latestSummary(S, d.id, 'analysis'), p = sm ? sm.payload : {}, st = (p.suggested_tasks || [])[0] || {};
     var cat = p.category || 'admin';
+    /* AI 建议的其余任务也一起带出来，一次派完（闭环实测：之前只带第一个，其余要运营者再手动加） */
+    var more = (p.suggested_tasks || []).slice(1, 6).filter(function (x) { return x && x.title; }), execs = TM.activeUsers(S).filter(function (u) { return u.roles.some(function (a) { return a.role === 'executor'; }); }).map(function (u) { return u.id; });
     var leads = TM.leadUsers(S); // 没有负责人的小团队：老板自任
     var mustOwner = S.settings.ownerApprovalMode === 'all' && !d.ownerApproved;
     var ai = S.settings.agentDirectRoute && p.suggested_route ? '<div class="callout ai">AI 已按整理稿预填：' + esc(L.route[p.suggested_route]) + '。核对后点「派发」，派发由你决定。</div>' : '';
@@ -3316,11 +3337,14 @@
       '<div class="fld"><span>项目类型</span><div class="opts">' + opt('kind', 'admin', '行政：直接派任务', '你来派执行人，并负责验收', cat !== 'product') + opt('kind', 'product', '产品：交项目负责人', '由负责人拆任务、派执行人、验收', cat === 'product') + '</div></div>' +
       field('项目标题', '<input type="text" name="title" value="' + esc(p.title || d.title) + '">') + field('目标', '<input type="text" name="goal" value="' + esc(p.goal && p.goal !== '待确认' ? p.goal : '') + '">') +
       '<div id="leadBox">' + field('项目负责人', userSelect('leadId', leads)) + '</div>' +
-      '<div id="taskBox">' + taskFields('t_', { title: st.title, expected: st.expected_output, criteria: st.acceptance_criteria, due: TM.dateAdd(S, st.suggested_due_days || 3) }) + '</div>', '派发',
+      '<div id="taskBox">' + (more.length ? '<p class="rt-h">任务 1 / ' + (more.length + 1) + '</p>' : '') + taskFields('t_', { title: st.title, expected: st.expected_output, criteria: st.acceptance_criteria, due: TM.dateAdd(S, st.suggested_due_days || 3), ownerId: execs[0] }) +
+        more.map(function (x, i) { var k = 't' + (i + 1) + '_'; return '<div class="rt-more"><label class="rt-h rt-on"><input type="checkbox" name="' + k + 'on" checked>任务 ' + (i + 2) + ' / ' + (more.length + 1) + '（AI 建议，不需要就取消勾选）</label>' + taskFields(k, { title: x.title, expected: x.expected_output, criteria: x.acceptance_criteria, due: TM.dateAdd(S, x.suggested_due_days || 3), ownerId: execs[(i + 1) % (execs.length || 1)] }) + '</div>'; }).join('') + '</div>', more.length ? '派发 ' + (more.length + 1) + ' 个任务' : '派发',
       function (o) {
         var pl = { id: d.id, kind: o.kind, title: o.title, goal: o.goal };
         if (o.kind === 'product') pl.leadId = o.leadId;
-        else pl.tasks = [{ title: o.t_title, ownerId: o.t_ownerId, expected: o.t_expected, criteria: o.t_criteria, due: o.t_due }];
+        else pl.tasks = [{ title: o.t_title, ownerId: o.t_ownerId, expected: o.t_expected, criteria: o.t_criteria, due: o.t_due }].concat(more.map(function (x, i) { var k = 't' + (i + 1) + '_'; return o[k + 'on'] && String(o[k + 'title'] || '').trim() ? { title: o[k + 'title'], ownerId: o[k + 'ownerId'], expected: o[k + 'expected'], criteria: o[k + 'criteria'], due: o[k + 'due'] } : null; }).filter(Boolean));
+        var r = act('idea.route', pl, o.kind === 'product' ? '已交项目负责人' : pl.tasks.length > 1 ? pl.tasks.length + ' 个任务已派出' : '任务已派出');
+        if (r.ok) location.hash = '#/work/' + r.workId; return;
         var r = act('idea.route', pl, o.kind === 'product' ? '已交项目负责人' : '任务已派出');
         if (r.ok) location.hash = '#/work/' + r.workId;
       });
@@ -4026,6 +4050,12 @@
     var el = e.target;
     if (el.type === 'radio' || el.type === 'checkbox') markChecked();
     if (el.type === 'file' && el.files) Array.prototype.forEach.call(el.files, function (f) { var nn = niceFileName(f); if (nn !== f.name) try { Object.defineProperty(f, 'name', { value: nn }); } catch (x) {} });
+    if (el.dataset && el.dataset.mtfile && el.files.length) { /* 会议拆任务：上传已有的会议录音（手机录音机、微信语音导出等）→ 服务器转文字 */
+      var mf = el.files[0]; el.value = ''; var ta0 = document.getElementById('mt-text'); if (ta0) mt.text = ta0.value;
+      if (!canSrvTr()) return toast('这里没法转文字：请连接团队服务器，或把会议纪要粘贴进来', true);
+      srvTr(mf, '会议录音').then(function (t) { if (!t) { mtOpen(); return toast('录音里没有识别到说话', true); } mt.text = (mt.text ? mt.text + '\n' : '') + t; mtOpen(); toast('已转成文字，可以点「拆成任务」'); }, function () { mtOpen(); /* 转失败也回到会议面板，已写的内容还在 */ });
+      return;
+    }
     if (el.dataset && el.dataset.dvfile && el.files.length) {
       Array.prototype.forEach.call(el.files, function (f) { if (dvPick.length >= 9) return; var lid = rid('b'); blobs[lid] = keepBlob(lid, f); dvPick.push({ kind: /^image\//.test(f.type) ? 'image' : /^video\//.test(f.type) ? 'video' : /^audio\//.test(f.type) ? 'audio' : 'file', name: f.name, localId: lid, size: fmtSize(f.size) }); });
       el.value = ''; dvRender(); if (dvPick.length >= 9) toast('每次提交最多 9 个文件'); return;

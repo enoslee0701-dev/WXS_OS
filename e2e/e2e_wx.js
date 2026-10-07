@@ -78,5 +78,28 @@ const URL=(require('./_env').URL);
     await p.evaluate(() => document.querySelector('.sheet footer button[type=submit]').click()); await p.waitForTimeout(250);
     const made = await p.evaluate((n) => window.__tm.S.tasks.slice(n).map(t => t.ownerId), n0);
     ok(made.length === 2 && made.includes('u_design') && !made.includes('u_dev'), '取消勾选的不派，其余一次派出 ' + made.join()); }
+  // 录音转写常见的冒号断句：只补时间的半句并进上一个任务（闭环实测发现）
+  { await p.evaluate(() => document.querySelector('[data-do=wMeeting]').click()); await p.waitForSelector('#mt-text');
+    await p.fill('#mt-text', '今天定一下分工：何静负责设计邀请函和背景板：10月20号前出初稿：刘洋负责采购礼品：11月15号前到货');
+    await p.evaluate(() => document.querySelector('[data-do=mtGo]').click()); await p.waitForTimeout(250);
+    const its = await p.evaluate(() => [...document.querySelectorAll('.mt-it')].map(x => x.querySelector('[data-mt=title]').value + '|' + x.querySelector('select').selectedOptions[0].textContent + '|' + x.querySelector('[data-mt=due]').value));
+    ok(its.length === 2 && /^设计邀请函和背景板，出初稿\|何静\|\d{4}-10-20$/.test(its[0]) && /^采购礼品，到货\|刘洋\|\d{4}-11-15$/.test(its[1]), '只补时间的半句并进上一个任务 ' + JSON.stringify(its));
+    await p.evaluate(() => document.querySelector('.sheet [data-do=closeSheet]').click()); await p.waitForTimeout(200); }
+  // 派发：AI 建议的多个任务一次派完，不要的取消勾选（闭环实测：之前只带出第一个）
+  { const iid = await p.evaluate(() => { window.__tm.as('u_owner'); const S = JSON.parse(JSON.stringify(window.__tm.S));
+      const at = Date.now(), d = { id: 'Ixmulti', creatorId: 'u_owner', dept: null, path: 'direct', status: 'triage', aiStatus: 'ready', title: '答谢会', note: '年终客户答谢会', followerId: 'u_op', shareAll: false, shares: [], media: [], tags: [], submittedAt: at, lastActivity: at, createdAt: at };
+      S.ideas.push(d); S.summaries.push({ id: 'Sxmulti', ideaId: d.id, kind: 'analysis', version: 1, authorType: 'agent', payload: { simulated: false, title: '答谢会', summary: '办答谢会', category: 'admin', exception_flags: [], suggested_route: 'operator_direct', suggested_tasks: [['订酒店', 9], ['做邀请函', 5], ['电话邀请客户', 12]].map(x => ({ title: x[0], expected_output: x[0] + '完成', acceptance_criteria: '验收人确认', suggested_due_days: x[1] })) }, at });
+      window.__tm.setState(S); window.__tm.as('u_op'); return d.id; });
+    await p.goto(URL + '#/idea/' + iid); await p.waitForTimeout(300);
+    await p.evaluate(() => [...document.querySelectorAll('[data-do=route]')][0].click()); await p.waitForSelector('.sheet.on');
+    const rs = await p.evaluate(() => ({ titles: [...document.querySelectorAll('.sheet input[name$=_title]')].map(x => x.value), btn: document.querySelector('.sheet footer button[type=submit]').textContent, owners: [...document.querySelectorAll('.sheet select[name$=_ownerId]')].map(x => x.value) }));
+    ok(rs.titles.join() === '订酒店,做邀请函,电话邀请客户' && /派发 3 个任务/.test(rs.btn), '派发面板带出 AI 建议的全部任务 ' + JSON.stringify(rs));
+    ok(new Set(rs.owners).size > 1, '默认负责人轮流分配，不全压给一个人 ' + rs.owners.join());
+    await p.evaluate(() => document.querySelector('.sheet input[name=t2_on]').click());
+    const n0 = await p.evaluate(() => window.__tm.S.tasks.length);
+    await p.evaluate(() => document.querySelector('.sheet footer button[type=submit]').click()); await p.waitForTimeout(300);
+    const made = await p.evaluate((n) => window.__tm.S.tasks.slice(n).map(t => t.title), n0);
+    ok(made.join() === '订酒店,做邀请函' && p.url().includes('#/work/'), '取消勾选的不派，其余一起派出 ' + made.join());
+  }
   ok(!errs.length,'无脚本错误 '+errs.join(';')); console.log('项目详情 E2E 通过',pass,'失败',fail); await b.close();
 })();

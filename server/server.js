@@ -531,6 +531,8 @@ function autoAnalyze(added, retry) {
   if (!AI.enabled() || process.env.AI_AUTO_ANALYZE === '0') return;
   added.filter(x => (x.kind === 'analysis' || x.kind === 'digest' || x.kind === 'cocreate') && x.authorType === 'agent' && x.payload && x.payload.simulated).forEach(sm => {
     if (analyzing.has(sm.id)) return;
+    // 视频 / 录音正在转文字：等转写完再整理（转写完成或失败时会补做），不然这次结果会被转写后的新整理稿作废
+    const di = sm.kind === 'analysis' && S.ideas.find(x => x.id === sm.ideaId); if (di && (di.media || []).some(m => m.transcriptStatus === 'pending')) return;
     // 同一个想法 10 分钟内只自动跑一次（防止反复「重新整理」刷掉全队的 AI 额度）
     // 重试不刷新这个时间（不然放弃后 10 分钟内手动「重新整理」会被挡住）
     const k = sm.kind + '|' + sm.ideaId; if (!retry) { if (lastAuto.get(k) > Date.now() - 10 * 60e3) return; lastAuto.set(k, Date.now()); }
@@ -713,7 +715,8 @@ const trQueued = new Set();
 const TR_WORDS = '同工、同工会、感恩、感恩节、事工、宣教、福音、灵修、团契、教会、门徒、祷告、敬拜、奉献、预算、方案、项目、活动、场地、海报、报名、复盘';
 function trPrompt() {
   const works = S.workItems.filter(w => w.status !== 'done').slice(-12).map(w => w.title).filter(Boolean).join('、');
-  return '以下是团队工作想法和会议的普通话录音，用简体中文和中文标点。团队成员：' + S.users.map(u => u.name).join('、') + '。' + (works ? '正在做的项目：' + works + '。' : '') + '常用词：' + TR_WORDS + '。';
+  // 写成自然的句子（不用「成员：」这种冒号格式，不然 whisper 会学着用冒号断句）
+  return '以下是团队工作想法和会议的普通话录音，用简体中文，句子之间用逗号和句号。团队成员有' + S.users.map(u => u.name).join('、') + '，' + (works ? '正在做的项目有' + works + '，' : '') + '常用词有' + TR_WORDS + '。';
 }
 function trScan() { try { trScan0(); } catch (e) { console.error('转写扫描出错（已跳过）', e); } }
 function trScan0() {
@@ -729,10 +732,11 @@ function trScan0() {
       TR.transcribe(path.join(FILES, m.localId), trPrompt()).then(text => {
         trQueued.delete(m.localId); q('INSERT OR REPLACE INTO transcripts VALUES(?,?,?)').run(m.localId, 'done', Date.now());
         const nSum = S.summaries.length; trWrite({ id: d.id, localId: m.localId, status: 'done', text: text || '' });
-        autoAnalyze(S.summaries.slice(nSum));
+        autoAnalyze(S.summaries.slice(nSum), true); // 内容变了（加了转写），不受「10 分钟只跑一次」限制
       }).catch(e => {
         trQueued.delete(m.localId); q('INSERT OR REPLACE INTO transcripts VALUES(?,?,?)').run(m.localId, 'failed', Date.now());
         console.error('转写失败', m.localId, e.message); trWrite({ id: d.id, localId: m.localId, status: 'failed' });
+        const cur = S && TM.latestSummary(S, d.id, 'analysis'); if (cur && cur.payload && cur.payload.simulated) autoAnalyze([cur], true); // 转写期间暂缓的 AI 整理，按原文补做
       });
     });
   });

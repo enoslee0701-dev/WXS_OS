@@ -495,7 +495,7 @@ ok(real.users[0].name === '王建国' && (real.todos || []).length === 0, '真�
 
 // ===== 真实 AI 整理稿写入 =====
 s = TM.migrate(fresh());
-let ai1 = must(TM.act(s, O, 'idea.create', { note: '想给团队办一次退修会，预算两万元，十二月中旬' }), '老板记想法');
+let ai1 = must(TM.act(s, O, 'idea.create', { note: '想给团队办一次退修会，预算三万元，十二月中旬' }), '老板记想法');
 must(TM.act(s, O, 'idea.submit', { id: ai1.id, path: 'direct' }), '提交');
 let smA = TM.latestSummary(s, ai1.id, 'analysis');
 ok(smA && smA.authorType === 'agent' && smA.payload.simulated, '先有规则版整理稿');
@@ -506,6 +506,29 @@ ok(smA.payload.simulated === false && smA.payload.overview.includes('退修会')
 ok(JSON.stringify(smA.payload.exception_flags) === '["over_budget"]' && smA.payload.suggested_tasks[0].suggested_due_days === 90 && smA.payload.confidence === 1 && !('evil' in smA.payload), 'AI 结果字段清洗');
 ok(s.ideas.find(x => x.id === ai1.id).title === '团队退修会（12 月中旬）', 'AI 拟的标题生效');
 rej(TM.act(s, 'agent', 'idea.aiResult', { id: ai1.id, summaryId: 'S-old', payload: {} }), '整理稿已更新时不覆盖');
+{ // 本机小模型的常见毛病：没说的写「无」、乱标超预算（闭环实测发现）
+  const th = s.settings.budgetThreshold; s.settings.budgetThreshold = 100000;
+  const x = must(TM.act(s, O, 'idea.create', { note: '年终客户答谢会，预算控制在五万元以内，邀请一百位老客户，先定酒店场地' }), '记想法'); must(TM.act(s, O, 'idea.submit', { id: x.id, path: 'direct' }), '提交');
+  const sx = TM.latestSummary(s, x.id, 'analysis');
+  must(TM.act(s, 'agent', 'idea.aiResult', { id: x.id, summaryId: sx.id, model: '本机 Qwen2.5 7B Instruct', payload: { title: '年终客户答谢会', summary: '11 月 20 日办答谢会，邀请 100 位老客户。', overview: '无', background: '无。', problem: '（无）', goal: '到场率八成', category: 'product', exception_flags: ['over_budget'], suggested_route: 'operator_direct' } }), '写入');
+  const px = TM.latestSummary(s, x.id, 'analysis').payload;
+  ok(px.background === '' && px.problem === '' && px.overview === px.summary && px.overview.includes('答谢会'), '「无」当作没填，概述空时用摘要');
+  ok(px.exception_flags.length === 0, '原文金额没超过阈值：去掉模型乱标的超预算');
+  ok(px.category === 'admin', '模型把活动说成产品 / 原文没有研发字眼：按规则改为行政');
+  must(TM.act(s, OP, 'idea.claim', { id: x.id }), '运营者认领'); const n0 = s.notifications.length;
+  must(TM.act(s, OP, 'idea.route', { id: x.id, kind: 'admin', title: '答谢会', tasks: [{ title: '订酒店', ownerId: AX, expected: '合同', criteria: '签好' }, { title: '做邀请函', ownerId: DS, expected: '设计稿', criteria: '通过' }] }), '派发两个任务');
+  ok(s.notifications.slice(n0).some(n => n.userId === O && n.title === '你的想法已立项' && /已派出 2 个任务/.test(n.body)), '发起人（老板）收到「你的想法已立项」');
+  const wx = s.workItems[s.workItems.length - 1]; must(TM.act(s, OP, 'work.plan', { id: wx.id, tasks: [{ title: '整理客户名单', ownerId: OP, expected: '名单', criteria: '齐全' }] }), '运营者给自己派任务');
+  const tx = s.tasks[s.tasks.length - 1]; ok(tx.ownerId === OP && tx.reviewerId !== OP && TM.hasRole(s, tx.reviewerId, 'owner'), '派给验收人自己的任务：验收人换成老板，不自己验收自己');
+  ok(s.events.some(e => e.ideaId === x.id && e.action === 'ai.analyze.real' && /^本机 AI 完成整理/.test(e.text)), '动态写的是本机 AI，不是 Claude');
+  s.settings.budgetThreshold = 30000; const sx2 = TM.latestSummary(s, x.id, 'analysis');
+  const y = must(TM.act(s, O, 'idea.create', { note: '年终客户答谢会，预算控制在五万元以内' }), '记想法2'); must(TM.act(s, O, 'idea.submit', { id: y.id, path: 'direct' }), '提交2');
+  ok(TM.latestSummary(s, y.id, 'analysis').payload.exception_flags.includes('over_budget'), '中文数字「五万元」超过 3 万阈值：规则版标超预算');
+  must(TM.act(s, 'agent', 'idea.aiResult', { id: y.id, summaryId: TM.latestSummary(s, y.id, 'analysis').id, payload: { title: '答谢会', category: 'admin', exception_flags: ['over_budget'] } }), '写入2');
+  ok(TM.latestSummary(s, y.id, 'analysis').payload.exception_flags.includes('over_budget'), '真超预算时保留');
+  s.settings.budgetThreshold = null; const z = must(TM.act(s, O, 'idea.create', { note: '花二十万做个展会' }), '记想法3'); must(TM.act(s, O, 'idea.submit', { id: z.id, path: 'direct' }), '提交3');
+  ok(!TM.latestSummary(s, z.id, 'analysis').payload.exception_flags.includes('over_budget'), '没设阈值不算超预算');
+  s.settings.budgetThreshold = th; void sx2; }
 
 // ===== Claude 决策建议写入 =====
 s = TM.migrate(fresh());
@@ -618,6 +641,11 @@ const tsm1 = TM.latestSummary(s, vi.id, 'analysis');
 ok(tvd.media[0].transcript.includes('感恩晚会') && tvd.media[0].transcriptStatus === 'done' && TM.noteOf(tvd).includes('同工会'), '转写写进附件，想法全文包含转写');
 ok(ttr.reanalyzed && tsm1.id !== tsm0.id && JSON.stringify(tsm1.payload).includes('同工会'), '转写后按全文重新生成整理稿');
 ok(s.events.some(e => e.ideaId === vi.id && e.action === 'idea.transcript' && /视频「视频 10月5日.mp4」转写完成/.test(e.text)), '动态里记一条转写完成');
+// AI 已经按「只有标题」整理过（转写还没回来）：转写回来后也要重新整理，不然 AI 版没看到视频内容
+{ const v3 = must(TM.act(s, O, 'idea.create', { title: '答谢会', note: '', media: [{ kind: 'video', name: 'a.mp4', localId: 'b_vid3' }] }), '视频想法3'); must(TM.act(s, O, 'idea.submit', { id: v3.id, path: 'direct' }), '提交3');
+  const s3 = TM.latestSummary(s, v3.id, 'analysis'); must(TM.act(s, 'agent', 'idea.aiResult', { id: v3.id, summaryId: s3.id, model: 'claude', payload: { title: '答谢会', category: 'admin' } }), 'AI 先按标题整理');
+  const r3 = must(TM.act(s, 'agent', 'idea.transcript', { id: v3.id, localId: 'b_vid3', status: 'done', text: '十一月二十日办答谢会' }), '转写回来');
+  ok(r3.reanalyzed && TM.latestSummary(s, v3.id, 'analysis').payload.simulated, 'AI 版整理稿没看到转写：重新生成（服务器再交给 AI）'); }
 // 运营者已经手写整理稿：不覆盖
 const vi2 = must(TM.act(s, O, 'idea.create', { note: '录音想法', media: [{ kind: 'audio', name: '录音 0:30', localId: 'b_aud2' }] }), '带录音的想法');
 must(TM.act(s, O, 'idea.submit', { id: vi2.id, path: 'direct' }), '提交');
