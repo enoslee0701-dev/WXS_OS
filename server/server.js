@@ -3,7 +3,7 @@
    - 账号由老板 / 管理员创建并分派；密码 scrypt 加盐；会话令牌（只走请求头）+ 只能读附件的文件令牌（可放进网址）
    - SSE 推送版本号，客户端收到后拉取最新数据
    用法：node server/server.js
-   环境变量：PORT（8787）、HOST（0.0.0.0）、DATA_DIR（server/data）、MAX_FILE_MB（500）、USER_QUOTA_MB（5000）、
+   环境变量：PORT（8787）、HOST（0.0.0.0）、DATA_DIR（server/data）、MAX_FILE_MB（2048）、USER_QUOTA_MB（20000）、
             SETUP_CODE（首次创建团队的初始化码；不设则随机生成并打印）、TRUST_PROXY=1（在反向代理后，按 X-Forwarded-For 识别 IP） */
 'use strict';
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto'), os = require('os');
@@ -17,8 +17,8 @@ const PUSH = require('./push.js');
 const PORT = +process.env.PORT || 8787, HOST = process.env.HOST || '0.0.0.0';
 const DATA = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const WEB = path.join(__dirname, '..', 'dist', 'team-ops.html');
-const SESSION_DAYS = 90, MAX_BODY = 2 * 1024 * 1024, MAX_FILE = (+process.env.MAX_FILE_MB || 500) * 1024 * 1024;
-const QUOTA = (+process.env.USER_QUOTA_MB || 5000) * 1024 * 1024;
+const SESSION_DAYS = 90, MAX_BODY = 2 * 1024 * 1024, MAX_FILE = (+process.env.MAX_FILE_MB || 2048) * 1024 * 1024;
+const QUOTA = (+process.env.USER_QUOTA_MB || 20000) * 1024 * 1024;
 const FILES = path.join(DATA, 'files');
 fs.mkdirSync(path.join(DATA, 'backups'), { recursive: true }); fs.mkdirSync(FILES, { recursive: true });
 
@@ -532,7 +532,9 @@ function autoAnalyze(added, retry) {
   added.filter(x => (x.kind === 'analysis' || x.kind === 'digest' || x.kind === 'cocreate') && x.authorType === 'agent' && x.payload && x.payload.simulated).forEach(sm => {
     if (analyzing.has(sm.id)) return;
     // 视频 / 录音正在转文字：等转写完再整理（转写完成或失败时会补做），不然这次结果会被转写后的新整理稿作废
-    const di = sm.kind === 'analysis' && S.ideas.find(x => x.id === sm.ideaId); if (di && (di.media || []).some(m => m.transcriptStatus === 'pending')) return;
+    // 录音 / 视频还没传完（大视频要几分钟）或正在转文字：等转写完再整理（转写完成或失败时会补做）；手动「重新整理」不等
+    const di = sm.kind === 'analysis' && S.ideas.find(x => x.id === sm.ideaId);
+    if (di && (di.media || []).some(m => m.transcriptStatus === 'pending' || (!retry && !m.transcriptStatus && TR.enabled() && m.localId && (m.kind === 'audio' || m.kind === 'video')))) return;
     // 同一个想法 10 分钟内只自动跑一次（防止反复「重新整理」刷掉全队的 AI 额度）
     // 重试不刷新这个时间（不然放弃后 10 分钟内手动「重新整理」会被挡住）
     const k = sm.kind + '|' + sm.ideaId; if (!retry) { if (lastAuto.get(k) > Date.now() - 10 * 60e3) return; lastAuto.set(k, Date.now()); }

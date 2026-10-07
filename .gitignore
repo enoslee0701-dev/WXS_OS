@@ -7,3 +7,10 @@ node_modules/
 server/data/
 srv-boss.png
 /*.png
+e2e/real/run*.log
+e2e/real/accts.json
+e2e/real/*.png
+e2e/real/*.mp4
+e2e/real/*.m4a
+e2e/real/*.json
+e2e/real/data*/

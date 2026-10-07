@@ -24,9 +24,14 @@ function run(cmd, args, timeoutMs) {
   });
 }
 
-// whisper 输出的半角标点换成中文标点；去掉首尾空白和重复空格
+// whisper 按时间段一行行输出（「[00:00.000 --> 00:05.000]  文字」）：去掉时间戳，把各段接成一段话；半角标点换成中文标点。
+// 不用 whisper 的 -nt（无时间戳）模式：实测它会丢掉大半内容（7 分钟录音只剩三分之一）。
+// 末尾长时间没人说话时 whisper 会「幻听」出字幕站的套话（请不吝点赞、订阅…），这类短句去掉。
+const JUNK = /点赞|订阅|字幕|Amara|明镜|请转发|谢谢观看|感谢收看/;
 function tidy(t) {
-  return String(t || '').replace(/\[[^\]]*\]/g, '').replace(/\s*\n\s*/g, '\n').replace(/([一-鿿])\s*,\s*/g, '$1，').replace(/([一-鿿])\s*\?\s*/g, '$1？')
+  const lines = String(t || '').split('\n').map(l => l.replace(/\[[^\]]*\]/g, '').trim()).filter(l => l && !(l.length <= 24 && JUNK.test(l)));
+  const joined = lines.map((l, i) => i === lines.length - 1 || /[。！？，；：、,.!?;:]$/.test(l) ? l : l + '，').join(lines.some(l => /[一-鿿]/.test(l)) ? '' : ' ');
+  return joined.replace(/([一-鿿])\s*,\s*/g, '$1，').replace(/([一-鿿])\s*\?\s*/g, '$1？')
     .replace(/([一-鿿])\s*!\s*/g, '$1！').replace(/([一-鿿])\s*;\s*/g, '$1；').replace(/([一-鿿])\s*:\s*/g, '$1：').replace(/([一-鿿])\.(?=\s|$)/g, '$1。').replace(/[ \t]{2,}/g, ' ').trim();
 }
 
@@ -39,7 +44,7 @@ function transcribe(file, prompt) {
     try {
       await run(FFMPEG, ['-loglevel', 'error', '-y', '-i', file, '-vn', '-ac', '1', '-ar', '16000', '-t', String(MAX_SEC), '-f', 'wav', wav], 10 * 60e3);
       if (!fs.existsSync(wav) || fs.statSync(wav).size < 3200) return ''; // 没有声音轨或太短
-      const args = ['-m', MODEL, '-f', wav, '-l', 'zh', '-nt', '-np', '-t', String(Math.max(2, Math.min(8, os.cpus().length - 2)))];
+      const args = ['-m', MODEL, '-f', wav, '-l', 'zh', '-np', '-t', String(Math.max(2, Math.min(8, os.cpus().length - 2)))];
       if (prompt) args.push('--prompt', String(prompt).slice(0, 600));
       return tidy(await run(BIN, args, 30 * 60e3));
     } finally { fs.rm(wav, { force: true }, () => {}); }

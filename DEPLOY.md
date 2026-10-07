@@ -63,7 +63,7 @@ team.example.com {
 | `PORT` | 8787 | 端口 |
 | `HOST` | 0.0.0.0 | 监听地址 |
 | `DATA_DIR` | server/data | 数据目录（数据库、附件、每日备份） |
-| `MAX_FILE_MB` | 500 | 单个附件上限 |
+| `MAX_FILE_MB` | 2048 | 单个附件上限（App 里写的是 2GB，手机拍的 10 分钟视频通常 1–2GB） |
 | `ANTHROPIC_API_KEY` | 无 | 填了才启用真实 AI（Claude） |
 | `AI_MODEL` | claude-opus-5-5 | AI 模型 |
 | `AI_FOR_ALL` | 关 | 设为 1 时全员可用真实 AI（默认只有老板和管理员） |
@@ -72,7 +72,7 @@ team.example.com {
 | `AI_AUTO_ANALYZE` | 开 | 设为 0：想法整理稿、讨论总结不自动交给 Claude |
 | `BRIEF_AT` | 08:00 | 老板每日早报的时间（服务器所在时区） |
 | `AI_DAILY_BRIEF` | 开 | 设为 0：早报不附 Claude 要点（只发数字） |
-| `USER_QUOTA_MB` | 5000 | 每人附件总容量 |
+| `USER_QUOTA_MB` | 20000 | 每人附件总容量（老板常传视频，一条 10 分钟视频约 1GB） |
 | `SETUP_CODE` | 随机 | 首次创建团队的初始化码 |
 | `TRUST_PROXY` | 关 | 设为 1：在反向代理后按 X-Forwarded-For 识别 IP（登录限流用） |
 

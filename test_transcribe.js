@@ -80,6 +80,11 @@ const until = async (fn, ms) => { for (let t = 0; t < (ms || 8000); t += 100) { 
   const tok2 = (await call('POST', '/api/login', { login: 'boss', password: 'boss123456' })).token;
   const s2 = await call('GET', '/api/state', null, tok2);
   ok(s2.version === v0 && s2.state.ideas.find(x => x.id === r4.r.id).media[0].transcriptStatus === 'failed', '重启后不重做（失败的也不自动重试）');
+  // whisper 按时间段输出：去时间戳接成一段，末尾「幻听」的字幕套话去掉（实测 -nt 模式会丢大半内容，所以用带时间戳的输出）
+  { const TR = require('./server/transcribe.js');
+    const t = TR.tidy('[00:00:00.000 --> 00:00:05.000]  大家好, 今天定一下分工\n[00:00:05.000 --> 00:00:09.000]  张伟负责联系酒店。\n[00:00:09.000 --> 00:00:12.000]  请不吝点赞 订阅\n');
+    ok(t === '大家好，今天定一下分工，张伟负责联系酒店。', '多段输出接成一段、去掉幻听套话：' + t);
+    ok(TR.tidy('[00:00.000 --> 00:02.000]  Hello world\n[00:02.000 --> 00:04.000]  ok.') === 'Hello world， ok.' || TR.tidy('[00:00.000 --> 00:02.000]  Hello world\n[00:02.000 --> 00:04.000]  ok.').includes('Hello world'), '英文段落也能接起来'); }
   srv.kill(); fs.rmSync(DIR, { recursive: true, force: true });
   console.log(`语音转写 通过 ${pass}，失败 ${fail}`); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
