@@ -71,8 +71,10 @@ const wait = (ms) => new Promise(r => setTimeout(r, ms));
   ok(items.xs.length >= 3 && items.xs.filter(x => x.o !== '选负责人').length >= 3, '会议拆出任务，负责人识别出来');
   await op.screenshot({ path: L + '/p2_meeting.png', fullPage: true });
   await op.evaluate(() => document.querySelectorAll('.mt-it [data-mt=ownerId]').forEach(s => { if (!s.value) s.selectedIndex = 1; s.dispatchEvent(new Event('change', { bubbles: true })); }));
+  const picked = await op.evaluate(() => [...document.querySelectorAll('.mt-it')].filter(x => x.querySelector('[data-mt=on]').checked).length), warns = await op.evaluate(() => [...document.querySelectorAll('.mt-warn')].map(x => x.textContent));
+  log('重复 / 时间提示：', JSON.stringify(warns));
   await sheetSubmit(op); log('会议任务派出：', await toast(op));
-  st = await state(); const all = st.tasks.filter(t => t.workId === w.id); ok(all.length === tasks.length + items.xs.length, '会议任务加进同一个项目（共 ' + all.length + ' 个）');
+  st = await state(); const all = st.tasks.filter(t => t.workId === w.id); ok(all.length === tasks.length + picked, '会议任务加进同一个项目（勾选 ' + picked + ' 个，共 ' + all.length + ' 个）');
 
   // ===== 执行人：接收 → 开始 → 提交成果
   const people = {};

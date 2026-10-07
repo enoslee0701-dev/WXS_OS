@@ -3206,6 +3206,7 @@ html.fs-xl{--pz:1;--az:1.04}
 .mt-it{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:14px;background:#F4F6FA}.mt-it.off{opacity:.5}
 .mt-chk{flex:none;padding-top:10px}.mt-chk input{width:20px;height:20px}
 .mt-f{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}.mt-f input[type=text]{min-height:42px;background:#fff}
+.mt-warn{display:block;font-size:12px;color:#B54708;line-height:1.4}
 .mt-r{display:flex;gap:6px}.mt-r select,.mt-r input{flex:1;min-width:0;min-height:40px;background:#fff}
 .mt-back{border:0;background:none;color:#2148C0;font:inherit;font-size:14px;padding:10px 0 0;cursor:pointer}
 /* 项目模板 */

@@ -69,7 +69,7 @@ const URL=(require('./_env').URL);
     await p.evaluate(() => { const S = window.__tm.S; }); await p.goto(URL + '#/home'); await p.click('[data-do=switch]'); await p.click('.acct:has-text("Enos")');
     await p.goto(URL + '#/work/' + wid); await p.waitForTimeout(200); await p.evaluate(() => document.querySelector('[data-do=wTab][data-t=tasks]').click()); await p.waitForTimeout(120);
     await p.evaluate(() => document.querySelector('[data-do=wMeeting]').click()); await p.waitForSelector('#mt-text');
-    await p.fill('#mt-text', '会上定了：周五前刘洋把报名页面做出来；何静下周一给出海报初稿；场地由周敏这周确认。');
+    await p.fill('#mt-text', '会上定了：周五前刘洋把报名页面做出来；何静下周一给出海报初稿；餐盒由周敏这周订好。');
     await p.evaluate(() => document.querySelector('[data-do=mtGo]').click()); await p.waitForTimeout(250);
     const its = await p.evaluate(() => [...document.querySelectorAll('.mt-it')].map(x => x.querySelector('select').selectedOptions[0].textContent));
     ok(its.length === 3 && its.join() === '刘洋,何静,周敏', '会议拆任务：拆出 3 个任务并认出负责人 ' + its.join());
@@ -85,6 +85,19 @@ const URL=(require('./_env').URL);
     const its = await p.evaluate(() => [...document.querySelectorAll('.mt-it')].map(x => x.querySelector('[data-mt=title]').value + '|' + x.querySelector('select').selectedOptions[0].textContent + '|' + x.querySelector('[data-mt=due]').value));
     ok(its.length === 2 && /^设计邀请函和背景板，出初稿\|何静\|\d{4}-10-20$/.test(its[0]) && /^采购礼品，到货\|刘洋\|\d{4}-11-15$/.test(its[1]), '只补时间的半句并进上一个任务 ' + JSON.stringify(its));
     await p.evaluate(() => document.querySelector('.sheet [data-do=closeSheet]').click()); await p.waitForTimeout(200); }
+  // 拆出的任务和项目里已有任务重复 → 标出并默认不勾；AI 时间和会议里说的不一致 → 提示核对
+  { const wid2 = await p.evaluate(() => location.hash.split('/')[2]);
+    const exist = await p.evaluate(() => { const S = window.__tm.S, w = S.workItems.find(x => x.id === location.hash.split('/')[2]); return S.tasks.filter(t => t.workId === w.id && !['done', 'cancelled'].includes(t.status)).map(t => t.title); });
+    await p.evaluate(() => document.querySelector('[data-do=wMeeting]').click()); await p.waitForSelector('#mt-text');
+    await p.fill('#mt-text', '刘洋负责' + exist[0] + '；何静周五前印制桌卡；何静周五前印制桌卡');
+    await p.evaluate(() => document.querySelector('[data-do=mtGo]').click()); await p.waitForTimeout(250);
+    const its = await p.evaluate(() => [...document.querySelectorAll('.mt-it')].map(x => ({ t: x.querySelector('[data-mt=title]').value, on: x.querySelector('[data-mt=on]').checked, warn: (x.querySelector('.mt-warn') || {}).textContent || '' })));
+    ok(its.length === 3 && !its[0].on && /和已有任务/.test(its[0].warn) && its[1].on && !its[2].on && /像是同一件事/.test(its[2].warn), '重复任务默认不勾并说明 ' + JSON.stringify(its));
+    ok(await p.evaluate(() => document.querySelector('.sheet footer button[type=submit]').textContent) === '派出 1 个任务', '按钮只算勾选的');
+    const flag = await p.evaluate(() => { const S = window.__tm.S, w = S.workItems.find(x => x.id === location.hash.split('/')[2]); const items = [{ title: '采购礼品', ownerId: 'u_dev', due: '2027-01-05', on: true }]; window.__tm.mtFlag(items, w, [{ title: '采购抽奖礼品', ownerId: 'u_dev', due: '2027-01-20' }]); return items[0]; });
+    ok(flag.dueAlt === '2027-01-20' && flag.on, 'AI 时间和会议里说的不一致时标出来：' + flag.dueAlt);
+    ok(await p.evaluate(() => window.__tm.mtSimilar('联系酒店', '联系酒店签合同') && window.__tm.mtSimilar('设计邀请函和背景板', '邀请函背景板设计') && !window.__tm.mtSimilar('联系酒店', '采购礼品')), '相似判断：包含 / 大部分字相同算相似，不相干的不算');
+    await p.evaluate(() => document.querySelector('.sheet [data-do=closeSheet]').click()); await p.waitForTimeout(200); void wid2; }
   // 派发：AI 建议的多个任务一次派完，不要的取消勾选（闭环实测：之前只带出第一个）
   { const iid = await p.evaluate(() => { window.__tm.as('u_owner'); const S = JSON.parse(JSON.stringify(window.__tm.S));
       const at = Date.now(), d = { id: 'Ixmulti', creatorId: 'u_owner', dept: null, path: 'direct', status: 'triage', aiStatus: 'ready', title: '答谢会', note: '年终客户答谢会', followerId: 'u_op', shareAll: false, shares: [], media: [], tags: [], submittedAt: at, lastActivity: at, createdAt: at };

@@ -295,4 +295,4 @@
       });
     }, 1200);
   });
-  window.__tm = { ask: askSheet, back: hardBack, as: function (uid) { if (SRV || !TM.user(S, uid)) return false; me = uid; try { localStorage.setItem(KU, me); } catch (e) {} closeSheet(); if (aiS.open) { aiS.open = false; renderAI(); } render(); return true; }, get S() { return S; }, get me() { return me; }, setState: function (ns) { S = TM.migrate(ns); save(); if (me && !TM.user(S, me)) { me = null; } render(); }, toast: toast };
+  window.__tm = { mtFlag: mtFlag, mtSimilar: mtSimilar, /* 测试钩子 */ ask: askSheet, back: hardBack, as: function (uid) { if (SRV || !TM.user(S, uid)) return false; me = uid; try { localStorage.setItem(KU, me); } catch (e) {} closeSheet(); if (aiS.open) { aiS.open = false; renderAI(); } render(); return true; }, get S() { return S; }, get me() { return me; }, setState: function (ns) { S = TM.migrate(ns); save(); if (me && !TM.user(S, me)) { me = null; } render(); }, toast: toast };

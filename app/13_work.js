@@ -238,6 +238,27 @@
       if (best && bs >= 3) x.due = best.due;
     });
   }
+  /* 两个任务标题像不像：一个包含另一个（≥4 字），或者公共字占短的那个六成以上 */
+  function mtSimilar(a, b) {
+    a = String(a || '').replace(/[\s，,。.、：:；;！!？?「」『』（）()]/g, ''); b = String(b || '').replace(/[\s，,。.、：:；;！!？?「」『』（）()]/g, '');
+    if (a.length < 2 || b.length < 2) return false;
+    var sh = a.length <= b.length ? a : b, lg = sh === a ? b : a;
+    if (sh.length >= 4 && lg.indexOf(sh) >= 0) return true;
+    var n = 0, used = {}; for (var i = 0; i < sh.length; i++) { var j = lg.indexOf(sh[i]); while (j >= 0 && used[j]) j = lg.indexOf(sh[i], j + 1); if (j >= 0) { used[j] = 1; n++; } }
+    return sh.length >= 3 && n / sh.length >= 0.6 && n >= 3;
+  }
+  /* 核对拆出的任务：和项目里已有的（未结束）任务重复的，标出来并默认不勾；AI 给的时间和规则识别出的不一致时，标出来请人核对 */
+  function mtFlag(items, w, rule) {
+    var open = S.tasks.filter(function (t) { return t.workId === w.id && ['done', 'cancelled'].indexOf(t.status) < 0; });
+    items.forEach(function (x, i) {
+      var d = open.filter(function (t) { return mtSimilar(x.title, t.title); })[0];
+      if (!d) for (var k = 0; k < i; k++) if (items[k].on !== false && mtSimilar(x.title, items[k].title)) { d = { title: items[k].title, self: true }; break; }
+      x.dup = d ? d.title : ''; if (d) x.on = false;
+      x.dueAlt = '';
+      if (x.due && rule) { var best = null, bs = 0; rule.forEach(function (r) { if (!r.due || r.due === x.due) return; var v = (mtSimilar(x.title, r.title) ? 3 : 0) + (r.ownerId && r.ownerId === x.ownerId ? 2 : 0); if (v > bs) { bs = v; best = r; } }); if (best && bs >= 3) x.dueAlt = best.due; }
+    });
+    return items;
+  }
   function mtOwnerDefault(w) { var ex = TM.usersWith(S, 'executor'); return w.kind === 'product' && w.leadId ? (ex[0] || w.leadId) : (ex[0] || w.operatorId); }
   function mtBody() {
     var w = W(mt.wid), ppl = TM.activeUsers(S).filter(function (u) { return !u.roles.every(function (a) { return a.role === 'admin'; }); });
@@ -250,7 +271,8 @@
       return '<div class="mt-it' + (x.on ? '' : ' off') + '"><label class="mt-chk"><input type="checkbox" data-mt="on" data-i="' + i + '"' + (x.on ? ' checked' : '') + '><span></span></label><div class="mt-f">' +
         '<input type="text" data-mt="title" data-i="' + i + '" value="' + esc(x.title) + '" maxlength="50" aria-label="任务">' +
         '<div class="mt-r"><select data-mt="ownerId" data-i="' + i + '" aria-label="负责人"><option value="">选负责人</option>' + ppl.map(function (u) { return '<option value="' + u.id + '"' + (u.id === x.ownerId ? ' selected' : '') + '>' + esc(u.name) + '</option>'; }).join('') + '</select>' +
-        '<input type="date" data-mt="due" data-i="' + i + '" value="' + esc(x.due || '') + '" aria-label="截止"></div></div></div>';
+        '<input type="date" data-mt="due" data-i="' + i + '" value="' + esc(x.due || '') + '" aria-label="截止"></div>' +
+        (x.dup ? '<small class="mt-warn">和已有任务「' + esc(x.dup) + '」像是同一件事，已取消勾选；确实要派就勾上</small>' : '') + (x.dueAlt ? '<small class="mt-warn">时间请核对：会议里说的像是 ' + esc(x.dueAlt) + '</small>' : '') + '</div></div>';
     }).join('') + '</div><button type="button" class="link mt-back" data-do="mtBack">← 改一下会议内容</button>' + (on ? '' : '<p class="muted">至少勾选一个任务。</p>');
   }
   function mtRender() { var b = document.querySelector('#layer .sheet .body'); if (b) b.innerHTML = mtBody(); var f = document.querySelector('#layer .sheet footer button[type=submit]'); if (f) f.textContent = mt.items ? '派出 ' + mt.items.filter(function (x) { return x.on; }).length + ' 个任务' : '关闭'; }
@@ -277,10 +299,10 @@
   MTX.mtGo = function () {
     var ta = document.getElementById('mt-text'); mt.text = ta ? ta.value : mt.text; var w = W(mt.wid);
     if (mt.text.trim().length < 6) return fieldErr('#mt-text', '先写或录一段会议内容');
-    var useRule = function (why) { mt.items = mtParse(mt.text, w); mt.src = why || '规则识别'; mt.items.forEach(function (x) { if (!x.ownerId) x.ownerId = mtOwnerDefault(w); }); mt.busy = false; if (!mt.items.length) { mt.items = null; mtRender(); return toast('没有识别出要做的事，试着写成「谁 + 什么时候 + 做什么」', true); } mtRender(); };
+    var useRule = function (why) { mt.items = mtParse(mt.text, w); mt.src = why || '规则识别'; mt.items.forEach(function (x) { if (!x.ownerId) x.ownerId = mtOwnerDefault(w); }); mtFlag(mt.items, w, null); mt.busy = false; if (!mt.items.length) { mt.items = null; mtRender(); return toast('没有识别出要做的事，试着写成「谁 + 什么时候 + 做什么」', true); } mtRender(); };
     if ((AI_ON || AI_CFG) && typeof TMS !== 'undefined' && TMS.aiMeeting) /* 会议拆任务服务器对负责人、运营者开放 */ {
       mt.busy = true; mtRender();
-      TMS.aiMeeting(w.id, mt.text).then(function (r) { mt.busy = false; mt.items = (r.items || []).map(function (x) { return { title: x.title, ownerId: x.ownerId || mtOwnerDefault(w), due: x.due, expected: x.expected, criteria: x.criteria, on: true }; }); mt.src = AI_LOCAL ? '本机 AI' : 'Claude'; if (!mt.items.length) return useRule('AI 没拆出来，改用规则识别'); mtFillDue(mt.items, mtParse(mt.text, w)); mtRender(); }, function () { useRule('AI 暂时不可用，改用规则识别'); });
+      TMS.aiMeeting(w.id, mt.text).then(function (r) { mt.busy = false; mt.items = (r.items || []).map(function (x) { return { title: x.title, ownerId: x.ownerId || mtOwnerDefault(w), due: x.due, expected: x.expected, criteria: x.criteria, on: true }; }); mt.src = AI_LOCAL ? '本机 AI' : 'Claude'; if (!mt.items.length) return useRule('AI 没拆出来，改用规则识别'); var rl = mtParse(mt.text, w); mtFillDue(mt.items, rl); mtFlag(mt.items, w, rl); mtRender(); }, function () { useRule('AI 暂时不可用，改用规则识别'); });
     } else useRule();
   };
   MTX.mtRec = function () {
