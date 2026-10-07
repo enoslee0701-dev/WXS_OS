@@ -3208,3 +3208,11 @@ html.fs-xl{--pz:1;--az:1.04}
 .mt-f{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}.mt-f input[type=text]{min-height:42px;background:#fff}
 .mt-r{display:flex;gap:6px}.mt-r select,.mt-r input{flex:1;min-width:0;min-height:40px;background:#fff}
 .mt-back{border:0;background:none;color:#2148C0;font:inherit;font-size:14px;padding:10px 0 0;cursor:pointer}
+/* 项目模板 */
+.np-tpl{margin:0 0 12px}
+.tp-list{display:flex;flex-direction:column;gap:10px}
+.tp-it{display:flex;align-items:stretch;gap:6px}
+.tp-pick{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;padding:12px 14px;border:1px solid #E6EAF0;border-radius:16px;background:#fff;font:inherit;cursor:pointer}
+.tp-pick b{font-size:15.5px;display:flex;align-items:center;gap:6px}.tp-pick b em{font-style:normal;font:600 11.5px var(--font);color:#2148C0;background:#EEF3FF;border-radius:999px;padding:1px 7px}
+.tp-pick small{font-size:12.5px;color:#5B6475}.tp-pick span{font-size:13px;color:#3E4A63;line-height:1.5}
+.tp-del{flex:none;width:40px;border:0;border-radius:14px;background:#F4F6FA;color:#6B7586;cursor:pointer;display:grid;place-items:center}.tp-del svg{width:16px;height:16px}

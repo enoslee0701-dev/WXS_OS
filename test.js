@@ -931,5 +931,17 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   must(TM.act(r3, O, 'work.plan', { id: w.id, tasks: [{ title: '新任务', ownerId: DV, expected: 'a', criteria: 'b' }] }), '派任务');
   ok(r3.tasks.find(x => x.title === '新任务').due >= TM.todayStr(r3), '项目截止已过时，任务默认截止不早于今天'); }
 
+// ===== 项目模板 =====
+{ const tp = fresh();
+  ok(TM.TEMPLATES.length >= 7 && TM.TEMPLATES.every(t => TM.PTYPE[t.ptype] && t.tasks.length >= 3), '内置模板齐全、类型有效');
+  const r = must(TM.act(tp, O, 'project.create', { title: '感恩晚会', note: '年底感恩晚会', ptype: 'event', operatorId: OP, due: '2026-12-20', tasks: [{ title: '定方案', ownerId: AX, expected: '方案', criteria: '确认', due: '2026-11-01' }], milestones: [{ title: '报名截止', date: '2026-12-01' }, { title: '坏的', date: 'x' }] }), '带里程碑建项目');
+  const w = tp.workItems.find(x => x.id === r.workId); ok(w.milestones.length === 1 && w.milestones[0].title === '报名截止', '只收合法的里程碑');
+  rej(TM.act(tp, DV, 'template.save', { id: w.id, name: 'x' }), '执行者不能存模板');
+  const sv = must(TM.act(tp, O, 'template.save', { id: w.id, name: '我们的晚会' }), '存为模板');
+  const t = TM.allTemplates(tp).find(x => x.id === sv.id); ok(t && t.custom && t.tasks.length === 1 && t.milestones.length === 1, '模板记下任务和里程碑');
+  rej(TM.act(tp, O, 'template.save', { id: w.id, name: '我们的晚会' }), '不能重名');
+  rej(TM.act(tp, DV, 'template.delete', { id: sv.id }), '别人不能删');
+  must(TM.act(tp, O, 'template.delete', { id: sv.id }), '老板删除模板'); ok(!TM.allTemplates(tp).some(x => x.id === sv.id), '已删除'); }
+
 console.log(`\n通过 ${pass}，失败 ${fail}`);
 process.exit(fail ? 1 : 0);

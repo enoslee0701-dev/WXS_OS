@@ -735,6 +735,7 @@
       '<ol class="p-steps np-steps">' + steps.map(function (t, i) { var n2 = i + 1; return '<li class="' + (n2 === pd.step ? 'on' : n2 < pd.step ? 'done' : '') + '"><i>' + (n2 < pd.step ? ni('check', 2.6) : n2) + '</i><span>' + t + '</span></li>'; }).join('') + '</ol>';
     if (pd.aiNote && pd.step === 1) h += '<div class="p-ainote">' + hi('spark', 1.6) + '<span>' + esc(pd.aiNote) + '</span></div>';
     if (pd.step === 1) {
+      h += '<button class="np-ailink np-tpl" data-do="pTpl">' + ai2('doc2', 1.5) + (pd.tplName ? '已套用模板「' + esc(pd.tplName) + '」，点这里换一个' : '从模板开始：活动、课程、采购等常用项目，一键带出任务和里程碑') + hi('chev', 2) + '</button>';
       var PT5 = [['product', '产品开发', '应用 / 网站 / 工具'], ['ops', '运营优化', '增长 / 效率 / 数据'], ['market', '市场推广', '内容 / 品牌 / 活动'], ['admin', '行政事务', '流程 / 制度 / 管理']];
       var otherSel = PT_MORE.some(function (t) { return t[0] === pd.ptype; });
       var TAGIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12V5a1.5 1.5 0 0 1 1.5-1.5h7l8.5 8.5-8.5 8.5z"/><circle cx="8" cy="8" r="1.3"/></svg>';
@@ -989,6 +990,22 @@
       if (!list.length) return toast('AI 建议的任务都已经在列表里了');
       pd.tasks = pd.tasks.filter(function (t) { return t.title.trim(); }).concat(list); render(); toast('AI 拆出 ' + list.length + ' 个任务（演示：规则模拟），执行人可以改');
     },
+    pTpl: function () {
+      var ts = TM.allTemplates(S);
+      openSheet('从模板开始', '<p class="muted" style="margin:0 0 10px;font-size:14px">选一个模板，自动带出项目类型、目标、首批任务和里程碑，日期从今天算起，都可以再改。</p><div class="tp-list">' + ts.map(function (t) {
+        return '<div class="tp-it"><button type="button" class="tp-pick" data-do="pTplUse" data-id="' + t.id + '"><b>' + esc(t.name) + (t.custom ? '<em>团队模板</em>' : '') + '</b><small>' + esc((TM.PTYPE[t.ptype] || ['其他'])[0] + ' · ' + t.tasks.length + ' 个任务 · ' + (t.milestones || []).length + ' 个里程碑 · 约 ' + t.days + ' 天') + '</small>' + (t.desc ? '<span>' + esc(t.desc) + '</span>' : '') + '</button>' +
+          (t.custom && (isOwner() || t.by === me) ? '<button type="button" class="tp-del" data-do="pTplDel" data-id="' + t.id + '" aria-label="删除模板 ' + esc(t.name) + '">' + ai2('x', 2) + '</button>' : '') + '</div>';
+      }).join('') + '</div>', '关闭', function () { closeSheet(); });
+    },
+    pTplUse: function (el) {
+      var t = TM.allTemplates(S).find(function (x) { return x.id === el.dataset.id; }); if (!t) return;
+      var day = function (n) { return TM.dateAdd(S, +n || 0); }, ex = TM.usersWith(S, 'executor')[0] || TM.leadUsers(S)[0];
+      if (!pd.title.trim()) pd.title = t.name; if (!pd.note.trim()) pd.note = t.desc || ''; pd.ptype = TM.PTYPE[t.ptype] ? t.ptype : pd.ptype; if (!pd.goal) pd.goal = t.goal || ''; pd.due = day(t.days);
+      pd.tasks = t.tasks.map(function (x) { return { title: x[0], ownerId: ex, due: day(x[1]), expected: x[2] || '完成说明 + 成果链接或照片', criteria: x[3] || '验收人确认达到要求' }; });
+      pd.milestones = (t.milestones || []).map(function (m) { return { title: m[0], date: day(m[1]) }; }); pd.tplName = t.name;
+      closeSheet(); render(); toast('已套用「' + t.name + '」：' + pd.tasks.length + ' 个任务、' + pd.milestones.length + ' 个里程碑，第 2 步可以改执行人');
+    },
+    pTplDel: function (el) { var r = act('template.delete', { id: el.dataset.id }, '模板已删除'); if (r.ok) DO.pTpl(); },
     pAddTask: function () { pd.tasks.push({ title: '', ownerId: TM.usersWith(S, 'executor')[0], expected: '', criteria: '' }); render(); },
     pRmTask: function (el) { pd.tasks.splice(+el.dataset.i, 1); render(); },
     pPrev: function () { pd.step = Math.max(1, pd.step - 1); render(); window.scrollTo(0, 0); },
@@ -1003,7 +1020,7 @@
       pd.step++; render(); window.scrollTo(0, 0);
     },
     pCreate: function () {
-      var r = TM.act(S, me, 'project.create', { title: pd.title, note: pd.note, ptype: pd.ptype, leadId: pd.leadId, operatorId: pd.operatorId, reviewerId: pd.reviewerId, due: pd.due, tasks: pd.tasks, goal: pd.goal, priority: pd.priority, media: pd.files.map(function (f) { return { kind: f.kind, name: f.name, durationSec: f.durationSec, localId: f.localId }; }), source: pd.source });
+      var r = TM.act(S, me, 'project.create', { title: pd.title, note: pd.note, ptype: pd.ptype, leadId: pd.leadId, operatorId: pd.operatorId, reviewerId: pd.reviewerId, due: pd.due, tasks: pd.tasks, goal: pd.goal, priority: pd.priority, milestones: pd.milestones || [], media: pd.files.map(function (f) { return { kind: f.kind, name: f.name, durationSec: f.durationSec, localId: f.localId }; }), source: pd.source });
       if (!r.ok) return toast(r.error, true);
       save(); pd = null; navFinish('#/work/' + r.workId); toast('项目已创建，相关的人已收到通知');
     },
@@ -2841,6 +2858,7 @@
   }
   function mtRender() { var b = document.querySelector('#layer .sheet .body'); if (b) b.innerHTML = mtBody(); var f = document.querySelector('#layer .sheet footer button[type=submit]'); if (f) f.textContent = mt.items ? '派出 ' + mt.items.filter(function (x) { return x.on; }).length + ' 个任务' : '关闭'; }
   var MTX = {};
+  MTX.wTplSave = function () { var w = W(cur().id); openSheet('存为模板', '<p class="muted" style="margin:0 0 8px;font-size:14px">把这个项目的任务、验收标准和里程碑存成模板，下次新建同类项目时一键带出（日期按相对天数换算）。</p>' + field('模板名称', '<input type="text" name="name" maxlength="20" value="' + esc(w.title.slice(0, 20)) + '" required>'), '保存模板', function (o) { act('template.save', { id: w.id, name: o.name }, '已存为模板，新建项目时可以选'); }); };
   MTX.wMeeting = function () {
     var w = W(cur().id); if (!canPlanWork(w)) return toast('只有能给这个项目派任务的人可以用', true);
     mt = { wid: w.id, text: '', items: null, rec: null, busy: false };
@@ -2932,6 +2950,7 @@
     if (ow && ['planning', 'active', 'acceptance', 'blocked'].indexOf(w.status) >= 0) a.push(['暂停', 'pause']);
     if (ow && w.status === 'paused') a.push(['恢复', 'resume']);
     if (canPlanWork(w)) a.push(['会议拆任务', 'wMeeting']);
+    if ((ow || w.leadId === me || w.operatorId === me) && S.tasks.some(function (t) { return t.workId === w.id; })) a.push(['存为模板', 'wTplSave']);
     if (!ow && (w.leadId === me || w.operatorId === me) && ['done', 'cancelled'].indexOf(w.status) < 0 && !S.decisions.some(function (x) { return x.workId === w.id && x.status === 'pending'; })) a.push(['上报老板决策', 'wEscalate']);
     if ((ow || w.leadId === me) && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['更换人员', 'wReassign']);
     if ((ow || w.leadId === me || w.operatorId === me) && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['取消项目', 'cancelWork']);

@@ -642,6 +642,46 @@ var TM = (function () {
   /* 新建项目：老板/运营者可直接派发（文档 4.2：派发简单事务、交专业事项给负责人）；
      有发起权的负责人可在本部门建项目并自任负责人。保留一条想法记录用于追溯。 */
   var PTYPE = { product: ['产品开发', 'product'], ops: ['运营优化', 'other'], market: ['市场推广', 'other'], admin: ['行政事务', 'admin'], content: ['内容创作', 'other'], event: ['活动策划', 'admin'], research: ['研究学习', 'other'], training: ['培训教育', 'other'], mission: ['宣教外展', 'other'], care: ['关怀探访', 'admin'], finance: ['财务预算', 'admin'], tech: ['技术运维', 'other'], media: ['媒体设计', 'other'], worship: ['敬拜聚会', 'admin'], hr: ['人事招募', 'admin'], other: ['其他', 'other'] };
+  /* 项目模板库：常见项目一键带出任务（相对开始日期的天数）和里程碑；团队也可以把做过的项目存成模板 */
+  var TEMPLATES = [
+    { id: 'tp_event', name: '活动筹办', ptype: 'event', days: 21, desc: '聚会、年会、感恩晚会等活动：定方案、报名、物资、现场、复盘。', goal: '活动按时举办，参与人数达到预期，费用不超预算',
+      tasks: [['确定时间、地点和预算', 3, '活动方案（时间、地点、人数、预算）', '老板或负责人确认方案'], ['发布报名通知', 5, '报名链接和通知截图', '通知已发到所有群'], ['采购活动物资', 12, '物资清单和发票', '物资到齐、金额不超预算'], ['布置场地并彩排', 19, '现场照片', '流程走通、设备正常'], ['活动复盘和报销', 23, '复盘记录和报销单', '复盘写清做得好和要改进的']],
+      milestones: [['方案确定', 3], ['报名截止', 14], ['活动当天', 21]] },
+    { id: 'tp_course', name: '培训课程开设', ptype: 'training', days: 30, desc: '开一门课或一期培训班：大纲、讲员、课件、招生、开课、反馈。', goal: '课程按期开课，学员完成率和满意度达到预期',
+      tasks: [['确定课程大纲和讲员', 5, '课程大纲', '负责人确认大纲'], ['发布招生和报名', 10, '招生海报和报名表', '报名人数达到开班要求'], ['准备讲义和课件', 14, '讲义和课件文件', '讲员确认可用'], ['准备场地设备和签到', 25, '场地照片和签到表', '设备测试正常'], ['课后反馈问卷和总结', 33, '问卷结果和总结', '总结写清下期改进点']],
+      milestones: [['大纲定稿', 5], ['开课', 28]] },
+    { id: 'tp_purchase', name: '物资采购', ptype: 'admin', days: 10, desc: '设备、办公用品、活动物资等采购：需求、比价、审批、下单、验收。', goal: '按需求买到合适的物资，价格合理、手续齐全',
+      tasks: [['整理需求清单和预算', 2, '需求清单（品名、数量、预算）', '使用部门确认清单'], ['三家比价并提交审批', 4, '比价表', '审批人同意'], ['下单并跟进到货', 8, '订单截图和物流单号', '按时到货'], ['验收入库和报销', 10, '验收照片和发票', '数量质量无误、发票齐全']],
+      milestones: [['审批通过', 4], ['到货', 8]] },
+    { id: 'tp_publish', name: '对外发布', ptype: 'content', days: 14, desc: '文章、视频、网站内容等对外发布：初稿、审核、设计、上线、回顾。', goal: '内容按时发布，信息准确，达到预期的阅读或观看',
+      tasks: [['写稿或制作初稿', 5, '初稿文件或链接', '内容完整、信息准确'], ['内部审核和修改', 8, '审核意见和修改稿', '负责人审核通过'], ['设计配图和排版', 10, '配图和排版稿', '风格统一、无错字'], ['定稿上线并转发', 12, '发布链接', '已上线、已转发到各渠道'], ['一周后数据回顾', 19, '阅读 / 观看数据截图', '写出下次改进的一两点']],
+      milestones: [['初稿完成', 5], ['正式发布', 12]] },
+    { id: 'tp_onboard', name: '新同工入职', ptype: 'hr', days: 30, desc: '新同事入职：账号设备、带领人、第一周跟岗、30 天回顾。', goal: '新同事一个月内熟悉工作、能独立负责任务',
+      tasks: [['准备账号、设备和工位', 1, '账号和设备清单', '新同事当天能开始工作'], ['安排带领人并介绍团队', 2, '带领人和介绍安排', '新同事认识团队、知道找谁'], ['第一周学习和跟岗', 7, '学习记录', '完成必学内容'], ['30 天回顾面谈', 30, '面谈记录', '明确下一步目标']],
+      milestones: [['入职', 0], ['30 天回顾', 30]] },
+    { id: 'tp_care', name: '探访关怀', ptype: 'care', days: 7, desc: '探访、关怀一批人：名单、分组、探访、记录、跟进需要。', goal: '名单上的人都探访到，需要帮助的事有人跟进',
+      tasks: [['整理探访名单和需要', 1, '探访名单', '名单完整、需要写清楚'], ['分组安排探访人员', 2, '分组表', '每个人都有探访人'], ['完成探访并记录', 6, '探访记录', '每次探访都有记录'], ['跟进需要帮助的事', 7, '跟进清单', '每件事都有人负责']],
+      milestones: [['探访完成', 6]] },
+    { id: 'tp_feature', name: '产品功能开发', ptype: 'product', days: 28, desc: 'App 或网站的一个新功能：需求、原型、设计、开发、测试、上线。', goal: '功能按时上线，测试通过，用户能正常使用',
+      tasks: [['需求澄清和原型', 5, '需求说明和可点原型', '负责人评审通过'], ['界面设计', 10, '设计稿', '风格统一、标注完整'], ['功能开发', 20, '可演示的版本', '按需求完成、自测通过'], ['测试和修复', 24, '测试记录', '没有严重问题'], ['上线并收集反馈', 28, '上线说明和反馈汇总', '已上线、收到首批反馈']],
+      milestones: [['原型评审', 5], ['开发完成', 20], ['上线', 28]] }
+  ];
+  function allTemplates(s) { return TEMPLATES.concat((s.templates || []).map(function (t) { return Object.assign({ custom: true }, t); })); }
+  A['template.save'] = function (s, uid, p) {
+    var w = work(s, p.id); need(hasRole(s, uid, 'owner') || w.leadId === uid || w.operatorId === uid, '只有老板、项目负责人或跟进人可以存为模板');
+    var nm0 = txt(p.name) || w.title; need(nm0.length <= 20, '模板名称不超过 20 字');
+    s.templates = s.templates || []; need(s.templates.length < 30, '模板最多 30 个，先删掉不用的');
+    need(!allTemplates(s).some(function (t) { return t.name === nm0; }), '已经有同名模板');
+    var t0 = w.createdAt, dayOf = function (ts) { return Math.max(0, Math.round((ts - t0) / DAY)); }, dueDay = function (d) { return d ? Math.max(0, Math.round((new Date(d + 'T12:00:00').getTime() - t0) / DAY)) : 7; };
+    var ts = s.tasks.filter(function (t) { return t.workId === w.id && t.status !== 'cancelled'; }).slice(0, 20);
+    var tp = { id: nid(s, 'tp_'), name: nm0, ptype: w.ptype && Object.keys(PTYPE).find(function (k) { return PTYPE[k][0] === w.ptype; }) || (w.kind === 'product' ? 'product' : 'admin'), days: w.due ? dueDay(w.due) : 14, desc: (w.goal || '').slice(0, 200), goal: (w.goal || '').slice(0, 200),
+      tasks: ts.map(function (t) { return [t.title, dueDay(t.due), t.expected || '', t.criteria || '']; }), milestones: (w.milestones || []).slice(0, 12).map(function (m) { return [m.title, dueDay(m.date)]; }), by: uid, at: now(s) };
+    s.templates.push(tp); ev(s, { workId: w.id, actor: uid, action: 'template.save', text: '存为模板「' + nm0 + '」' }); return { id: tp.id };
+  };
+  A['template.delete'] = function (s, uid, p) {
+    s.templates = s.templates || []; var t = get(s.templates, p.id, '模板'); need(hasRole(s, uid, 'owner') || t.by === uid, '只有老板或创建人可以删除模板');
+    s.templates = s.templates.filter(function (x) { return x.id !== t.id; }); return {};
+  };
   A['project.create'] = function (s, uid, p) {
     var owner = hasRole(s, uid, 'owner'), op = hasRole(s, uid, 'operator'), lead = canInitiate(s, uid) && hasRole(s, uid, 'lead');
     need(owner || op || lead, '只有老板、运营者或有发起权的负责人可以新建项目');
@@ -657,6 +697,7 @@ var TM = (function () {
     if (leadId) need(leadUsers(s).indexOf(leadId) >= 0, '项目负责人必须是负责人角色');
     var reviewerId = p.reviewerId || leadId || opId; need(live(s, reviewerId), '请选择在职的验收人');
     var tasks = (p.tasks || []).filter(function (t) { return txt(t.title); });
+    var mss = (Array.isArray(p.milestones) ? p.milestones : []).filter(function (m) { return m && txt(m.title) && /^\d{4}-\d{2}-\d{2}$/.test(m.date || ''); }).slice(0, 12);
     var leadDept = leadId && (user(s, leadId).roles.find(function (a) { return a.role === 'lead'; }) || {}).dept;
     var d = { id: nid(s, 'I'), creatorId: uid, dept: leadDept || null, path: 'direct', status: 'planned', aiStatus: p.source === 'ai' ? 'ready' : 'none', title: title, note: txt(p.note),
       followerId: opId, shareAll: false, shares: [], deadline: null, directionConfirmedAt: null, ownerApproved: owner, reviewed: true,
@@ -665,6 +706,7 @@ var TM = (function () {
     addSummary(s, d, 'analysis', { simulated: p.source === 'ai', title: title, summary: txt(p.note).slice(0, 80), background: txt(p.note), category: kind, ptype: pt[0], options: [], open_questions: [], exception_flags: [], suggested_route: kind === 'product' ? 'to_lead' : 'operator_direct', suggested_tasks: [] }, 'human', uid);
     var w = { id: nid(s, 'W'), ideaId: d.id, dept: leadDept || null, kind: kind, ptype: pt[0], title: title, goal: txt(p.goal), status: 'planning', stage: 'clarify',
       operatorId: opId, leadId: leadId, reviewerId: reviewerId, externalLink: '', due: p.due || null, priority: ['hi', 'mid', 'lo'].indexOf(p.priority) >= 0 ? p.priority : 'mid', lastActivity: now(s), createdAt: now(s) };
+    if (mss.length) w.milestones = mss.map(function (m) { return { id: nid(s, 'MS'), title: txt(m.title).slice(0, 30), date: m.date, done: false, doneAt: null }; }).sort(function (a, b) { return a.date.localeCompare(b.date); });
     s.workItems.push(w);
     ev(s, { ideaId: d.id, actor: uid, action: 'project.create', to: 'planned', text: '新建项目（' + (p.source === 'ai' ? 'AI 解析后人工确认' : '手动填写') + '）：' + title });
     ev(s, { ideaId: d.id, workId: w.id, actor: uid, action: 'idea.route', from: 'triage', to: 'planned', text: '形成项目「' + title + '」（' + pt[0] + '）' + (leadId ? '，负责人 ' + name(s, leadId) : '') + '，跟进 ' + name(s, opId) });
@@ -1590,7 +1632,7 @@ var TM = (function () {
 
   return {
     L: L, STAGES: STAGES, TONE: TONE, DAY: DAY, act: act, seed: seed, user: user, name: name, hasRole: hasRole, canInitiate: canInitiate, usersWith: usersWith,
-    primaryRole: primaryRole, REPEATS: REPEATS, nextDate: nextDate, NCATS: NCATS, ncat: ncat, activeUsers: activeUsers, live: live, openWorkOf: openWorkOf, followUsers: followUsers, canFollow: canFollow, leadUsers: leadUsers, briefStats: briefStats, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
+    primaryRole: primaryRole, TEMPLATES: TEMPLATES, allTemplates: allTemplates, REPEATS: REPEATS, nextDate: nextDate, NCATS: NCATS, ncat: ncat, activeUsers: activeUsers, live: live, openWorkOf: openWorkOf, followUsers: followUsers, canFollow: canFollow, leadUsers: leadUsers, briefStats: briefStats, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
     latestSummary: latestSummary, deriveAnalysis: deriveAnalysis, noteOf: noteOf, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, migrate: migrate, viewFor: viewFor, blank: blank, canCreateProject: canCreateProject, canAssign: canAssign, caps: caps, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
     nextForTask: nextForTask, PTYPE: PTYPE, GROUPS: GROUPS, seedTodos: seedTodos, ensureTodos: ensureTodos, nextForIdea: nextForIdea, ideaProgress: ideaProgress, workProgress: workProgress, TT: TT
   };

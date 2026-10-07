@@ -65,5 +65,21 @@ await p.waitForSelector('.sheet h2:has-text("视频已选择")');ok(true,'上传
 await p.goto(URL);await p.click('[data-do=switch]');await p.click('.acct:has-text("周敏")');await p.waitForTimeout(100);
 ok(await p.locator('[data-do=quickProject]').count()===0,'执行者首页没有新建项目');
 await p.goto(URL+'#/project');await p.waitForTimeout(100);ok(p.url().endsWith('#/home'),'执行者打开新建项目被送回首页');
+// 项目模板：老板套用「活动筹办」→ 带出 5 个任务、3 个里程碑和截止 → 创建 → 存为团队模板 → 新建时能选到
+{ await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Enos")');
+  await p.evaluate(()=>window.__tm.DO?0:0);await p.goto(URL+'#/home');await p.evaluate(()=>document.querySelector('[data-do=quickProject]')&&document.querySelector('[data-do=quickProject]').click());await p.waitForTimeout(200);
+  await p.evaluate(()=>document.querySelector('[data-do=pTpl]').click());await p.waitForSelector('.tp-list');
+  ok(await p.locator('.tp-pick').count()>=7,'模板库至少有 7 个常用模板');
+  await p.evaluate(()=>document.querySelector('.tp-pick[data-id=tp_event]').click());await p.waitForTimeout(150);
+  ok((await p.inputValue('[data-pd=title]'))==='活动筹办'&&/已套用/.test(await p.textContent('#toast')),'套用模板填好名称和描述');
+  await p.fill('[data-pd=title]','感恩晚会');
+  for(let i=0;i<3;i++){await p.evaluate(()=>{const b=document.querySelector('[data-do=pNext],[data-do=pCreate]');b&&b.click();});await p.waitForTimeout(250);}
+  const w=await p.evaluate(()=>{const S=window.__tm.S,w=S.workItems.find(x=>x.title==='感恩晚会');return w&&{ms:(w.milestones||[]).length,tasks:S.tasks.filter(t=>t.workId===w.id).length,dues:S.tasks.filter(t=>t.workId===w.id).every(t=>!!t.due),id:w.id};});
+  ok(w&&w.ms===3&&w.tasks===5&&w.dues,'按模板建出项目：5 个任务都有截止、3 个里程碑 '+JSON.stringify(w));
+  if(w){await p.goto(URL+'#/work/'+w.id);await p.waitForTimeout(200);await p.evaluate(()=>[...document.querySelectorAll('.actions .btn')].find(b=>/更多操作/.test(b.textContent)).click());await p.evaluate(()=>document.querySelector('.sheet [data-do=wTplSave]').click());await p.waitForSelector('.sheet input[name=name]');
+    await p.fill('.sheet input[name=name]','我们的感恩晚会');await p.evaluate(()=>document.querySelector('.sheet footer button[type=submit]').click());await p.waitForTimeout(150);
+    await p.goto(URL+'#/home');await p.evaluate(()=>document.querySelector('[data-do=quickProject]').click());await p.waitForTimeout(200);await p.evaluate(()=>document.querySelector('[data-do=pTpl]').click());await p.waitForSelector('.tp-list');
+    ok((await p.textContent('.tp-list')).includes('我们的感恩晚会')&&(await p.textContent('.tp-list')).includes('团队模板'),'项目存为团队模板，新建时能选到');await p.evaluate(()=>document.querySelector('.sheet footer button[type=submit]').click());}
+}
 ok(errs.length===0,'无报错 '+errs.join('|'));
 console.log(`项目 E2E 通过 ${pass}，失败 ${fail}`);await b.close();process.exit(fail?1:0);})().catch(e=>{console.error(e);process.exit(1)});
