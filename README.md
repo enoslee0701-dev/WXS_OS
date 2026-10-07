@@ -42,7 +42,7 @@ npx cap open ios     # 用 Xcode 打开 iOS 工程（真机调试、打包）
 | `ios/` | iOS 工程（Capacitor 8，自写原生语音插件 `SpeechPlugin.swift`） |
 | `android/` | Android 工程（Capacitor 8，自写 `SpeechPlugin.java`、`DiagPlugin.java`；签名文件不入库） |
 | `fonts/` | 本地字体（不依赖 Google Fonts） |
-| `app.js` | 界面：路由、页面渲染、交互 |
+| `app/*.js` | 界面：按页面拆成多个文件（01 公共工具 … 17 路由与渲染），构建时拼进同一个闭包 |
 | `style.css` | 样式（图片用 `__XXX__` 占位，构建时内嵌） |
 | `shell.html` | HTML 外壳 |
 | `build.js` | 构建脚本：把以上文件和 `img/` 图片合成单文件 |

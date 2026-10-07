@@ -4,7 +4,8 @@ FROM node:24-slim
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts
-COPY engine.js sync.js native.js app.js style.css shell.html build.js ./
+COPY engine.js sync.js native.js style.css shell.html build.js ./
+COPY app ./app
 COPY img ./img
 COPY fonts ./fonts
 COPY server ./server

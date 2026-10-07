@@ -27,7 +27,7 @@
 - 本地开发包（VS Code）：见 README.md；从此开始以本地仓库为准
 
 ## 目录
-- engine.js 领域引擎（纯逻辑）｜app.js 界面｜style.css 样式｜shell.html 外壳｜build.js 构建（内嵌 img/ 下图片）
+- engine.js 领域引擎（纯逻辑）｜app/*.js 界面（按页面拆成 19 个文件，按文件名顺序拼进同一个闭包，共享变量；构建拦下同名函数并指出文件）｜style.css 样式｜shell.html 外壳｜build.js 构建（内嵌 img/ 下图片）
 - test.js 业务规则测试（290 项）｜e2e/ 端到端测试（19 组，Playwright；e2e/fixtures 测试素材，e2e/shots 截图输出）
 - scripts/e2e.js 端到端运行器｜scripts/dev.js 改动自动构建｜gen/gen.js 类型卡插画生成（Playwright 截图）｜img/*.py 背景图处理脚本（Python + Pillow）
 - kb_template.md 老板思想资料模板
@@ -280,6 +280,7 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
     - 单个附件默认上限 500MB 和 App 里写的 2GB 不一致（手机 10 分钟视频会被拒）：改成 2048MB；每人配额 5GB → 20GB
     - 大视频还在上传时 AI 就按标题整理了一次（白跑）：现在等上传、转写完再整理
   - 真实闭环脚本放进仓库 e2e/real/（README 有跑法），不在 npm run check 里
+  - [x] **app.js 拆成 app/ 目录 19 个文件**（01_core 公共工具 → 02 登录 → 03 首页 → … → 16 弹层（DO 表）→ 17 路由与渲染 → 18 知识库 → 19 演示向导）。构建时按文件名顺序拼进同一个闭包，产物和拆分前逐字一致（只差空行）；同名函数检查跨文件并指出在哪两个文件；文件自己包闭包会被拦下。新页面放新文件，公共工具放 01_core.js。CLAUDE.md / README / Dockerfile / dev 监听已改
 - 不做（被安全策略拦下，待用户决定）：免密码老板快速入口（补丁 ~/Library/TeamOps/quick-login.patch，`git apply` 即可）、重置老板密码
 
 ## 待办
@@ -288,7 +289,7 @@ AI 知识库新增「录音口述，AI 整理成规则」（#/kb/voice，仅老�
 2. 推送：代码已就绪，拿到开发者账号后按 DEPLOY.md 配 APNS_* 并在 Xcode 开 Push 能力
 3. 想法整理（deriveAnalysis）、AI 拟题、讨论总结等引擎内同步的「AI」仍是规则：要接真实 AI 需改成异步（服务器在 act 后补写 AI 结果）
 4. Android：已出 APK；待办：真机验证语音、Android 推送（Firebase + 服务器 FCM）、上架 Google Play 需开发者账号（25 美元一次性）
-5. app.js 按页面拆模块（函数同名覆盖隐患）
+5. ~~app.js 按页面拆模块~~（已拆成 app/，10-07）
 6. 增量同步（现在每次下发完整数据，已压缩；数据再大一个量级时再做）
 
 ## 命令（新增）
