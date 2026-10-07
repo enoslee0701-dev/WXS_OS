@@ -165,7 +165,7 @@
     try { var qq = qrcode(0, 'M'); qq.addData(join); qq.make(); qr = '<div class="cred-qr">' + qq.createSvgTag(4, 2) + '<small>' + (inv ? '让 TA 用手机相机扫一下：自动打开 App，自己设个密码就进来了（7 天内有效，只能用一次）' : '让 TA 用手机相机扫一下，自动打开 App 并填好服务器和账号（密码请单独告诉 TA）') + '</small></div>'; } catch (e) {}
     if (appUpd.meta) qr += '<p class="muted" style="font-size:13.5px;margin:0 0 12px">TA 还没装 App？安卓手机扫「我的 → 给同事安装 App」里的码下载。</p>';
     openSheet(inv && !pw ? '邀请链接 · ' + u.name : '账号已就绪', qr + '<p style="margin:0 0 10px">把下面的信息发给 <b>' + esc(u.name) + '</b>：</p><div class="cred">' + (link ? '<div><span>邀请链接</span><b class="cred-link">' + esc(link) + '</b></div>' : '') + '<div><span>服务器</span><b>' + esc(srv) + '</b></div><div><span>账号</span><b id="cred-l">' + esc(login) + '</b></div>' + (pw ? '<div><span>初始密码</span><b id="cred-p">' + esc(pw) + '</b></div>' : '') + '</div><p class="muted" style="font-size:13.5px;margin:10px 0 0">' + (inv ? '对方点链接（或扫码）后自己设密码，不用你告诉密码。' + (pw ? '链接失效时再用初始密码登录（只显示这一次，首次登录要改）。' : '') : '密码只显示这一次。对方首次登录后需要改成自己的密码。') + '</p>', '复制并关闭', function () {
-      var t = '团队协同 登录信息\n' + (link ? '点这个链接设好密码就能进（7 天内有效）：' + link + '\n' : '') + '服务器：' + srv + '\n账号：' + login + (pw ? '\n初始密码：' + pw : '') + '\n在手机上点这个链接直接打开 App：' + join;
+      var t = 'WSX OS 登录信息\n' + (link ? '点这个链接设好密码就能进（7 天内有效）：' + link + '\n' : '') + '服务器：' + srv + '\n账号：' + login + (pw ? '\n初始密码：' + pw : '') + '\n在手机上点这个链接直接打开 App：' + join;
       try { navigator.clipboard.writeText(t).then(function () { toast('已复制，可以发给对方'); }, function () { toast('请手动记下账号和密码'); }); } catch (e) { toast('请手动记下账号和密码'); }
       closeSheet(); });
   }
@@ -280,7 +280,7 @@
   DO.srvExportFull = function () { var u = TMS.exportTgzUrl(); if (!u) return toast('请先登录', true); if (typeof TMN !== 'undefined' && TMN.native && TMN.openUrl) { TMN.openUrl(u); toast('已在浏览器里开始下载完整备份'); return; } var a = document.createElement('a'); a.href = u; a.download = ''; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 1000); toast('开始下载完整备份'); };
   DO.srvExport = function () {
     TMS.exportAll().then(function (d) {
-      var blob = new Blob([JSON.stringify(d, null, 1)], { type: 'application/json' }), name = '团队协同备份-' + TM.todayStr(S) + '.json';
+      var blob = new Blob([JSON.stringify(d, null, 1)], { type: 'application/json' }), name = 'WSX OS 备份-' + TM.todayStr(S) + '.json';
       if (typeof TMN !== 'undefined' && TMN.native && TMN.canShareFile) { TMN.shareFile(blob, name).then(function () {}, function () { toast('导出失败，请重试', true); }); return; }
       if (typeof TMN !== 'undefined' && TMN.native && navigator.share) { var f = new File([blob], name, { type: 'application/json' }); navigator.share({ files: [f], title: name }).catch(function () {}); return; }
       var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000); toast('已导出：' + name);

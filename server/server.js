@@ -1,4 +1,4 @@
-/* 团队协同 · 服务器（零依赖：node:http + node:sqlite）
+/* WSX OS（团队协同）· 服务器（零依赖：node:http + node:sqlite）
    - 权威数据在服务器：客户端发来操作，服务器用登录身份跑同一个 engine.js，再按身份裁剪后下发
    - 账号由老板 / 管理员创建并分派；密码 scrypt 加盐；会话令牌（只走请求头）+ 只能读附件的文件令牌（可放进网址）
    - SSE 推送版本号，客户端收到后拉取最新数据
@@ -11,6 +11,7 @@ const { DatabaseSync } = require('node:sqlite');
 const TM = require('../engine.js');
 const AI = require('./ai.js');
 const TR = require('./transcribe.js');
+const APP_ICON = (() => { try { return fs.readFileSync(path.join(__dirname, '..', 'img', 'app-icon.png')).toString('base64'); } catch (e) { return ''; } })(); // 安装页的图标
 const LLM = require('./llm.js');
 const PUSH = require('./push.js');
 
@@ -173,7 +174,7 @@ function tarHeader(name, size, mtime) {
 }
 async function exportTgz(res) {
   const day = localDay(), gz = zlib.createGzip();
-  res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Disposition': 'attachment; filename="teamops-backup-' + day + '.tar.gz"; filename*=UTF-8\'\'' + encodeURIComponent('团队协同完整备份-' + day + '.tar.gz'), 'Cache-Control': 'no-store' });
+  res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Disposition': 'attachment; filename="teamops-backup-' + day + '.tar.gz"; filename*=UTF-8\'\'' + encodeURIComponent('WSX OS 完整备份-' + day + '.tar.gz'), 'Cache-Control': 'no-store' });
   gz.pipe(res);
   const put = (b) => new Promise(ok => { if (gz.write(b)) ok(); else gz.once('drain', ok); });
   const pad = (n) => n % 512 ? put(Buffer.alloc(512 - n % 512)) : Promise.resolve();
@@ -637,14 +638,14 @@ function privacyPage(res) {
   });
   if (inList) html += '</ul>';
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY' });
-  res.end('<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>隐私政策 · 团队协同</title><style>body{margin:0;font:16px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#F3F6FB;color:#141B2D}.w{max-width:680px;margin:0 auto;padding:32px 22px 60px}h1{font-size:26px}h2{font-size:19px;margin-top:28px}li{margin:6px 0}p,li{color:#3A4356}</style></head><body><div class="w">' + html + '</div></body></html>');
+  res.end('<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>隐私政策 · WSX OS</title><style>body{margin:0;font:16px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#F3F6FB;color:#141B2D}.w{max-width:680px;margin:0 auto;padding:32px 22px 60px}h1{font-size:26px}h2{font-size:19px;margin-top:28px}li{margin:6px 0}p,li{color:#3A4356}</style></head><body><div class="w">' + html + '</div></body></html>');
 }
 // 扫码后在手机浏览器里打开的安装页
 function appPage(res) {
   const m = androidMeta(), esc = (t) => String(t).replace(/[&<>"']/g, c => '&#' + c.charCodeAt(0) + ';');
-  const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>安装团队协同</title>
+  const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>安装 WSX OS</title>
 <style>body{margin:0;font:16px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#F3F6FB;color:#141B2D}.w{max-width:440px;margin:0 auto;padding:40px 22px}.m{width:84px;height:84px;border-radius:22px;background:linear-gradient(160deg,#2A55D4,#1B347F 55%,#121C3A);color:#fff;font:900 30px/84px "PingFang SC",sans-serif;text-align:center}h1{font-size:26px;margin:22px 0 6px}p{color:#5A6375;margin:0 0 14px}a.b{display:block;text-align:center;background:#141B2D;color:#fff;text-decoration:none;font-weight:700;padding:15px;border-radius:999px;margin:22px 0 10px}.c{background:#fff;border-radius:18px;padding:16px 18px;margin-top:18px;font-size:14.5px}.c b{display:block;margin-bottom:4px}small{color:#8A93A5}</style></head>
-<body><div class="w"><div class="m">协同</div><h1>安装团队协同</h1>
+<body><div class="w"><img class="m" src="data:image/png;base64,${APP_ICON}" alt=""><h1>安装 WSX OS</h1>
 ${m ? `<p>安卓版 ${esc(m.versionName)} · ${(m.size / 1048576).toFixed(1)} MB</p><a class="b" href="/app/android.apk">下载安卓 App</a>
 <div class="c"><b>下载后怎么装？</b>点通知栏里下载好的文件安装。手机提示「禁止安装未知来源应用」时，按提示允许浏览器安装一次即可。装好后打开 App，用老板给你的账号登录。</div>` : '<p>服务器上还没有安卓安装包，请联系老板。</p>'}
 <div class="c"><b>iPhone</b>请向老板索取 TestFlight 邀请，用 TestFlight 安装。</div>
@@ -844,7 +845,7 @@ if (require.main === module) server.listen(PORT, HOST, () => {
   setTimeout(housekeep, 60e3).unref(); setInterval(housekeep, 864e5).unref();
   setTimeout(tick10, 30e3).unref(); setInterval(tick10, 10 * 60e3).unref();
   scheduleBrief(); scheduleWeekly(); if (process.env.BRIEF_NOW === '1') setTimeout(dailyBrief, 800);
-  console.log(`团队协同服务器已启动：http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  数据目录：${DATA}`);
+  console.log(`WSX OS 服务器已启动：http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  数据目录：${DATA}`);
   if (SETUP_CODE) console.log(`还没有创建团队。创建团队时需要初始化码：${SETUP_CODE}`);
 });
 module.exports = { server, routes, db, inQuiet, get S() { return S; } };

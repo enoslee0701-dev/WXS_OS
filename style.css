@@ -235,7 +235,7 @@ input:focus,textarea:focus,select:focus{outline:none;background:var(--surface);b
 .srv-scan{display:flex;align-items:center;justify-content:center;gap:6px;min-height:40px;border-radius:999px;background:#EEF3FF;color:#2148C0;font-weight:650;font-size:14.5px;margin-top:6px;width:100%}
 .srv-scan[disabled]{opacity:.7}
 .srv-scan svg{width:18px;height:18px;flex:none}
-.login .mark{font-size:68px;line-height:1;font-weight:800;letter-spacing:-.04em;margin:18px 0 70px}
+.login .mark{display:block;width:92px;height:92px;border-radius:22px;margin:18px auto 56px;box-shadow:0 10px 30px rgba(13,18,25,.25)}
 .login h1{font-size:22px;line-height:1.3;margin:0 0 4px;font-weight:700}
 .login > p{color:var(--ink2);margin:0 0 18px;font-size:15px}
 .login .list{background:var(--glass);box-shadow:0 0 0 1px var(--glass-line),var(--shadow);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}

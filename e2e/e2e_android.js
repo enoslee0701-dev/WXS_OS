@@ -57,7 +57,7 @@ const FAKE = (opts) => {
   await p.evaluate(() => { location.hash = '#/new/voice'; }); await p.waitForTimeout(300);
   ok(!/浏览器/.test(await p.evaluate(() => document.getElementById('app').innerHTML)), '语音页没有「浏览器」字样');
   await p.evaluate(() => window.__tm.toast('没有拿到麦克风权限，请在浏览器设置里允许后再试', true));
-  ok((await p.textContent('#toast')).includes('设置 → 应用 → 团队协同 → 权限'), '权限提示改成手机设置路径：' + await p.textContent('#toast'));
+  ok((await p.textContent('#toast')).includes('设置 → 应用 → WSX OS → 权限'), '权限提示改成手机设置路径：' + await p.textContent('#toast'));
   // 3. 返回键：弹窗 → 返回上一页 → 标签页回首页 → 首页退出
   await p.evaluate(() => { location.hash = '#/home'; }); await p.waitForTimeout(200);
   await p.evaluate(() => { location.hash = '#/me'; }); await p.waitForTimeout(200);

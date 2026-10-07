@@ -1,6 +1,7 @@
 /* app/01_core.js — 存储、工具、卡片组件、全局状态。所有 app/*.js 按文件名顺序拼进同一个闭包（build.js），共享变量；不要在这里再包一层 function */
   'use strict';
   var K = 'tm_demo_v3', KU = 'tm_user_v3';
+  var APPICON = '__APPICON__'; /* 构建时换成 img/app-icon-192.png 的 data URI（只嵌一次） */
   var L = TM.L;
   var S, me = null, blobs = {}, rec = null, newMedia = [];
   var filt = { ideas: 'all', work: null };

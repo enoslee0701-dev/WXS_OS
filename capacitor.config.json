@@ -1,6 +1,6 @@
 {
   "appId": "com.teamops.app",
-  "appName": "团队协同",
+  "appName": "WSX OS",
   "webDir": "dist/app",
   "backgroundColor": "#FFFFFF",
   "ios": {

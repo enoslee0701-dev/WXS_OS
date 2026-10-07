@@ -1,4 +1,4 @@
-// 生成安卓正式版 APK：构建网页 → 同步进安卓工程 → 编译签名的 release → 复制到桌面「团队协同.apk」
+// 生成安卓正式版 APK：构建网页 → 同步进安卓工程 → 编译签名的 release → 复制到桌面「WSX OS.apk」
 // → 放到本机团队服务器的数据目录（DATA_DIR/app/），同事的 App 会提示有新版本，扫码页也能下载。
 // 用法：npm run android [-- "这次更新的说明"]   （发新版前先把 android/app/build.gradle 里的 versionCode 加 1）
 const { execSync } = require('child_process'), fs = require('fs'), path = require('path'), os = require('os');
@@ -9,8 +9,8 @@ const versionCode = +(g.match(/versionCode\s+(\d+)/) || [])[1], versionName = (g
 run('node build.js'); run('npx cap sync android');
 run('./gradlew assembleRelease -q', AND);
 const apk = path.join(AND, 'app/build/outputs/apk/release/app-release.apk');
-const desk = path.join(os.homedir(), 'Desktop', '团队协同.apk'); fs.copyFileSync(apk, desk);
-console.log(`已生成：桌面/团队协同.apk（${versionName}，versionCode ${versionCode}）`);
+const desk = path.join(os.homedir(), 'Desktop', 'WSX OS.apk'); fs.copyFileSync(apk, desk);
+console.log(`已生成：桌面/WSX OS.apk（${versionName}，versionCode ${versionCode}）`);
 const DATA = path.resolve(process.env.DATA_DIR || path.join(ROOT, 'server', 'data'));
 if (fs.existsSync(DATA)) {
   const dir = path.join(DATA, 'app'); fs.mkdirSync(dir, { recursive: true });

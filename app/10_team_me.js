@@ -158,7 +158,7 @@
         (SRV ? li('团队服务器', esc(TMS.serverUrl())) + li('AI', AI_ON ? (AI_LOCAL ? '本机 AI（' + esc(AI_MODEL.replace(/^本机 /, '')) + '）' : 'Claude') : '未启用，由规则生成') + li('录音转文字', TR_ON ? '已启用（服务器离线转写）' : '未安装') + li('数据', '保存在团队服务器，每天自动备份') : li('模式', '演示模式（数据只在这台设备）')) + '</div>';
       if (!SRV) h += '<p class="muted" style="font-size:14px;margin:12px 0 0">演示模式里账号是预设的，AI 由规则模拟。连接团队服务器后，用老板分派的账号登录，数据在团队里实时同步，录音和视频能自动转成文字，老板配置后 AI 由 Claude 完成。</p>';
       else h += '<button type="button" class="btn block mt" data-do="mePrivacy">隐私政策</button>';
-      openSheet('关于团队协同', h, '知道了', function () { closeSheet(); });
+      openSheet('关于 WSX OS', h, '知道了', function () { closeSheet(); });
     },
     mePrivacy: function () { closeSheet(); openLink(TMS.serverUrl() + '/privacy'); },
   };

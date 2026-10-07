@@ -184,7 +184,7 @@ var TMN = (function () {
   api.localNotify = function (list) {
     if (!LN || !list || !list.length) return Promise.resolve();
     var go = function () { if (!lnOk) return; var xs = list.length > 3 ? [{ title: list.length + ' 条新通知', body: list.slice(0, 3).map(function (n) { return n.title; }).join('、'), link: '#/inbox' }] : list;
-      return LN.schedule({ notifications: xs.map(function (n) { return { id: (Date.now() % 100000) * 10 + (lnSeq++ % 10), title: String(n.title || '团队协同').slice(0, 60), body: String(n.body || '').slice(0, 120), extra: { link: n.link || '#/inbox' } }; }) }).catch(function () {}); };
+      return LN.schedule({ notifications: xs.map(function (n) { return { id: (Date.now() % 100000) * 10 + (lnSeq++ % 10), title: String(n.title || 'WSX OS').slice(0, 60), body: String(n.body || '').slice(0, 120), extra: { link: n.link || '#/inbox' } }; }) }).catch(function () {}); };
     if (lnOk != null) return Promise.resolve(go());
     if (lnAsked) return Promise.resolve(); lnAsked = true;
     return LN.checkPermissions().then(function (p) { if (p.display === 'granted') return p; return LN.requestPermissions(); }).then(function (p) { lnOk = p && p.display === 'granted'; return go(); }, function () { lnOk = false; });

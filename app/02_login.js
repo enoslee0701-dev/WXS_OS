@@ -15,7 +15,7 @@
   function viewSrvLogin() {
     if (!srvL.probed) { srvProbe(); }
     var urlF = TMS.sameOrigin ? '' : field('服务器地址', '<input type="text" inputmode="url" name="server" value="' + esc(srvL.url) + '" placeholder="老板给的地址，例如 192.168.1.x" autocapitalize="off" autocorrect="off" required><button type="button" class="srv-scan" data-do="srvScan">' + hi('spark', 1.6) + '在这个 Wi-Fi 里自动查找</button>', '<span class="srv-err" id="srvErr"' + (srvL.err ? '' : ' style="display:none"') + '>' + esc(srvL.err) + '</span>');
-    var h = '<div class="login srv-login"><div class="mark" aria-hidden="true">协同</div>';
+    var h = '<div class="login srv-login"><img class="mark" src="' + APPICON + '" alt="">';
     if (srvL.probed && srvL.setup && !srvL.err) {
       h += '<h1>创建你的团队</h1><p>第一次使用：先建立老板账号。之后由你给每位成员分派登录账号。</p><form class="srv-form" data-form="srvSetup">' + urlF +
         field('初始化码', '<input type="text" name="code" inputmode="numeric" autocomplete="off" required>', '开启团队服务器时显示的 6 位数字（只在第一次建团队时需要）') +
@@ -95,7 +95,7 @@
   // 手机 App 里没有「浏览器」：提示改成手机上的说法
   var APP_WORDS = [
     [/（安卓 Chrome 支持）/g, ''],
-    [/请在浏览器设置里允许后再试/g, '请在手机「设置 → 应用 → 团队协同 → 权限」里允许麦克风后再试'],
+    [/请在浏览器设置里允许后再试/g, '请在手机「设置 → 应用 → WSX OS → 权限」里允许麦克风后再试'],
     [/这台设备的浏览器里/g, '这台手机上'],
     [/(当前|这个)浏览器/g, '这台手机'],
     [/浏览器自带的?识别/g, '手机自带的识别'],
@@ -124,7 +124,7 @@
   /* App（原生）首次打开：先问连团队服务器还是看演示；浏览器演示网页不受影响 */
   function demoChosen() { try { return localStorage.getItem('tm_demo_chosen') === '1'; } catch (e) { return true; } }
   function viewWelcome() {
-    return '<div class="login welcome"><div class="mark" aria-hidden="true">协同</div><h1>欢迎使用团队协同</h1><p>用科技让福音走得更远。连接你们团队的服务器，用老板分派给你的账号登录。</p>' +
+    return '<div class="login welcome"><img class="mark" src="' + APPICON + '" alt=""><h1>欢迎使用 WSX OS</h1><p>用科技让福音走得更远。连接你们团队的服务器，用老板分派给你的账号登录。</p>' +
       '<button class="btn pri block wl-go" data-do="srvConnect">连接团队服务器</button>' +
       '<button class="btn block wl-demo" data-do="demoChoose">先看看演示</button>' +
       '<p class="muted wl-tip">服务器地址由老板提供，例如 http://192.168.1.20:8787。演示模式的数据只存在这台手机上。</p></div>';
@@ -133,7 +133,7 @@
   var jn = { tok: '', info: null, err: '', busy: false };
   function viewJoin(tok) {
     if (jn.tok !== tok) { jn = { tok: tok, info: null, err: '', busy: false }; TMS.invitePeek(srvL.url, tok).then(function (r) { jn.info = r; render(); }, function (e) { jn.err = (e && e.error) || '连不上服务器'; render(); }); }
-    var h = '<div class="login srv-login join"><div class="mark" aria-hidden="true">协同</div>';
+    var h = '<div class="login srv-login join"><img class="mark" src="' + APPICON + '" alt="">';
     if (jn.err) h += '<h1>邀请链接打不开</h1><p>' + esc(jn.err) + '</p><a class="btn block" href="#/login">用账号密码登录</a>';
     else if (!jn.info) h += '<h1>正在打开邀请…</h1><p class="muted">连接 ' + esc(srvL.url) + '</p>';
     else h += '<h1>' + esc(jn.info.by || '老板') + ' 邀请你加入</h1><p>你是 <b>' + esc(jn.info.name) + '</b>' + (jn.info.title ? '（' + esc(jn.info.title) + '）' : '') + '，登录账号 <b>' + esc(jn.info.login) + '</b>。设一个只有你知道的密码，以后就用它登录。</p>' +
@@ -145,7 +145,7 @@
     if (SRV && cur().name === 'join' && cur().id) return viewJoin(cur().id);
     if (SRV) return viewSrvLogin();
     if (typeof TMN !== 'undefined' && TMN.native && !demoChosen()) return viewWelcome();
-    return '<div class="login"><div class="mark" aria-hidden="true">协同</div><h1>以谁的身份进入？</h1><p>每个账号按角色和权限看到不同内容。切换账号，可以把一件事从想法一路走到验收。</p>' +
+    return '<div class="login"><img class="mark" src="' + APPICON + '" alt=""><h1>以谁的身份进入？</h1><p>每个账号按角色和权限看到不同内容。切换账号，可以把一件事从想法一路走到验收。</p>' +
       '<div class="list">' + S.users.map(function (u) {
         return '<div class="acct" role="button" tabindex="0" data-do="login" data-id="' + u.id + '">' + av(u.id) + '<div><b>' + esc(u.name) + '　<span class="muted" style="font-weight:400;font-size:14px">' + esc(u.title) + '</span></b><small>' + esc(ROLE_DESC[u.id] || '') + '</small></div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></div>';
       }).join('') + '</div><p class="muted" style="font-size:13.5px;margin-top:18px">演示模式：账号是预设的，数据只存在这台设备上。连接团队服务器后，用老板分派的真实账号登录，数据在团队里实时同步。</p><button class="srv-local" data-do="srvConnect">连接团队服务器 →</button></div>';
