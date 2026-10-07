@@ -11,6 +11,7 @@ const mock = http.createServer((req, res) => {
     const reply = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
     if (mode === 'drop') return req.socket.destroy(); // 模拟连不上 AI 服务
     if (mode === '500') return reply(500, { type: 'error', error: { type: 'api_error', message: 'boom' } });
+    { const f1 = body.output_config && body.output_config.format; if (f1 && f1.schema.properties.items && f1.schema.properties.items.items.properties.owner) return reply(200, { id: 'msg_m', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ items: [{ title: '做报名页面', owner: '刘洋', due: '2099-01-02', expected: '页面链接', criteria: '能报名' }, { title: '订餐盒', owner: '不存在的人', due: 'bad', expected: '', criteria: '' }] }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 } }); }
     { const f0 = body.output_config && body.output_config.format; if (f0 && f0.schema.properties.proposed_direction) { const txt0 = JSON.stringify(body.messages || []); const id = (txt0.match(/\[(s\d+)\]/) || [])[1] || 'none';
       return reply(200, { id: 'msg_c', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ consensus: [{ point: 'Claude：大家同意先试点', src: [id] }, { point: '没有来源的结论', src: ['s_fake'] }], divergences: [], risks: [], open_questions: [{ point: '预算多少？', src: [] }], proposed_direction: 'Claude 建议：先做两周试点' }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 } }); } }
     if (mode === '429') return reply(429, { type: 'error', error: { type: 'rate_limit_error', message: 'slow down' } });
@@ -205,6 +206,11 @@ async function team(api) {
     await api5('POST', '/api/act', { name: 'idea.close', payload: { id: ci.r.id } }, t5.boss);
     let co = null; for (let i = 0; i < 40 && !co; i++) { const st = (await api5('GET', '/api/state', null, t5.boss)).state; const x = st.summaries.filter(y => y.ideaId === ci.r.id && y.kind === 'cocreate').pop(); if (x && !x.payload.simulated) co = x; else await new Promise(r => setTimeout(r, 100)); }
     ok(co && co.payload.consensus.length === 1 && /^s\d+$/.test(co.payload.consensus[0].src[0]) && /Claude/.test(co.payload.proposed_direction) && co.payload.open_questions.length === 1, '共创汇总换成 Claude 版，来源可追溯、无来源结论被丢掉 ' + JSON.stringify(co && co.payload.consensus)); }
+  // 会议拆任务：负责人也能用；人名换成成员、日期校验
+  { const st = (await api5('GET', '/api/state', null, t5.boss)).state, w = st.workItems.find(x => x.status === 'active');
+    let r = await api5('POST', '/api/ai/meeting', { workId: w.id, text: '周五前刘洋做报名页面，再订餐盒' }, t5.boss);
+    ok(r.status === 200 && r.items.length === 2 && r.items[0].ownerId === 'u_dev' && r.items[0].due === '2099-01-02' && r.items[1].ownerId === '' && r.items[1].due === '', '会议拆任务：Claude 拆出任务，人名换成成员、无效日期清空');
+    r = await api5('POST', '/api/ai/meeting', { workId: w.id, text: '周五前做报名页面' }, t5.dev); ok(r.status === 403, '执行者不能用会议拆任务'); }
   // 拍照识别：只收图片；图片作为 image 块交给 Claude
   ok((await api5('POST', '/api/ai/image', { data: 'aGVsbG8gd29ybGQgaGVsbG8=', type: 'application/pdf' }, t5.boss)).status === 400, '拍照识别：不是图片被拒');
   { const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';

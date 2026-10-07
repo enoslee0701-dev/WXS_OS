@@ -64,5 +64,19 @@ const URL=(require('./_env').URL);
   await p.click('[data-do=wTab][data-t=ov]'); await p.waitForTimeout(80);
   if (await p.locator('form[data-form=wComment]').count()) { await p.fill('form[data-form=wComment] textarea','这周五前给初稿'); await p.click('form[data-form=wComment] button[type=submit]'); await p.waitForTimeout(150);
     ok((await p.textContent('.wx-disc')).includes('这周五前给初稿'),'项目讨论发言后显示'); } else ok(false,'项目概览里没有讨论区');
+  // 会议拆任务：贴一段会议纪要 → 拆出「谁、做什么、什么时候」→ 核对后一次派出
+  { const wid = await p.evaluate(() => { const S = window.__tm.S; const w = S.workItems.find(x => x.status === 'active' && x.kind !== 'product'); return w && w.id; });
+    await p.evaluate(() => { const S = window.__tm.S; }); await p.goto(URL + '#/home'); await p.click('[data-do=switch]'); await p.click('.acct:has-text("Enos")');
+    await p.goto(URL + '#/work/' + wid); await p.waitForTimeout(200); await p.evaluate(() => document.querySelector('[data-do=wTab][data-t=tasks]').click()); await p.waitForTimeout(120);
+    await p.evaluate(() => document.querySelector('[data-do=wMeeting]').click()); await p.waitForSelector('#mt-text');
+    await p.fill('#mt-text', '会上定了：周五前刘洋把报名页面做出来；何静下周一给出海报初稿；场地由周敏这周确认。');
+    await p.evaluate(() => document.querySelector('[data-do=mtGo]').click()); await p.waitForTimeout(250);
+    const its = await p.evaluate(() => [...document.querySelectorAll('.mt-it')].map(x => x.querySelector('select').selectedOptions[0].textContent));
+    ok(its.length === 3 && its.join() === '刘洋,何静,周敏', '会议拆任务：拆出 3 个任务并认出负责人 ' + its.join());
+    await p.evaluate(() => document.querySelector('.mt-it input[data-mt=on]').click()); await p.waitForTimeout(80);
+    const n0 = await p.evaluate(() => window.__tm.S.tasks.length);
+    await p.evaluate(() => document.querySelector('.sheet footer button[type=submit]').click()); await p.waitForTimeout(250);
+    const made = await p.evaluate((n) => window.__tm.S.tasks.slice(n).map(t => t.ownerId), n0);
+    ok(made.length === 2 && made.includes('u_design') && !made.includes('u_dev'), '取消勾选的不派，其余一次派出 ' + made.join()); }
   ok(!errs.length,'无脚本错误 '+errs.join(';')); console.log('项目详情 E2E 通过',pass,'失败',fail); await b.close();
 })();

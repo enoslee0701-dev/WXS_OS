@@ -324,6 +324,7 @@ var TMS = (function () {
   api.aiProject = function (text) { return req('POST', '/api/ai/project', { text: text }, AI_WAIT); };
   api.aiDoc = function (name, base64) { return req('POST', '/api/ai/doc', { name: name, data: base64 }, 300000); };
   api.aiWrite = function (kind, title, note, due) { return req('POST', '/api/ai/write', { kind: kind, title: title, note: note, due: due }, AI_WAIT); };
+  api.aiMeeting = function (workId, text) { return req('POST', '/api/ai/meeting', { workId: workId, text: text }, AI_WAIT); };
   api.aiTodos = function (text) { return req('POST', '/api/ai/todos', { text: text }, AI_WAIT); };
   api.aiKb = function (topic, text) { return req('POST', '/api/ai/kb', { topic: topic, text: text }, AI_WAIT); };
   /* ---------- 大缓存：完整数据超过 localStorage 容量时存 IndexedDB ---------- */

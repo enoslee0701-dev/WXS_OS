@@ -1518,7 +1518,9 @@
     var base = new Date(); base.setHours(0, 0, 0, 0); var d = null, time = '';
     if (/后天/.test(t)) d = 2; else if (/明天|明早|明晚/.test(t)) d = 1; else if (/今天|今晚|今早|待会|马上/.test(t)) d = 0;
     var m = t.match(/(下周|这周|本周|周|星期)([一二三四五六日天])/);
-    if (m && d == null) { var map = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 0, '天': 0 }, target = map[m[2]], cur = base.getDay(); var diff = (target - cur + 7) % 7; if (m[1] === '下周') diff += 7; else if (diff === 0) diff = 0; d = diff; }
+    if (m && d == null) { var map = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 0, '天': 0 }, target = map[m[2]], cur = base.getDay(); var diff = (target - cur + 7) % 7;
+      // 「下周X」= 下一个自然周的周X（今天周三说「下周一」是 5 天后，不是 12 天后）；「这周 / 本周X」= 本周的周X
+      if (m[1] === '下周' || m[1] === '这周' || m[1] === '本周') { var mon = (cur + 6) % 7, tw = (target + 6) % 7; diff = tw - mon + (m[1] === '下周' ? 7 : 0); } d = diff; }
     var md = t.match(/(\d{1,2})月(\d{1,2})[日号]/);
     var date;
     if (md) { var y = base.getFullYear(); date = y + '-' + ('0' + md[1]).slice(-2) + '-' + ('0' + md[2]).slice(-2); }
@@ -2801,13 +2803,89 @@
     return '<a class="row wt' + (fl ? ' wt-f' : '') + '" href="#/task/' + t.id + '"><span class="wt-t"><b>' + esc(t.title) + '</b>' + pill('task', t.status) + '</span><span class="wt-m">' + meta.join('') + '</span>' +
       (nx && t.status !== 'done' ? '<span class="wt-n">下一步：' + esc(nx.who === me ? '你' : nm(nx.who)) + ' ' + esc(nx.what) + '</span>' : '') + '</a>';
   }
+  /* ---------- 会议拆任务：会议录音或纪要 → AI 拆成任务（谁、做什么、什么时候）→ 核对后一次派出 ---------- */
+  function canPlanWork(w) { return !!w && ['done', 'cancelled', 'paused'].indexOf(w.status) < 0 && (isOwner() || w.leadId === me || (w.kind !== 'product' && w.operatorId === me)); }
+  var mt = { wid: null, text: '', items: null, rec: null, busy: false };
+  // 规则版（没有 AI 时）：按句子找「人名 + 要做的事 + 时间」
+  function mtParse(text, w) {
+    var ppl = TM.activeUsers(S).filter(function (u) { return !u.roles.every(function (a) { return a.role === 'admin'; }); });
+    var VERB = /(做|出|写|准备|联系|确认|采购|买|订|安排|整理|提交|设计|开发|测试|上线|发布|对接|跟进|核对|统计|汇总|通知|布置|搭建|印|拍|剪辑|修改|完善|落实|负责)/;
+    var out = [];
+    String(text || '').split(/[。；;！!？?\n：:]+/).map(function (x) { return x.trim(); }).filter(function (x) { return x.length >= 4; }).forEach(function (sen) {
+      sen.split(/[，,]?(?:另外|然后|还有|再由|再让)/).forEach(function (c) {
+        c = c.trim(); if (out.length >= 10 || c.length < 4) return;
+        var who = ppl.filter(function (u) { return c.indexOf(u.name) >= 0; })[0];
+        if (!who && !VERB.test(c)) return;
+        var hasDate = /(今天|明天|后天|下周|这周|本周|周[一二三四五六日天]|星期[一二三四五六日天]|\d{1,2}月\d{1,2}[日号])/.test(c);
+        var title = c.replace(who ? new RegExp('(由|让|请|麻烦)?' + who.name + '(来|去|负责|那边)?') : /^$/, '').replace(/(今天|明天|后天|(下|这|本)?(周|星期)[一二三四五六日天]|\d{1,2}月\d{1,2}[日号])(之前|以前|前)?/g, '').replace(/^(请|由|让|麻烦|就|先|再|然后|并且|我们|大家)+/, '').replace(/^[，,、\s]+|[，,、\s]+$/g, '').slice(0, 40);
+        if (title.length < 3) return;
+        out.push({ title: title, ownerId: who ? who.id : '', due: hasDate ? parseWhen(c).date : '', expected: '', criteria: '', on: true });
+      });
+    });
+    return out;
+  }
+  function mtOwnerDefault(w) { var ex = TM.usersWith(S, 'executor'); return w.kind === 'product' && w.leadId ? (ex[0] || w.leadId) : (ex[0] || w.operatorId); }
+  function mtBody() {
+    var w = W(mt.wid), ppl = TM.activeUsers(S).filter(function (u) { return !u.roles.every(function (a) { return a.role === 'admin'; }); });
+    if (!mt.items) return '<p class="muted" style="margin:0 0 8px;font-size:14px">把会议录音或会议纪要交给 AI，它会找出「谁、做什么、什么时候」，你核对后一次派出去。</p>' +
+      '<textarea id="mt-text" rows="7" placeholder="例如：周五前刘洋把报名页面做出来；何静下周一给出海报初稿；场地由周敏这周确认，预算不超过 3000。">' + esc(mt.text) + '</textarea>' +
+      '<div class="mt-row">' + (canSrvTr() || TR_ON || (typeof TMS !== 'undefined' && TMS.loggedIn && TMS.loggedIn()) ? '<button type="button" class="btn" data-do="mtRec">' + (mt.rec ? '■ 停止录音（' + '<span id="mt-sec">0</span> 秒）' : ni('mic', 1.6) + ' 录一段会议') + '</button>' : '') +
+      '<button type="button" class="btn pri" data-do="mtGo"' + (mt.busy ? ' disabled' : '') + '>' + (mt.busy ? '正在拆解…' : hi('spark', 1.6) + ' 拆成任务') + '</button></div>';
+    var on = mt.items.filter(function (x) { return x.on; }).length;
+    return '<p class="muted" style="margin:0 0 8px;font-size:14px">拆出 ' + mt.items.length + ' 个任务' + (mt.src ? '（' + mt.src + '）' : '') + '，核对负责人和时间后派出；不要的取消勾选。</p><div class="mt-list">' + mt.items.map(function (x, i) {
+      return '<div class="mt-it' + (x.on ? '' : ' off') + '"><label class="mt-chk"><input type="checkbox" data-mt="on" data-i="' + i + '"' + (x.on ? ' checked' : '') + '><span></span></label><div class="mt-f">' +
+        '<input type="text" data-mt="title" data-i="' + i + '" value="' + esc(x.title) + '" maxlength="50" aria-label="任务">' +
+        '<div class="mt-r"><select data-mt="ownerId" data-i="' + i + '" aria-label="负责人"><option value="">选负责人</option>' + ppl.map(function (u) { return '<option value="' + u.id + '"' + (u.id === x.ownerId ? ' selected' : '') + '>' + esc(u.name) + '</option>'; }).join('') + '</select>' +
+        '<input type="date" data-mt="due" data-i="' + i + '" value="' + esc(x.due || '') + '" aria-label="截止"></div></div></div>';
+    }).join('') + '</div><button type="button" class="link mt-back" data-do="mtBack">← 改一下会议内容</button>' + (on ? '' : '<p class="muted">至少勾选一个任务。</p>');
+  }
+  function mtRender() { var b = document.querySelector('#layer .sheet .body'); if (b) b.innerHTML = mtBody(); var f = document.querySelector('#layer .sheet footer button[type=submit]'); if (f) f.textContent = mt.items ? '派出 ' + mt.items.filter(function (x) { return x.on; }).length + ' 个任务' : '关闭'; }
+  var MTX = {};
+  MTX.wMeeting = function () {
+    var w = W(cur().id); if (!canPlanWork(w)) return toast('只有能给这个项目派任务的人可以用', true);
+    mt = { wid: w.id, text: '', items: null, rec: null, busy: false };
+    openSheet('会议拆任务', mtBody(), '关闭', function () {
+      if (!mt.items) return closeSheet();
+      var pick = mt.items.filter(function (x) { return x.on && x.title.trim(); });
+      if (!pick.length) return toast('至少勾选一个任务', true);
+      var miss = pick.filter(function (x) { return !x.ownerId; }); if (miss.length) return toast('「' + miss[0].title + '」还没选负责人', true);
+      var r = act('work.plan', { id: w.id, tasks: pick.map(function (x) { return { title: x.title.trim(), ownerId: x.ownerId, due: x.due || undefined, expected: x.expected || ('完成「' + x.title.trim() + '」并提交成果说明'), criteria: x.criteria || '验收人确认达到要求', assignedBy: 'ai' }; }) });
+      if (r.ok) { closeSheet(); toast('已派出 ' + pick.length + ' 个任务，负责人都收到了通知'); }
+    });
+  };
+  MTX.mtBack = function () { mt.items = null; mtRender(); };
+  MTX.mtGo = function () {
+    var ta = document.getElementById('mt-text'); mt.text = ta ? ta.value : mt.text; var w = W(mt.wid);
+    if (mt.text.trim().length < 6) return fieldErr('#mt-text', '先写或录一段会议内容');
+    var useRule = function (why) { mt.items = mtParse(mt.text, w); mt.src = why || '规则识别'; mt.items.forEach(function (x) { if (!x.ownerId) x.ownerId = mtOwnerDefault(w); }); mt.busy = false; if (!mt.items.length) { mt.items = null; mtRender(); return toast('没有识别出要做的事，试着写成「谁 + 什么时候 + 做什么」', true); } mtRender(); };
+    if (AI_ON && typeof TMS !== 'undefined' && TMS.aiMeeting) {
+      mt.busy = true; mtRender();
+      TMS.aiMeeting(w.id, mt.text).then(function (r) { mt.busy = false; mt.items = (r.items || []).map(function (x) { return { title: x.title, ownerId: x.ownerId || mtOwnerDefault(w), due: x.due, expected: x.expected, criteria: x.criteria, on: true }; }); mt.src = AI_LOCAL ? '本机 AI' : 'Claude'; if (!mt.items.length) return useRule('AI 没拆出来，改用规则识别'); mtRender(); }, function () { useRule('AI 暂时不可用，改用规则识别'); });
+    } else useRule();
+  };
+  MTX.mtRec = function () {
+    if (mt.rec) { try { mt.rec.mr.stop(); } catch (e) {} return; }
+    var ta = document.getElementById('mt-text'); if (ta) mt.text = ta.value;
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+      var chunks = [], mr = new MediaRecorder(stream), t0 = Date.now();
+      mt.rec = { mr: mr, timer: setInterval(function () { var e = document.getElementById('mt-sec'); if (e) e.textContent = Math.round((Date.now() - t0) / 1000); }, 500) };
+      mr.ondataavailable = function (e) { chunks.push(e.data); };
+      mr.onstop = function () { stream.getTracks().forEach(function (t) { t.stop(); }); clearInterval(mt.rec.timer); mt.rec = null; mtRender();
+        var blob = new Blob(chunks, { type: mr.mimeType || 'audio/webm' });
+        if (!canSrvTr()) return toast('录好了，但这里没法转文字：请连接团队服务器，或用输入法的话筒说到文字框里', true);
+        srvTr(blob, '会议录音').then(function (t) { if (!t) return toast('录音里没有识别到说话', true); mt.text = (mt.text ? mt.text + '\n' : '') + t; mtRender(); toast('已转成文字，可以点「拆成任务」'); }, function () {}); };
+      mr.start(); mtRender();
+    }).catch(function () { toast('没有拿到麦克风权限，请在设置里允许后再试', true); });
+  };
+  document.addEventListener('input', function (e) { var t = e.target; if (!t || !t.dataset) return; if (t.id === 'mt-text') mt.text = t.value; if (t.dataset.mt && mt.items) { var x = mt.items[+t.dataset.i]; if (x) x[t.dataset.mt] = t.type === 'checkbox' ? t.checked : t.value; } });
+  document.addEventListener('change', function (e) { var t = e.target; if (!t || !t.dataset || !t.dataset.mt || !mt.items) return; var x = mt.items[+t.dataset.i]; if (!x) return; x[t.dataset.mt] = t.type === 'checkbox' ? t.checked : t.value; if (t.dataset.mt === 'on') mtRender(); });
   function wTasksTab(w) {
     var vts = S.tasks.filter(function (t) { return t.workId === w.id && TM.canViewTask(S, me, t); });
     var ord = { blocked: 0, submitted: 1, owner_review: 1, in_progress: 2, accepted: 2, assigned: 3, done: 5, cancelled: 6 };
     vts.sort(function (a, b) { return (wtFlag(b) && b.status !== 'done') - (wtFlag(a) && a.status !== 'done') || (ord[a.status] || 4) - (ord[b.status] || 4); });
     var f = wd.tf || 'all', rows = vts.filter(function (t) { return wtIn(f, t); });
     var h = '<div class="wt-chips">' + WTF.map(function (x) { var n = vts.filter(function (t) { return wtIn(x[0], t); }).length; return '<button class="' + (f === x[0] ? 'on' : '') + (x[0] === 'flag' && n ? ' warn' : '') + '" data-do="wTf" data-f="' + x[0] + '">' + x[1] + '<i>' + n + '</i></button>'; }).join('') + '</div>';
-    h += '<div class="wt-view"><button class="' + (wd.board ? '' : 'on') + '" data-do="wtView" data-v="list">列表</button><button class="' + (wd.board ? 'on' : '') + '" data-do="wtView" data-v="board">看板</button></div>';
+    h += '<div class="wt-bar"><div class="wt-view"><button class="' + (wd.board ? '' : 'on') + '" data-do="wtView" data-v="list">列表</button><button class="' + (wd.board ? 'on' : '') + '" data-do="wtView" data-v="board">看板</button></div>' + (canPlanWork(w) ? '<button class="wt-meet" data-do="wMeeting">' + hi('spark', 1.6) + '会议拆任务</button>' : '') + '</div>';
     if (wd.board && vts.length) {
       // 看板：按状态分列，横向滑动；每列显示数量
       var COLS = [['待接收', ['assigned']], ['进行中', ['accepted', 'in_progress']], ['受阻', ['blocked']], ['待验收', ['submitted', 'owner_review']], ['已完成', ['done']]];
@@ -2853,6 +2931,7 @@
     if ((w.leadId === me || (w.kind !== 'product' && w.operatorId === me) || ow) && TM.STAGES[w.kind].length > 1 && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['推进阶段', 'stage']);
     if (ow && ['planning', 'active', 'acceptance', 'blocked'].indexOf(w.status) >= 0) a.push(['暂停', 'pause']);
     if (ow && w.status === 'paused') a.push(['恢复', 'resume']);
+    if (canPlanWork(w)) a.push(['会议拆任务', 'wMeeting']);
     if (!ow && (w.leadId === me || w.operatorId === me) && ['done', 'cancelled'].indexOf(w.status) < 0 && !S.decisions.some(function (x) { return x.workId === w.id && x.status === 'pending'; })) a.push(['上报老板决策', 'wEscalate']);
     if ((ow || w.leadId === me) && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['更换人员', 'wReassign']);
     if ((ow || w.leadId === me || w.operatorId === me) && ['done', 'cancelled'].indexOf(w.status) < 0) a.push(['取消项目', 'cancelWork']);
@@ -3333,7 +3412,7 @@
   Object.keys(QUICK).forEach(function (k) { DO[k] = QUICK[k]; });
   DO.goAssignWork = function (el) { asg = freshAsg(el.dataset.arg); location.hash = '#/assign/' + el.dataset.arg; };
   Object.keys(PDO).forEach(function (k) { DO[k] = PDO[k]; });
-  [VO, CAP, TD, AS, WD, SD, TMD, ME, AIX].forEach(function (g) { Object.keys(g).forEach(function (k) { DO[k] = g[k]; }); });
+  [VO, CAP, TD, AS, WD, SD, TMD, ME, AIX, MTX].forEach(function (g) { Object.keys(g).forEach(function (k) { DO[k] = g[k]; }); });
   DO.mode = function (el) {
     draft.mode = el.dataset.m; render();
     if (draft.mode === 'voice' && !rec) startRec();

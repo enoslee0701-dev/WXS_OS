@@ -315,6 +315,14 @@ const routes = {
     if (!String(b.title || b.note || '').trim()) return [400, { error: '先写项目名称或描述' }];
     return aiRun(me, 'write', () => AI.writeHelper(kind, b.title, b.note, b.due));
   },
+  // 会议拆任务：能给这个项目派任务的人都能用（负责人不一定是老板 / 管理员）
+  'POST /api/ai/meeting': async (req, url, b, me) => {
+    const w = S.workItems.find(x => x.id === String(b.workId || '')); if (!w) return [404, { error: '项目不存在' }];
+    const can = TM.hasRole(S, me.uid, 'owner') || w.leadId === me.uid || (w.kind !== 'product' && w.operatorId === me.uid);
+    if (!can || ['done', 'cancelled'].includes(w.status)) return [403, { error: '只有能给这个项目派任务的人可以用' }];
+    const text = String(b.text || '').trim(); if (text.length < 6) return [400, { error: '内容太少' }];
+    return aiRun(me, 'meeting', () => AI.parseMeeting(S, w.id, text), false, true);
+  },
   'POST /api/ai/todos': async (req, url, b, me) => {
     const text = String(b.text || '').trim(); if (text.length < 4) return [400, { error: '内容太少' }];
     return aiRun(me, 'todos', () => AI.parseTodos(S, me.uid, text));
@@ -551,9 +559,9 @@ function autoAnalyze(added, retry) {
 }
 
 /* AI：先占名额再调用（并发请求也不会超过每日上限） */
-async function aiRun(me, kind, fn, system) {
+async function aiRun(me, kind, fn, system, anyone) {
   if (!AI.enabled()) return [503, { error: 'AI 还没有配置（服务器缺少 ANTHROPIC_API_KEY）' }];
-  if (!system && !AI.allowed(S, me.uid)) return [403, { error: 'AI 目前只对老板和管理员开放' }];
+  if (!system && !anyone && !AI.allowed(S, me.uid)) return [403, { error: 'AI 目前只对老板和管理员开放' }];
   const since = new Date(); since.setHours(0, 0, 0, 0);
   const n = q('SELECT COUNT(*) AS n FROM ai_log WHERE uid=? AND at>=?').get(me.uid, since.getTime()).n;
   if (n >= (system ? AI.SYSTEM_LIMIT : AI.LIMIT)) return [429, { error: '今天的 AI 使用次数已用完（' + AI.LIMIT + ' 次）' }];

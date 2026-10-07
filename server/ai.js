@@ -320,6 +320,21 @@ async function parseTodos(S, uid, text) {
   return { items, usage: r.usage };
 }
 
+/* 会议纪要 / 录音转写 → 项目任务（谁、做什么、什么时候、交付什么、怎样算完成） */
+async function parseMeeting(S, workId, text) {
+  const w = S.workItems.find(x => x.id === workId); if (!w) throw { status: 404, error: '项目不存在' };
+  const today = TM.todayStr(S), wd = '日一二三四五六'[new Date(today + 'T00:00:00').getDay()];
+  const people = TM.activeUsers(S).filter(u => !u.roles.every(r => r.role === 'admin'));
+  const schema = { type: 'object', additionalProperties: false, required: ['items'], properties: { items: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'owner', 'due', 'expected', 'criteria'], properties: {
+    title: { type: 'string', description: '要做的事，25 字以内，动词开头' }, owner: { type: 'string', description: '负责人姓名，必须是团队成员之一；会上没说谁就留空' },
+    due: { type: 'string', description: 'YYYY-MM-DD；会上没说时间就留空' }, expected: { type: 'string', description: '交付什么（例如：报价单、照片、文档链接）' }, criteria: { type: 'string', description: '怎样算完成' } } } } } };
+  const r = await call({ system: [{ type: 'text', text: `你把一次会议的记录拆成可以派出去的任务。今天是 ${today}（星期${wd}）。项目：「${w.title}」${w.goal ? '，目标：' + w.goal : ''}。团队成员：${people.map(u => u.name + '（' + (u.title || '') + '）').join('、')}。规则：只拆会上明确要做的事，每件事一条，最多 10 条；不编造会上没说的事、人和时间；「周五」指本周或下一个周五。用简体中文。` }], messages: [{ role: 'user', content: String(text).slice(0, 8000) }], schema, effort: 'low', maxTokens: 4000 });
+  let o; try { o = JSON.parse(r.text); } catch (e) { throw { status: 502, error: 'AI 返回的格式不对' }; }
+  const byName = (n) => { const u = people.find(x => x.name === String(n || '').trim()); return u ? u.id : ''; };
+  const items = (o.items || []).slice(0, 10).map(x => ({ title: String(x.title || '').trim().slice(0, 50), ownerId: byName(x.owner), due: /^\d{4}-\d{2}-\d{2}$/.test(x.due) && x.due >= today ? x.due : '', expected: String(x.expected || '').slice(0, 100), criteria: String(x.criteria || '').slice(0, 100) })).filter(x => x.title);
+  return { items, usage: r.usage };
+}
+
 /* PDF → Markdown（知识库上传 PDF）：Claude 读文档，整理出正文 */
 /* 拍照识别：白板、纸质记录、手写便签、截图 → 文字 + 要点 + 可以变成待办的事 */
 async function readImage(base64, mediaType) {
@@ -339,6 +354,6 @@ async function pdfToMarkdown(base64, name) {
   return { text: r.text, truncated: r.truncated, usage: r.usage };
 }
 
-module.exports = { enabled, provider, claudeOn, allowed, readImage, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, cocreateSummary, parseProject, parseTodos, writeHelper, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };
+module.exports = { enabled, provider, claudeOn, allowed, readImage, ask, kbOrganize, analyzeIdea, adviseDecision, digestDiscussion, cocreateSummary, parseMeeting, parseProject, parseTodos, writeHelper, pdfToMarkdown, snapshot, MODEL, LIMIT, SYSTEM_LIMIT };
 // 模型名：Claude 或本机模型（界面和用量统计里显示）
 Object.defineProperty(module.exports, 'MODEL', { get: () => claudeOn() ? MODEL : '本机 ' + LLM.NAME, enumerable: true });

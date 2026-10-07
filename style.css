@@ -3197,3 +3197,14 @@ html.fs-xl{--pz:1;--az:1.04}
 .me-info.me-fs{display:flex!important;align-items:center;gap:12px;grid-template-columns:none}.me-fs > span:nth-child(2){flex:1;min-width:0;white-space:nowrap}
 .fs-seg{flex:none}.fs-seg button{white-space:nowrap;padding:5px 11px}
 .me-info .fs-seg{width:auto;font-weight:500}
+/* 会议拆任务 */
+.wt-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:2px 0 10px}.wt-bar .wt-view{margin:0}
+.wt-meet{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:999px;background:#EEF3FF;color:#2148C0;font:600 13.5px var(--font);padding:7px 14px;cursor:pointer}.wt-meet svg{width:16px;height:16px}
+#mt-text{width:100%;min-height:150px}
+.mt-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.mt-row .btn{flex:1;min-width:140px}
+.mt-list{display:flex;flex-direction:column;gap:10px}
+.mt-it{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:14px;background:#F4F6FA}.mt-it.off{opacity:.5}
+.mt-chk{flex:none;padding-top:10px}.mt-chk input{width:20px;height:20px}
+.mt-f{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}.mt-f input[type=text]{min-height:42px;background:#fff}
+.mt-r{display:flex;gap:6px}.mt-r select,.mt-r input{flex:1;min-width:0;min-height:40px;background:#fff}
+.mt-back{border:0;background:none;color:#2148C0;font:inherit;font-size:14px;padding:10px 0 0;cursor:pointer}
