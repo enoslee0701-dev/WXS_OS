@@ -130,12 +130,12 @@ var TMN = (function () {
         // 只接受干净的服务器地址：http/https、没有用户名密码、路径 / 查询 / # 都为空；显示和保存都只用 origin
         var su; try { su = new URL(q.server); } catch (x) { return; }
         if (!/^https?:$/.test(su.protocol) || su.username || su.password || (su.pathname && su.pathname !== '/') || su.search || su.hash) return;
-        q.server = su.origin; q.login = /^[A-Za-z0-9_.@-]{3,32}$/.test(q.login || '') ? q.login : '';
+        q.server = su.origin; q.login = /^[A-Za-z0-9_.@-]{3,32}$/.test(q.login || '') ? q.login : ''; q.invite = /^[A-Za-z0-9_-]{16,40}$/.test(q.invite || '') ? q.invite : '';
         if (window.TMS && TMS.loggedIn()) { if (window.__tm && window.__tm.toast) window.__tm.toast('你已经登录了。要换账号，请先在「我的」里退出登录', true); return; }
         // 防钓鱼：别人也能做这种链接，切换服务器前必须让用户确认地址
         var go = function () {
           try { localStorage.setItem('tm_server', q.server); if (q.login) localStorage.setItem('tm_prefill_login', q.login); localStorage.setItem('tm_demo_chosen', '1'); } catch (x) {}
-          location.hash = '#/login'; flush().then(function () { location.reload(); }, function () { location.reload(); });
+          location.hash = q.invite ? '#/join/' + q.invite : '#/login'; flush().then(function () { location.reload(); }, function () { location.reload(); });
         };
         var esc = function (t) { return String(t).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); };
         // 用 App 自己的确认面板（样式统一）；页面还没准备好时退回系统对话框

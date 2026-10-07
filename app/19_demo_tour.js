@@ -278,7 +278,7 @@
   }
   window.addEventListener('scroll', function () { var t = document.querySelector('.top'); if (t) t.classList.toggle('stuck', window.scrollY > 8); }, { passive: true });
   window.addEventListener('hashchange', function () { if (navAfter) { var na = navAfter; navAfter = null; navStack[navStack.length - 1] = location.hash; location.hash = na; return; } if (aiS.open) { aiS.open = false; renderAI(); } if (ai.recording && cur().id !== 'ai') aiStop(); if (ta.recording && cur().sub !== 'ai') taStop(); var cc0 = cur(); if (!(cc0.name === 'new' && cc0.id === 'voice') && (vo.state === 'rec' || vo.state === 'pause')) VO.voStop(); closeSheet(); navTo(function () { render(); window.scrollTo(0, 0); }); });
-  if (!me) location.hash = '#/login';
+  if (!me && !(SRV && cur().name === 'join' && cur().id)) location.hash = '#/login'; /* 邀请链接 #/join/… 保留 */
   render();
   // 启动后查一次有没有新版本（安卓）；老板 / 管理员也顺便拿到安装包信息
   setTimeout(function () { appCheck(false); }, 3000);

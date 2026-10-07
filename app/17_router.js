@@ -18,6 +18,7 @@
     var app = document.getElementById('app'), c = cur();
     if (!me) { document.body.classList.remove('has-actions'); var lg = viewLogin(); app.innerHTML = (/class="login welcome"/.test(lg) ? '' : DEMO) + lg; return; }
     if (c.name === 'login') { location.hash = '#/home'; return; }
+    if (c.name === 'join') { toast('你已经登录了。要用邀请换账号，请先在「我的」里退出登录', true); location.hash = '#/home'; return; }
     var cp = myCaps(), to = null;
     if (c.name === 'new' && !cp.recordIdea) to = '#/home';
     else if (c.name === 'project' && !cp.createProject) to = '#/home';
@@ -158,24 +159,26 @@
     var url = TMS.serverUrl() + '/app';
     openSheet('给同事安装 App', '<div class="cred-qr">' + qrSvg(url) + '<small>安卓手机用相机或浏览器扫码，打开安装页下载 App' + (appUpd.meta ? '（' + esc(appUpd.meta.versionName) + '）' : '') + '。iPhone 请用 TestFlight 安装。</small></div><div class="cred"><div><span>安装页</span><b>' + esc(url) + '</b></div></div>' + (appUpd.meta ? '' : '<div class="callout warn" style="margin-top:10px">服务器上还没有安卓安装包：在服务器电脑上运行一次 npm run android。</div>'), '关闭', function () { closeSheet(); });
   };
-  function showCred(u, login, pw) {
-    var join = 'teamops://join?server=' + encodeURIComponent(TMS.serverUrl()) + '&login=' + encodeURIComponent(login), qr = '';
-    try { var qq = qrcode(0, 'M'); qq.addData(join); qq.make(); qr = '<div class="cred-qr">' + qq.createSvgTag(4, 2) + '<small>让 TA 用手机相机扫一下，自动打开 App 并填好服务器和账号（密码请单独告诉 TA）</small></div>'; } catch (e) {}
+  /* 账号就绪 / 邀请：二维码和链接里带一次性邀请码，同事点开自己设密码就进来；初始密码只是备用（没有邀请码时才必须告诉对方） */
+  function showCred(u, login, pw, inv) {
+    var srv = TMS.serverUrl(), join = 'teamops://join?server=' + encodeURIComponent(srv) + '&login=' + encodeURIComponent(login) + (inv ? '&invite=' + encodeURIComponent(inv) : ''), link = inv ? srv + '/#/join/' + inv : '', qr = '';
+    try { var qq = qrcode(0, 'M'); qq.addData(join); qq.make(); qr = '<div class="cred-qr">' + qq.createSvgTag(4, 2) + '<small>' + (inv ? '让 TA 用手机相机扫一下：自动打开 App，自己设个密码就进来了（7 天内有效，只能用一次）' : '让 TA 用手机相机扫一下，自动打开 App 并填好服务器和账号（密码请单独告诉 TA）') + '</small></div>'; } catch (e) {}
     if (appUpd.meta) qr += '<p class="muted" style="font-size:13.5px;margin:0 0 12px">TA 还没装 App？安卓手机扫「我的 → 给同事安装 App」里的码下载。</p>';
-    openSheet('账号已就绪', qr + '<p style="margin:0 0 10px">把下面的信息发给 <b>' + esc(u.name) + '</b>：</p><div class="cred"><div><span>服务器</span><b>' + esc(TMS.serverUrl()) + '</b></div><div><span>账号</span><b id="cred-l">' + esc(login) + '</b></div><div><span>初始密码</span><b id="cred-p">' + esc(pw) + '</b></div></div><p class="muted" style="font-size:13.5px;margin:10px 0 0">密码只显示这一次。对方首次登录后需要改成自己的密码。</p>', '复制并关闭', function () {
-      var t = '团队协同 登录信息\n服务器：' + TMS.serverUrl() + '\n账号：' + login + '\n初始密码：' + pw + '\n在手机上点这个链接直接打开 App：' + join;
+    openSheet(inv && !pw ? '邀请链接 · ' + u.name : '账号已就绪', qr + '<p style="margin:0 0 10px">把下面的信息发给 <b>' + esc(u.name) + '</b>：</p><div class="cred">' + (link ? '<div><span>邀请链接</span><b class="cred-link">' + esc(link) + '</b></div>' : '') + '<div><span>服务器</span><b>' + esc(srv) + '</b></div><div><span>账号</span><b id="cred-l">' + esc(login) + '</b></div>' + (pw ? '<div><span>初始密码</span><b id="cred-p">' + esc(pw) + '</b></div>' : '') + '</div><p class="muted" style="font-size:13.5px;margin:10px 0 0">' + (inv ? '对方点链接（或扫码）后自己设密码，不用你告诉密码。' + (pw ? '链接失效时再用初始密码登录（只显示这一次，首次登录要改）。' : '') : '密码只显示这一次。对方首次登录后需要改成自己的密码。') + '</p>', '复制并关闭', function () {
+      var t = '团队协同 登录信息\n' + (link ? '点这个链接设好密码就能进（7 天内有效）：' + link + '\n' : '') + '服务器：' + srv + '\n账号：' + login + (pw ? '\n初始密码：' + pw : '') + '\n在手机上点这个链接直接打开 App：' + join;
       try { navigator.clipboard.writeText(t).then(function () { toast('已复制，可以发给对方'); }, function () { toast('请手动记下账号和密码'); }); } catch (e) { toast('请手动记下账号和密码'); }
       closeSheet(); });
   }
+  DO.srvInvite = function (el) { var uid = el.dataset.u, u = TM.user(S, uid); if (!u) return; TMS.invite(uid).then(function (r) { showCred(u, r.login, null, r.invite); }, function (e) { toast(e.error || '生成失败', true); }); };
   DO.srvAccount = function (el) { var uid = el.dataset ? el.dataset.u : el, u = TM.user(S, uid); if (!u) return;
     TMS.accounts().then(function (res) { var a = res.accounts.find(function (x) { return x.uid === uid; });
       openSheet(a ? '登录账号 · ' + u.name : '给 ' + u.name + ' 分派登录账号',
         (a ? '<div class="callout">当前账号 <b>' + esc(a.login) + '</b>' + (a.disabled ? '（已停用）' : '') + (a.mustChange ? ' · 还没改初始密码' : '') + (a.lastLogin ? ' · 最近登录 ' + ago(a.lastLogin) : ' · 还没登录过') + '</div>' : '<p class="muted" style="margin:0 0 10px;font-size:14px">' + esc(u.name) + ' 还没有登录账号。设置后把账号和初始密码告诉对方，对方首次登录时需要修改密码。</p>') +
         field('登录账号', '<input type="text" name="login" value="' + esc(a ? a.login : '') + '" placeholder="例如：xiaoli 或手机号" autocapitalize="off" autocorrect="off" autocomplete="off" required>', '3–32 位字母、数字或 _ . @ -') +
         field(a ? '新密码（可选）' : '初始密码（可选）', '<input type="text" name="password" placeholder="留空自动生成" autocomplete="off" autocapitalize="off">', a ? '填写后旧密码立即失效' : '') +
-        (a ? '<label class="sw"><span><b>重置密码</b><small>自动生成新密码，旧密码立即失效</small></span><input type="checkbox" name="reset" value="1"></label>' + (uid !== me && !TM.hasRole(S, uid, 'owner') ? '<button type="button" class="btn block mt' + (a.disabled ? '' : ' danger') + '" data-do="srvDisable" data-u="' + uid + '" data-d="' + (a.disabled ? '0' : '1') + '">' + (a.disabled ? '恢复这个账号' : '停用这个账号') + '</button>' : '') : ''),
+        (a ? '<label class="sw"><span><b>重置密码</b><small>自动生成新密码，旧密码立即失效</small></span><input type="checkbox" name="reset" value="1"></label>' + (uid !== me && !TM.hasRole(S, uid, 'owner') ? (a.disabled ? '' : '<button type="button" class="btn block mt" data-do="srvInvite" data-u="' + uid + '">' + hi('spark', 1.6) + ' 生成邀请链接 / 二维码</button>') + '<button type="button" class="btn block mt' + (a.disabled ? '' : ' danger') + '" data-do="srvDisable" data-u="' + uid + '" data-d="' + (a.disabled ? '0' : '1') + '">' + (a.disabled ? '恢复这个账号' : '停用这个账号') + '</button>' : '') : ''),
         a ? '保存' : '创建账号', function (o) {
-          TMS.setAccount({ uid: uid, login: (o.login || '').trim(), password: o.password || undefined, reset: !!o.reset }).then(function (r) { if (r.password) showCred(u, r.login, r.password); else { closeSheet(); toast('已保存'); } }, function (e) { toast(e.error || '保存失败', true); });
+          TMS.setAccount({ uid: uid, login: (o.login || '').trim(), password: o.password || undefined, reset: !!o.reset }).then(function (r) { if (r.password) showCred(u, r.login, r.password, r.invite); else { closeSheet(); toast('已保存'); } }, function (e) { toast(e.error || '保存失败', true); });
         });
     }, function (e) { toast(e.error || '连不上服务器', true); });
   };

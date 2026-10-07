@@ -113,6 +113,12 @@
   function srvBusy(b) { srvL.busy = b; var x = document.querySelector('.srv-form button[type=submit]'); if (x) { x.disabled = b; if (!x.dataset.t) x.dataset.t = x.textContent; x.textContent = b ? (x.closest('[data-form=srvSetup]') ? '正在创建…' : '正在登录…') : x.dataset.t; } }
   var SRVF = {
     srvLogin: function (o) { srvL.url = o.server || srvL.url; srvBusy(true); TMS.login(srvL.url, (o.login || '').trim(), o.password || '').then(null, function (e) { srvBusy(false); if (e.needsSetup) { srvL.setup = true; srvL.err = ''; render(); } toast(e.error || '登录失败', true); if (!e.status) netFix(srvL.url); }); },
+    srvJoin: function (o) {
+      if (String(o.password || '').length < 8) return fieldErr('.srv-form input[name=password]', '密码至少 8 位');
+      if (o.password !== o.again) return fieldErr('.srv-form input[name=again]', '两次输入的密码不一样');
+      jn.busy = true; render();
+      TMS.inviteAccept(srvL.url, jn.tok, o.password).then(null, function (e) { jn.busy = false; var m = (e && e.error) || '进不去，稍后再试'; if (/失效/.test(m)) jn.err = m; render(); toast(m, true); });
+    },
     srvSetup: function (o) { srvL.url = o.server || srvL.url; srvBusy(true); TMS.setup(srvL.url, { name: (o.name || '').trim(), title: (o.title || '').trim(), login: (o.login || '').trim(), password: o.password || '', demo: !!o.demo, code: (o.code || '').trim() }).then(null, function (e) { srvBusy(false); toast(e.error || '创建失败', true); }); }
   };
   /* App（原生）首次打开：先问连团队服务器还是看演示；浏览器演示网页不受影响 */
@@ -123,7 +129,20 @@
       '<button class="btn block wl-demo" data-do="demoChoose">先看看演示</button>' +
       '<p class="muted wl-tip">服务器地址由老板提供，例如 http://192.168.1.20:8787。演示模式的数据只存在这台手机上。</p></div>';
   }
+  /* 邀请链接 #/join/<邀请码>：看是谁邀请、账号是什么，设一个密码就进来（不用初始密码、不用再改密码） */
+  var jn = { tok: '', info: null, err: '', busy: false };
+  function viewJoin(tok) {
+    if (jn.tok !== tok) { jn = { tok: tok, info: null, err: '', busy: false }; TMS.invitePeek(srvL.url, tok).then(function (r) { jn.info = r; render(); }, function (e) { jn.err = (e && e.error) || '连不上服务器'; render(); }); }
+    var h = '<div class="login srv-login join"><div class="mark" aria-hidden="true">协同</div>';
+    if (jn.err) h += '<h1>邀请链接打不开</h1><p>' + esc(jn.err) + '</p><a class="btn block" href="#/login">用账号密码登录</a>';
+    else if (!jn.info) h += '<h1>正在打开邀请…</h1><p class="muted">连接 ' + esc(srvL.url) + '</p>';
+    else h += '<h1>' + esc(jn.info.by || '老板') + ' 邀请你加入</h1><p>你是 <b>' + esc(jn.info.name) + '</b>' + (jn.info.title ? '（' + esc(jn.info.title) + '）' : '') + '，登录账号 <b>' + esc(jn.info.login) + '</b>。设一个只有你知道的密码，以后就用它登录。</p>' +
+      '<form class="srv-form" data-form="srvJoin">' + field('设置密码', '<input type="password" name="password" autocomplete="new-password" required>', '至少 8 位，别用生日、连续数字') + field('再输一次', '<input type="password" name="again" autocomplete="new-password" required>') +
+      '<button class="btn pri block" type="submit"' + (jn.busy ? ' disabled' : '') + '>' + (jn.busy ? '正在进入…' : '设好密码，进入团队') + '</button></form><p class="muted wl-tip">链接 7 天内有效、只能用一次。不是你本人请不要继续。<a href="#/login">用账号密码登录</a></p>';
+    return h + '</div>';
+  }
   function viewLogin() {
+    if (SRV && cur().name === 'join' && cur().id) return viewJoin(cur().id);
     if (SRV) return viewSrvLogin();
     if (typeof TMN !== 'undefined' && TMN.native && !demoChosen()) return viewWelcome();
     return '<div class="login"><div class="mark" aria-hidden="true">协同</div><h1>以谁的身份进入？</h1><p>每个账号按角色和权限看到不同内容。切换账号，可以把一件事从想法一路走到验收。</p>' +

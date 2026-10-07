@@ -207,6 +207,9 @@ var TMS = (function () {
   api.serverUrl = function () { return api.sameOrigin ? location.origin : api.base; };
   api.probe = function (server) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'GET', '/api/health').then(function (r) { return { base: b, setup: r.setup }; }); };
   api.login = function (server, login, password) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'POST', '/api/login', { login: login, password: password }).then(function (res) { establish(b, res); }); };
+  // 邀请链接：看是谁邀请的；设好密码直接登录
+  api.invitePeek = function (server, token) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'GET', '/api/invite?token=' + encodeURIComponent(token)); };
+  api.inviteAccept = function (server, token, password) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'POST', '/api/invite/accept', { token: token, password: password }).then(function (res) { establish(b, res); }); };
   api.setup = function (server, o) { var b = api.sameOrigin ? '' : norm(server); return reqAt(b, 'POST', '/api/setup', o).then(function (res) { establish(b, res); }); };
   // 在同一个 Wi-Fi 里自动查找团队服务器：按手机自己的网段（拿不到就试常见网段）逐个问 /api/health，返回找到的地址
   api.scan = function (onProgress) {
@@ -248,6 +251,7 @@ var TMS = (function () {
   api.exportAll = function () { return req('GET', '/api/export'); };
   api.accounts = function () { return req('GET', '/api/accounts'); };
   api.setAccount = function (o) { return req('POST', '/api/accounts', o); };
+  api.invite = function (uid) { return req('POST', '/api/invite', { uid: uid }); };
   api.disable = function (uid, d) { return req('POST', '/api/accounts/disable', { uid: uid, disabled: d }); };
   /* ---------- 附件上传：先存 IndexedDB 排队，上传成功再删；断网、App 被关掉都不会丢 ---------- */
   var IDB = null, upBusy = false, upT = null, upDelay = 3000;

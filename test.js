@@ -626,6 +626,15 @@ const rm = must(TM.act(s, 'agent', 'system.dueReminders', {}), '发截止提醒'
 ok(s.notifications.some(n => n.userId === tA.ownerId && n.title === '任务明天截止' && n.link === '#/task/' + tA.id) && s.notifications.some(n => n.userId === tB.ownerId && n.title === '任务已逾期'), '提醒执行人：明天截止、已逾期');
 ok(TM.act(s, 'agent', 'system.dueReminders', {}).sent === 0, '同一天不重复提醒');
 
+// ===== 周报（每周一发给老板） =====
+{ const ws = TM.weeklyStats(s); ok(typeof ws.doneTasks === 'number' && Array.isArray(ws.top), '周报统计可用');
+  rej(TM.act(s, O, 'system.weeklyReport', {}), '只有系统能发周报');
+  const n0 = s.notifications.length, r = must(TM.act(s, 'agent', 'system.weeklyReport', { ai: '上周进展不错。' }), '系统发周报');
+  const wn = s.notifications.slice(n0).filter(n => n.title === '本周周报');
+  ok(r.sent === 1 && wn.length === 1 && wn[0].userId === O && /^上周：/.test(wn[0].body) && /现在：\d+ 个任务进行中/.test(wn[0].body) && /上周进展不错/.test(wn[0].body) && wn[0].link === '#/stat/rate', '周报只发老板，含上周完成、现在进行中和 AI 要点：' + wn[0].body.slice(0, 80));
+  ok(TM.ncat('本周周报') === 'remind', '周报归在提醒类（可按类别关掉）');
+  const e0 = TM.migrate(TM.blank({ name: '王老板' }, clock)); ok(TM.act(e0, 'agent', 'system.weeklyReport', {}).sent === 0, '什么都没有的团队不发周报'); }
+
 // ===== 录音 / 视频转写（服务器 whisper 写回） =====
 s = TM.migrate(fresh());
 const vi = must(TM.act(s, O, 'idea.create', { note: '', media: [{ kind: 'video', name: '视频 10月5日.mp4', localId: 'b_vid1' }] }), '只带视频的想法');

@@ -62,10 +62,26 @@ let srv = null;
   ok(true, '添加成员后弹出分派账号');
   await A.fill('.sheet input[name=login]', 'xiaoli'); await A.click('.sheet footer button[type=submit]');
   await A.waitForSelector('.sheet .cred');
-  const pw = (await A.textContent('#cred-p')).trim();
+  let pw = (await A.textContent('#cred-p')).trim();
   ok(await A.locator('.sheet .cred-qr svg').count() === 1, '账号卡片上有加入二维码');
   ok(/^[a-z2-9]{4}-[a-z2-9]{4}$/.test(pw) && (await A.textContent('.cred')).includes(URL.slice(0, -1)), '显示账号、初始密码和服务器地址');
+  const inviteLink = ((await A.textContent('.cred-link')) || '').trim();
+  ok(/#\/join\/[A-Za-z0-9_-]{16,}$/.test(inviteLink) && (await A.textContent('.sheet')).includes('自己设密码'), '账号卡片上有邀请链接：' + inviteLink);
   await A.click('.sheet footer button[type=submit]'); await A.waitForTimeout(150);
+  // ---- 同事点邀请链接：看到谁邀请、设密码、直接进入；链接用过就失效
+  { const liId0 = (await api('GET', '/api/state', null, bossTok)).state.users.find(u => u.name === '小李').id; const J = await mk(); await J.goto(inviteLink); await J.waitForSelector('form[data-form=srvJoin]', { timeout: 5000 });
+    const jt = await J.textContent('.login.join'); ok(/王老板 邀请你加入/.test(jt) && /小李/.test(jt) && /xiaoli/.test(jt), '邀请页显示谁邀请、你是谁、账号是什么');
+    await J.fill('form[data-form=srvJoin] input[name=password]', 'Li-2026-strong'); await J.fill('form[data-form=srvJoin] input[name=again]', 'Li-2026-wrong'); await J.click('form[data-form=srvJoin] button[type=submit]'); await J.waitForTimeout(200);
+    ok((await J.textContent('.login.join')).includes('两次输入的密码不一样'), '两次密码不一致：就地提示');
+    await J.fill('form[data-form=srvJoin] input[name=again]', 'Li-2026-strong'); await J.click('form[data-form=srvJoin] button[type=submit]');
+    await J.waitForSelector('.hm-card, .tabbar', { timeout: 10000 }); await J.waitForTimeout(800);
+    ok(await J.locator('.sheet h2:has-text("请先修改初始密码")').count() === 0, '通过邀请进入后不再要求改初始密码');
+    ok((await J.evaluate(() => localStorage.getItem('tm_user_v3'))) === liId0, '以小李的身份进入');
+    const J2 = await mk(); await J2.goto(inviteLink); await J2.waitForTimeout(800);
+    ok((await J2.textContent('#app')).includes('已失效'), '邀请链接用过一次就失效，提示重新发');
+    await J.goto(URL + inviteLink.slice(inviteLink.indexOf('#'))); await J.waitForTimeout(500);
+    ok(J.url().includes('#/home') && /已经登录/.test(await J.textContent('#toast')), '已登录的人打开邀请链接：提示先退出');
+    const liId = (await api('GET', '/api/state', null, bossTok)).state.users.find(u => u.name === '小李').id; pw = (await api('POST', '/api/accounts', { uid: liId, login: 'xiaoli', reset: true }, bossTok)).password; /* 后面的流程仍按「初始密码 → 首次登录改密」走 */ }
   ok(await until(async () => (await api('GET', '/api/state', null, bossTok)).state.users.length === 2), '成员已同步到服务器');
   // 老板设置开关（真实界面操作）→ 同步到服务器
   await A.goto(URL + '#/settings'); await A.waitForTimeout(100);

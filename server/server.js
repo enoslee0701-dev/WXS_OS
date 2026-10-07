@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS ai_log(at INTEGER, uid TEXT, kind TEXT, in_tok INTEGE
 CREATE TABLE IF NOT EXISTS devices(token TEXT PRIMARY KEY, uid TEXT, platform TEXT, created INTEGER);
 CREATE TABLE IF NOT EXISTS ai_jobs(summary_id TEXT PRIMARY KEY, at INTEGER);
 CREATE TABLE IF NOT EXISTS transcripts(file_id TEXT PRIMARY KEY, status TEXT, at INTEGER);
+CREATE TABLE IF NOT EXISTS invites(token TEXT PRIMARY KEY, uid TEXT, created INTEGER, used INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS ops(seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, uid TEXT, action TEXT, payload TEXT, ok INTEGER, error TEXT);`);
 // 操作 ID：手机重发同一条操作（超时、断线后重试）时不重复执行
 if (!db.prepare('PRAGMA table_info(ops)').all().some(c => c.name === 'op_id')) { db.exec('ALTER TABLE ops ADD COLUMN op_id TEXT'); db.exec('ALTER TABLE ops ADD COLUMN r TEXT'); }
@@ -67,6 +68,10 @@ const DUMMY = { salt: crypto.randomBytes(16).toString('hex'), hash: '' }; DUMMY.
 function checkPw(c, pw) { const h = Buffer.from(hashPw(pw, c.salt), 'hex'), x = Buffer.from(c.hash, 'hex'); return h.length === x.length && crypto.timingSafeEqual(h, x); }
 // 密码规则（建团队、老板设密码、自己改密码共用）：至少 8 位，不能是一串相同字符或常见弱密码
 function weakPw(pw) { pw = String(pw || ''); if (pw.length < 8) return '密码至少 8 位'; if (/^(.)\1+$/.test(pw) || /^(12345678|123456789|1234567890|87654321|password|qwertyui|abcd1234|a1234567)$/i.test(pw)) return '密码太简单，换一个吧'; return ''; }
+/* 邀请链接：老板建好账号后给同事一个 7 天有效、只能用一次的链接 / 二维码，同事点开自己设密码就进来，不用再口头传初始密码 */
+const INVITE_MS = 7 * 864e5;
+function newInvite(uid) { q('DELETE FROM invites WHERE uid=?').run(uid); const t = crypto.randomBytes(15).toString('base64url'); q('INSERT INTO invites(token,uid,created) VALUES(?,?,?)').run(t, uid, Date.now()); return t; }
+function getInvite(token) { const t = String(token || ''); if (!/^[A-Za-z0-9_-]{16,40}$/.test(t)) return null; const r = q('SELECT * FROM invites WHERE token=?').get(t); if (!r || r.used || r.created < Date.now() - INVITE_MS) return null; const c = q('SELECT * FROM creds WHERE uid=?').get(r.uid); if (!c || c.disabled || !S || !TM.user(S, r.uid)) return null; return { ...r, cred: c }; }
 function genPw() { const A = 'abcdefghjkmnpqrstuvwxyz23456789'; let s = ''; const b = crypto.randomBytes(8); for (let i = 0; i < 8; i++) s += A[b[i] % A.length]; return s.slice(0, 4) + '-' + s.slice(4); }
 function setCred(uid, login, pw, mustChange) {
   const salt = crypto.randomBytes(16).toString('hex'), t = Date.now();
@@ -402,7 +407,30 @@ const routes = {
     if (!pw && (!old || b.reset)) pw = genPw();
     if (pw) { setCred(uid, login, pw, uid !== me.uid); dropSessions('uid=?', uid); }
     else q('UPDATE creds SET login=? WHERE uid=?').run(login, uid);
-    return [200, { uid, login, password: pw }];
+    return [200, { uid, login, password: pw, invite: pw && uid !== me.uid ? newInvite(uid) : undefined }];
+  },
+  'POST /api/invite': async (req, url, b, me) => { // 重新生成某人的邀请链接（老板 / 管理员）
+    if (!isMgr(me.uid)) return [403, { error: '只有老板或管理员可以邀请' }];
+    const uid = String(b.uid || ''), c = q('SELECT * FROM creds WHERE uid=?').get(uid);
+    if (!TM.user(S, uid) || !c) return [404, { error: '先给这位成员分派账号' }];
+    if (c.disabled) return [400, { error: '账号已停用' }];
+    if (isOwner(uid) || uid === me.uid) return [400, { error: '不能给自己或老板生成邀请' }];
+    return [200, { uid, login: c.login, invite: newInvite(uid) }];
+  },
+  'GET /api/invite': async (req, url) => { // 同事点开链接：看是谁邀请、账号是什么（公开，但限速）
+    const key = 'inv|' + clientIp(req); if (limited(key, 30)) return [429, { error: '尝试次数太多，请 15 分钟后再试' }];
+    const inv = getInvite(url.searchParams.get('token')); if (!inv) { failed(key); return [410, { error: '邀请链接已失效（超过 7 天或已经用过），请让老板重新发一个' }]; }
+    const u = TM.user(S, inv.uid), o = TM.usersWith(S, 'owner')[0];
+    return [200, { name: u.name, title: u.title || '', login: inv.cred.login, by: o ? TM.name(S, o) : '', team: o ? TM.name(S, o) + '的团队' : '' }];
+  },
+  'POST /api/invite/accept': async (req, url, b) => { // 设好密码直接登录；链接作废
+    const key = 'inv|' + clientIp(req); if (limited(key, 30)) return [429, { error: '尝试次数太多，请 15 分钟后再试' }];
+    const inv = getInvite(b.token); if (!inv) { failed(key); return [410, { error: '邀请链接已失效（超过 7 天或已经用过），请让老板重新发一个' }]; }
+    const pw = String(b.password || ''); if (weakPw(pw)) return [400, { error: weakPw(pw) }];
+    setCred(inv.uid, inv.cred.login, pw, false); q('UPDATE invites SET used=1 WHERE token=?').run(inv.token); dropSessions('uid=?', inv.uid);
+    q('UPDATE creds SET last_login=? WHERE uid=?').run(Date.now(), inv.uid);
+    const ss = newSession(inv.uid, req.headers['user-agent']);
+    return [200, { token: ss.token, fileToken: ss.ft, uid: inv.uid, mustChange: false, ...stateFor(inv.uid) }];
   },
   'POST /api/accounts/disable': async (req, url, b, me) => {
     if (!isMgr(me.uid)) return [403, { error: '只有老板或管理员可以管理账号' }];
@@ -582,7 +610,7 @@ async function aiRun(me, kind, fn, system, anyone) {
 }
 
 const BIG_BODY = new Set(['POST /api/ai/doc', 'POST /api/ai/image']); // 上传 PDF 给 AI 读，单独放宽请求体上限
-const PUBLIC = new Set(['GET /api/health', 'GET /api/app', 'GET /api/setup', 'POST /api/setup', 'POST /api/login']);
+const PUBLIC = new Set(['GET /api/health', 'GET /api/app', 'GET /api/setup', 'POST /api/setup', 'POST /api/login', 'GET /api/invite', 'POST /api/invite/accept']);
 
 /* 安卓安装包分发：不上应用商店，由团队服务器提供下载和新版本提示 */
 const APP_DIR = path.join(DATA, 'app'), APK = path.join(APP_DIR, 'teamops.apk'), APK_META = path.join(APP_DIR, 'android.json');
@@ -772,6 +800,25 @@ function tick10() { if (!S) return;
   ['system.discussionDue', 'system.triageNudge'].forEach(name => { const snap = JSON.stringify(S), n0 = S.notifications.length, ns = S.summaries.length;
     try { const r = TM.act(S, 'agent', name, {}); if (r.ok && (r.closed || r.warned || r.sent)) { changed(n0); autoAnalyze(S.summaries.slice(ns)); } } catch (e) { S = JSON.parse(snap); console.error('定时任务出错，已回滚', name, e); } });
 }
+/* 老板周报：每周一 WEEKLY_AT（默认 08:10）一条，总结上周完成了什么、现在卡在哪；AI 启用时附三句话 */
+async function weeklyReport() {
+  if (!S) return;
+  try {
+    let ai = '';
+    const owner = TM.usersWith(S, 'owner')[0];
+    if (owner && AI.enabled() && process.env.AI_DAILY_BRIEF !== '0' && TM.weeklyStats(S).doneTasks + TM.weeklyStats(S).newIdeas > 0) {
+      const [code, out] = await aiRun({ uid: 'agent' }, 'weekly', () => AI.ask(S, owner, '请用不超过三句话给老板总结上周团队的进展：做成了什么、哪里卡住了、这周最该先推哪件事。只说结论，不要列数字。', []), true);
+      if (code === 200) ai = out.text || '';
+    }
+    const n0 = S.notifications.length, r = TM.act(S, 'agent', 'system.weeklyReport', { ai });
+    if (r.ok && r.sent) changed(n0);
+  } catch (e) { console.error('周报出错', e); }
+}
+function scheduleWeekly() {
+  const [h, m] = String(process.env.WEEKLY_AT || '08:10').split(':').map(Number), t = new Date();
+  t.setHours(h || 0, m || 0, 0, 0); while (t.getDay() !== 1 || t <= new Date()) t.setDate(t.getDate() + 1);
+  setTimeout(() => { weeklyReport(); scheduleWeekly(); }, t - Date.now()).unref();
+}
 function scheduleBrief() {
   const [h, m] = String(process.env.BRIEF_AT || '08:00').split(':').map(Number), t = new Date();
   t.setHours(h || 0, m || 0, 0, 0); if (t <= new Date()) t.setDate(t.getDate() + 1);
@@ -796,7 +843,7 @@ if (require.main === module) server.listen(PORT, HOST, () => {
   console.log(TR.enabled() ? '语音转写：已启用（' + TR.status().model + '）' : '语音转写：未安装（运行 scripts/whisper-mac.sh 安装后，录音和视频会自动转成文字）');
   setTimeout(housekeep, 60e3).unref(); setInterval(housekeep, 864e5).unref();
   setTimeout(tick10, 30e3).unref(); setInterval(tick10, 10 * 60e3).unref();
-  scheduleBrief(); if (process.env.BRIEF_NOW === '1') setTimeout(dailyBrief, 800);
+  scheduleBrief(); scheduleWeekly(); if (process.env.BRIEF_NOW === '1') setTimeout(dailyBrief, 800);
   console.log(`团队协同服务器已启动：http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}  数据目录：${DATA}`);
   if (SETUP_CODE) console.log(`还没有创建团队。创建团队时需要初始化码：${SETUP_CODE}`);
 });

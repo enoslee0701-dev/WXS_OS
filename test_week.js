@@ -95,6 +95,9 @@ const login = async (login, pw) => (await api('POST', '/api/login', { login, pas
   n = await fresh('陈立'); ok(has(n, /1 个任务等你验收/), '第 7 天：陈立收到「1 个任务等你验收」 ' + JSON.stringify(n));
   n = await fresh('王总'); ok(has(n, /逾期/) && has(n, /没动静/), '早报：逾期 + 没动静 ' + JSON.stringify(n));
   await at(8, 9, 0); n = await fresh('陈立'); ok(has(n, /等你验收/), '第 8 天：验收积压每天提醒一次');
+  // 周报：到第 8 天至少过了一个周一，老板收到过周报，内容有上周完成数
+  { const sw = (await api('GET', '/api/state', null, T.boss)).state, wr = sw.notifications.filter(x => x.userId === 'u_owner' && x.title === '本周周报');
+    ok(wr.length >= 1 && /^上周：/.test(wr[0].body) && /进行中/.test(wr[0].body), '周一早上老板收到周报：' + (wr[0] ? wr[0].body.slice(0, 60) : '无')); }
   // 重复检查：同一人同一天同一标题同一内容不该有 2 条
   const sAll = await st(); const key = {}; let dup = 0;
   sAll.notifications.forEach(x => { const k = [x.userId, x.title, x.body, new Date(x.at).toDateString()].join('|'); if (key[k]) dup++; key[k] = 1; });

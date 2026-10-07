@@ -38,6 +38,20 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   const accW = await post('/api/accounts', { uid: wang, login: 'xiaowang', password: 'wang1234' }, boss);
   ok(accW.password === 'wang1234', '也可以由老板指定密码');
   ok((await post('/api/accounts', { uid: 'u_owner', login: 'boss2' }, (await post('/api/login', { login: 'xiaowang', password: 'wang1234' })).token)).status === 403, '运营者不能管理账号');
+  // 邀请链接：分派账号时一并生成；同事点开能看到是谁邀请、账号是什么；设好密码直接登录（不用初始密码、不用再改密码）；只能用一次
+  { ok(/^[A-Za-z0-9_-]{16,40}$/.test(acc.invite || ''), '分派账号时生成邀请码 ' + acc.invite);
+    let pk = await get('/api/invite?token=' + acc.invite); ok(pk.status === 200 && pk.name === '小李' && pk.login === 'xiaoli' && pk.by === '王老板', '邀请链接公开可看：谁邀请、账号是什么 ' + JSON.stringify(pk));
+    ok((await get('/api/invite?token=nope-nope-nope-nope')).status === 410, '无效邀请码：410');
+    ok((await post('/api/invite/accept', { token: acc.invite, password: '12345678' })).status === 400, '邀请时也不能设弱密码');
+    const jn = await post('/api/invite/accept', { token: acc.invite, password: 'Li-2026-strong' });
+    ok(jn.status === 200 && jn.token && jn.uid === li && jn.mustChange === false && jn.state.users.length >= 2, '通过邀请设密码后直接登录，不用再改密码');
+    ok((await get('/api/invite?token=' + acc.invite)).status === 410 && (await post('/api/invite/accept', { token: acc.invite, password: 'Another-123' })).status === 410, '邀请码用过就失效');
+    ok((await post('/api/login', { login: 'xiaoli', password: 'Li-2026-strong' })).status === 200 && (await post('/api/login', { login: 'xiaoli', password: acc.password })).status === 401, '新密码能登录，初始密码作废');
+    const re = await post('/api/invite', { uid: li }, boss); ok(re.status === 200 && re.invite && re.invite !== acc.invite, '老板可以重新生成邀请');
+    ok((await post('/api/invite', { uid: 'u_owner' }, boss)).status === 400, '不能给老板生成邀请');
+    ok((await post('/api/invite', { uid: li }, jn.token)).status === 403, '执行者不能生成邀请');
+    ok((await get('/api/me', jn.token)).status === 200, '邀请登录得到的会话可用');
+    const rs = await post('/api/accounts', { uid: li, login: 'xiaoli', reset: true }, boss); acc.password = rs.password; /* 后面的流程仍按初始密码 → 首次改密走 */ }
 
   // 3. 成员登录、首次改密
   let lg = await post('/api/login', { login: 'xiaoli', password: 'wrong' });

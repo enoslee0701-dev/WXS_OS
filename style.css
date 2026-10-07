@@ -3222,3 +3222,7 @@ html.fs-xl{--pz:1;--az:1.04}
 .rt-more { border-top: 1px dashed var(--line, #e4e7ec); margin-top: 10px; }
 .rt-on { display: flex; align-items: center; gap: 8px; }
 .rt-on input { width: 18px; height: 18px; }
+
+/* 邀请链接页 / 账号卡片里的链接 */
+.cred-link{word-break:break-all;font-size:13px}
+.login.join p a{margin-left:6px;color:var(--pri,#4F6EF7)}

@@ -105,7 +105,7 @@ var TM = (function () {
   /* 通知分类（用于「通知设置」按类别开关）：决策、验收、任务、留言讨论、团队、提醒 */
   var NCATS = { dec: '决策', review: '验收', task: '任务', cmt: '留言与讨论', team: '团队与成员', remind: '截止提醒与早报' };
   // 只看标题模板本身：去掉开头的发言人姓名、冒号后面的用户内容（不然叫「陈验收」的人发的留言会被当成验收类）
-  function ncat(title, who) { var t = String(title || ''); if (who && t.indexOf(who) === 0) t = t.slice(who.length); t = t.split(/[：:]/)[0]; return /决策|上报|老板确认|批准/.test(t) ? 'dec' : /验收|终验|提交了成果/.test(t) ? 'review' : /提到了你|留言|回复|建议|讨论|发言|评论/.test(t) ? 'cmt' : /逾期|截止|早报|提醒/.test(t) ? 'remind' : /成员|加入|停用|注销|角色/.test(t) ? 'team' : 'task'; }
+  function ncat(title, who) { var t = String(title || ''); if (who && t.indexOf(who) === 0) t = t.slice(who.length); t = t.split(/[：:]/)[0]; return /决策|上报|老板确认|批准/.test(t) ? 'dec' : /验收|终验|提交了成果/.test(t) ? 'review' : /提到了你|留言|回复|建议|讨论|发言|评论/.test(t) ? 'cmt' : /逾期|截止|早报|周报|提醒/.test(t) ? 'remind' : /成员|加入|停用|注销|角色/.test(t) ? 'team' : 'task'; }
   function notify(s, uids, actor, title, body, link) {
     var seen = {};
     (uids || []).forEach(function (u) {
@@ -1401,6 +1401,34 @@ var TM = (function () {
     return { sent: n };
   };
   /* 日常清理（服务器每天以系统身份执行）：已读且超过 60 天的通知删掉，未读的保留 */
+  /* 上周数据（周报用）：完成的任务（按人）、收尾的项目、新想法；以及现在卡住的 */
+  function weeklyStats(s) {
+    var t = now(s), wk = t - 7 * DAY, by = {};
+    var done = s.tasks.filter(function (x) { return x.status === 'done' && x.lastActivity >= wk; });
+    done.forEach(function (x) { by[x.ownerId] = (by[x.ownerId] || 0) + 1; });
+    var top = Object.keys(by).sort(function (a, b) { return by[b] - by[a]; }).slice(0, 3).map(function (u) { return name(s, u) + ' ' + by[u]; });
+    return {
+      doneTasks: done.length, top: top,
+      doneWorks: s.workItems.filter(function (w) { return w.status === 'done' && w.lastActivity >= wk; }).length,
+      newIdeas: s.ideas.filter(function (x) { return !x.deleted && x.status !== 'draft' && (x.submittedAt || x.createdAt) >= wk; }).length,
+      overdue: s.tasks.filter(function (x) { return isOverdue(s, x); }).length,
+      blocked: s.tasks.filter(function (x) { return x.status === 'blocked'; }).length,
+      decisions: s.decisions.filter(function (x) { return x.status === 'pending'; }).length,
+      inProgress: s.tasks.filter(function (x) { return ['assigned', 'accepted', 'in_progress', 'submitted'].indexOf(x.status) >= 0; }).length
+    };
+  }
+  /* 周报（服务器每周一早上以系统身份执行）：上周做成了什么、现在卡在哪，发给老板；什么都没有就不发 */
+  A['system.weeklyReport'] = function (s, uid, p) {
+    need(uid === 'agent', '只有系统可以发周报');
+    var w = weeklyStats(s), parts = [];
+    if (w.doneTasks) parts.push('完成 ' + w.doneTasks + ' 个任务' + (w.top.length ? '（' + w.top.join('、') + '）' : ''));
+    if (w.doneWorks) parts.push(w.doneWorks + ' 个项目收尾');
+    if (w.newIdeas) parts.push('新提交 ' + w.newIdeas + ' 个想法');
+    if (!parts.length && !w.overdue && !w.blocked && !w.decisions) return { sent: 0 };
+    var body = '上周：' + (parts.length ? parts.join('，') : '没有完成的任务') + '。现在：' + w.inProgress + ' 个任务进行中' + (w.overdue ? '，' + w.overdue + ' 个逾期' : '') + (w.blocked ? '，' + w.blocked + ' 个受阻' : '') + (w.decisions ? '，' + w.decisions + ' 件等你决策' : '') + '。' + (p && txt(p.ai) ? '\n' + txt(p.ai).slice(0, 300) : '');
+    notify(s, usersWith(s, 'owner'), null, '本周周报', body, '#/stat/rate');
+    return { sent: 1 };
+  };
   A['system.housekeep'] = function (s, uid) {
     need(uid === 'agent', '只有系统可以清理');
     var cut = now(s) - 60 * DAY, n0 = s.notifications.length;
@@ -1653,7 +1681,7 @@ var TM = (function () {
   return {
     L: L, STAGES: STAGES, TONE: TONE, DAY: DAY, act: act, seed: seed, user: user, name: name, hasRole: hasRole, canInitiate: canInitiate, usersWith: usersWith,
     primaryRole: primaryRole, TEMPLATES: TEMPLATES, allTemplates: allTemplates, REPEATS: REPEATS, nextDate: nextDate, NCATS: NCATS, ncat: ncat, activeUsers: activeUsers, live: live, openWorkOf: openWorkOf, followUsers: followUsers, canFollow: canFollow, leadUsers: leadUsers, briefStats: briefStats, canViewIdea: canViewIdea, canViewMedia: canViewMedia, canSeeMediaItem: canSeeMediaItem, canViewWork: canViewWork, canViewTask: canViewTask, canSuggest: canSuggest,
-    latestSummary: latestSummary, deriveAnalysis: deriveAnalysis, noteOf: noteOf, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, migrate: migrate, viewFor: viewFor, blank: blank, canCreateProject: canCreateProject, canAssign: canAssign, caps: caps, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
+    latestSummary: latestSummary, weeklyStats: weeklyStats, deriveAnalysis: deriveAnalysis, noteOf: noteOf, decisionAdvice: decisionAdvice, aiTitle: aiTitle, ideaLocked: ideaLocked, discussionDigest: mockDigest, kbInit: kbInit, kbMatch: kbMatch, kbVisible: kbVisible, kbCan: kbCan, migrate: migrate, viewFor: viewFor, blank: blank, canCreateProject: canCreateProject, canAssign: canAssign, caps: caps, isStale: isStale, isOverdue: isOverdue, todayStr: todayStr, dateAdd: dateAdd, stageName: stageName,
     nextForTask: nextForTask, PTYPE: PTYPE, GROUPS: GROUPS, seedTodos: seedTodos, ensureTodos: ensureTodos, nextForIdea: nextForIdea, ideaProgress: ideaProgress, workProgress: workProgress, TT: TT
   };
 })();
