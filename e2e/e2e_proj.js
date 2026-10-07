@@ -5,7 +5,7 @@ let pass=0,fail=0;const ok=(c,m)=>{if(c)pass++;else{fail++;console.log('✗',m);
 await c.route(/fonts\.(googleapis|gstatic)\.com/, r=>r.fulfill({status:200,contentType:'text/css',body:''}));
 const p=await c.newPage();const errs=[];p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
 const toast=async()=>p.textContent('#toast');
-await p.goto(URL);await p.click('.acct:has-text("Enos")');
+await p.goto(URL);await p.click('.acct:has-text("Philip")');
 await p.click('[data-do=quickProject]');await p.waitForTimeout(200);
 ok(p.url().endsWith('#/project'),'首页「新建项目」进入方式一');
 ok(await p.locator('.dock').isHidden(),'向导页隐藏底部导航');
@@ -66,7 +66,7 @@ await p.goto(URL);await p.click('[data-do=switch]');await p.click('.acct:has-tex
 ok(await p.locator('[data-do=quickProject]').count()===0,'执行者首页没有新建项目');
 await p.goto(URL+'#/project');await p.waitForTimeout(100);ok(p.url().endsWith('#/home'),'执行者打开新建项目被送回首页');
 // 项目模板：老板套用「活动筹办」→ 带出 5 个任务、3 个里程碑和截止 → 创建 → 存为团队模板 → 新建时能选到
-{ await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Enos")');
+{ await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Philip")');
   await p.evaluate(()=>window.__tm.DO?0:0);await p.goto(URL+'#/home');await p.evaluate(()=>document.querySelector('[data-do=quickProject]')&&document.querySelector('[data-do=quickProject]').click());await p.waitForTimeout(200);
   await p.evaluate(()=>document.querySelector('[data-do=pTpl]').click());await p.waitForSelector('.tp-list');
   ok(await p.locator('.tp-pick').count()>=7,'模板库至少有 7 个常用模板');

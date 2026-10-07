@@ -19,7 +19,7 @@
   localStorage.setItem('tm_demo_chosen', '1');
   // 脚本地址可带 ?roles=陈立,何静 只测部分角色
   var qs = (document.currentScript && document.currentScript.src.split('?')[1] || '').match(/roles=([^&]*)/);
-  var ROLES = qs ? decodeURIComponent(qs[1]).split(',') : ['Enos', '林晓', '陈立', '何静', '孙磊'];
+  var ROLES = qs ? decodeURIComponent(qs[1]).split(',') : ['Philip', '林晓', '陈立', '何静', '孙磊'];
   var ROUTES = ['home', 'ideas', 'tasks', 'work', 'me', 'team', 'inbox', 'kb', 'settings', 'work/W1', 'work/W2', 'idea/I2', 'idea/I4', 'task/T1', 'task/T3', 'stat/decide', 'stat/due', 'stat/rate', 'stat/notif', 'new', 'new/voice', 'new/video', 'new/text', 'new/file', 'project', 'project/ai', 'todo/new', 'todo/new/ai', 'assign/W1', 'kb/voice'];
   var SKIP = /^(switch|reset|clearDemo|demoStart|srvLogout|srvLocal|srvConnect|login|demoChoose|demoExit|meDelete)$/;
   var snap = JSON.stringify(window.__tm.S);

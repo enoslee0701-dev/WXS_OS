@@ -10,7 +10,7 @@ const URL = 'file://' + F;
 (async () => {
   const b = await chromium.launch(); const c = await b.newContext({ ...devices['iPhone 13'] }); const p = await c.newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message));
-  await p.goto(URL); await p.click('.acct:has-text("Enos")'); await p.waitForTimeout(200);
+  await p.goto(URL); await p.click('.acct:has-text("Philip")'); await p.waitForTimeout(200);
   const HERO = '.hm,.tk2-hero,.wp-hero,.tm-hero,.n-hero,.vr-hero';
   for (const r of ['home', 'ideas', 'tasks', 'work', 'me', 'team', 'new/voice']) {
     await p.goto(URL + '#/' + r); await p.waitForTimeout(200);

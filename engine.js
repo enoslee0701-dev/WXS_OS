@@ -1237,7 +1237,7 @@ var TM = (function () {
     (s.workItems || []).forEach(function (w) { if (w.files && !Array.isArray(w.files)) w.files = []; else if (w.files) w.files = w.files.filter(function (x) { return x && typeof x === 'object'; }); });
     // 演示数据的历史迁移（改名、补演示待办、补演示资料）只作用于演示数据；真实团队（blank 创建，real=true）不动
     if (s.real) { if (!s.todos) s.todos = []; if (!s.knowledge) s.knowledge = []; } else
-    (function () { var o = user(s, 'u_owner'); if (o && o.name === '王建国') { o.name = 'Enos'; } if (!s.todos) seedTodos(s, Date.now()); if (s.users.some(function (u) { return !u.group; })) { var fr = seed(); s.users.forEach(function (u) { var f = fr.users.find(function (x) { return x.id === u.id; }); if (f && !u.group) { u.motto = f.motto; u.skills = f.skills; u.presence = f.presence; u.group = f.group; if (u.id === 'u_owner') u.title = f.title; } else if (!u.group) { u.group = '行政运营'; u.presence = 'offline'; u.skills = []; u.motto = ''; } }); } })();
+    (function () { var o = user(s, 'u_owner'); if (o && (o.name === '王建国' || o.name === 'Philip')) { o.name = 'Philip'; } if (!s.todos) seedTodos(s, Date.now()); if (s.users.some(function (u) { return !u.group; })) { var fr = seed(); s.users.forEach(function (u) { var f = fr.users.find(function (x) { return x.id === u.id; }); if (f && !u.group) { u.motto = f.motto; u.skills = f.skills; u.presence = f.presence; u.group = f.group; if (u.id === 'u_owner') u.title = f.title; } else if (!u.group) { u.group = '行政运营'; u.presence = 'offline'; u.skills = []; u.motto = ''; } }); } })();
     kbInit(s);
     s.ideas.forEach(function (d) { if (d.titleSource) return; var n = String(d.note || '').replace(/\s+/g, ''), t = String(d.title || '').replace(/\s+/g, ''); if (!t || /【|^\d+[.、]/.test(d.title) || (t.length >= 6 && n.indexOf(t) === 0)) { d.title = aiTitle(d); d.titleSource = 'ai'; } else d.titleSource = 'user'; });
     return s;
@@ -1584,7 +1584,7 @@ var TM = (function () {
     if (clock) s.clock = clock;
     s.depts = [{ id: 'd_admin', name: '行政部' }, { id: 'd_prod', name: '事工发展部' }, { id: 'd_ops', name: '运营部' }];
     s.users = [
-      { id: 'u_owner', name: 'Enos', title: '老板', tier: '', roles: [{ role: 'owner', dept: null }] },
+      { id: 'u_owner', name: 'Philip', title: '老板', tier: '', roles: [{ role: 'owner', dept: null }] },
       { id: 'u_op', name: '林晓', title: '运营者', tier: '一级', roles: [{ role: 'operator', dept: 'd_ops' }] },
       { id: 'u_lead', name: '陈立', title: '事工发展部负责人', tier: '一级', roles: [{ role: 'lead', dept: 'd_prod', canInitiate: true }] },
       { id: 'u_admin_ex', name: '周敏', title: '行政专员', tier: '二级', roles: [{ role: 'executor', dept: 'd_admin' }] },
@@ -1665,7 +1665,7 @@ var TM = (function () {
     s.workItems.push({ id: 'W4', ideaId: null, dept: 'd_ops', kind: 'other', ptype: '其他', title: 'Q3 财务复盘', goal: '输出 Q3 复盘报告', desc: '整理 Q3 数据，输出复盘报告。', keyResults: '复盘报告', priority: 'mid', status: 'done', stage: 'clarify', operatorId: 'u_op', leadId: null, reviewerId: 'u_op', externalLink: '', due: dateAddS(T0, -1), lastActivity: at(1.5), createdAt: at(25), milestones: [] });
     s.tasks.push({ id: 'T7', workId: 'W4', title: '整理 Q3 收支数据', ownerId: 'u_admin_ex', collabs: [], reviewerId: 'u_op', due: dateAddS(T0, -4), expected: '数据表', criteria: '与账目一致', status: 'done', blockedReason: '', lastActivity: at(3), createdAt: at(20), ttype: '文档' });
     s.reviews.push({ id: 'R4', taskId: 'T7', workId: 'W4', reviewerId: 'u_op', verdict: 'pass', note: '数据核对无误。', at: at(3) }, { id: 'R5', taskId: null, workId: 'W4', reviewerId: 'u_op', verdict: 'pass', note: '复盘报告已发。', at: at(1.5) });
-    s.notifications.push({ id: 'N0', userId: 'u_owner', from: 'u_lead', title: '陈立 在任务里提到了你', body: '@Enos 麻烦你确认一下这个交互方案，看是否可行？', link: '#/task/T1', at: T0 - 3600000, read: false });
+    s.notifications.push({ id: 'N0', userId: 'u_owner', from: 'u_lead', title: '陈立 在任务里提到了你', body: '@Philip 麻烦你确认一下这个交互方案，看是否可行？', link: '#/task/T1', at: T0 - 3600000, read: false });
     s.notifications.push({ id: 'N5', userId: 'u_owner', from: 'system', title: '待办提醒：回复合作方邮件', body: '沟通 · 今天 18:00 截止', link: '#/tasks', at: at(1), read: true });
     s.notifications.push({ id: 'N6', userId: 'u_owner', from: 'u_lead', title: '团队邀请', body: '陈立 邀请你参与「门徒圈语音灵修」共创', link: '#/idea/I2', at: at(1.6), read: true });
     s.notifications.push({ id: 'N7', userId: 'u_owner', from: 'system', title: '项目进度更新', body: '「年会场地与物资准备」完成 50%', link: '#/work/W2', at: at(3), read: true });

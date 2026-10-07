@@ -5,7 +5,7 @@ let pass=0,fail=0;const ok=(c,m)=>{if(c)pass++;else{fail++;console.log('✗',m);
 await c.route(/fonts\.(googleapis|gstatic)\.com/, r=>r.fulfill({status:200,contentType:'text/css',body:''}));
 const p=await c.newPage();const errs=[];p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
 const toast=async()=>p.textContent('#toast');const sub=async()=>{await p.click('.sheet footer button[type=submit]');await p.waitForTimeout(150);};
-await p.goto(URL);await p.click('.acct:has-text("Enos")');await p.click('.tabs a:has-text("我的")');await p.waitForTimeout(150);
+await p.goto(URL);await p.click('.acct:has-text("Philip")');await p.click('.tabs a:has-text("我的")');await p.waitForTimeout(150);
 ok((await p.textContent('.tk2-top h1'))==='我的','我的页');
 await p.click('[data-do=meAbout]');await p.waitForTimeout(200);ok((await p.textContent('#layer .sheet')).includes('演示模式')&&!(await p.textContent('#layer .sheet')).includes('Supabase'),'关于：显示当前模式，不再有过时说明');await p.click('#layer .sheet footer button[type=submit]');await p.waitForTimeout(150);
 ok((await p.textContent('.me-badge')).includes('老板') && (await p.textContent('.me-meta')).includes('清迈'),'资料卡：老板、所在地');
@@ -28,7 +28,7 @@ ok(await p.locator('[data-do=meEdit][data-k=name]').count()===0,'执行者不能
 await p.goto(URL+'#/me');await p.waitForTimeout(100);await p.click('[data-do=meHelp]');await p.waitForSelector('.sheet .hp-h');
 ok((await p.textContent('.sheet')).includes('你的角色')&&(await p.textContent('.sheet')).includes('常见问题'),'我的 → 使用帮助');await p.click('.sheet footer button[type=submit]');await p.waitForTimeout(100);
 // 报表导出（老板）：任务表、项目表是 CSV，带 BOM，有表头和数据
-await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Enos")');await p.goto(URL+'#/settings');await p.waitForTimeout(150);
+await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Philip")');await p.goto(URL+'#/settings');await p.waitForTimeout(150);
 { const fs=require('fs');const [d1]=await Promise.all([p.waitForEvent('download'),p.click('[data-do=csvTasks]')]);const t1=fs.readFileSync(await d1.path(),'utf8');
   ok(/^任务表-.*\.csv$/.test(d1.suggestedFilename())&&t1.charCodeAt(0)===0xFEFF&&t1.includes('任务,所属项目,状态')&&t1.split('\r\n').length>3,'导出任务表 CSV');
   const [d2]=await Promise.all([p.waitForEvent('download'),p.click('[data-do=csvWorks]')]);const t2=fs.readFileSync(await d2.path(),'utf8');

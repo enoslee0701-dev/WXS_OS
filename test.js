@@ -778,7 +778,7 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
 { let tt = Date.UTC(2026, 9, 1, 3); const ck = () => tt; const n = TM.seed(ck);
   const mt = n.tasks.find(t => t.ownerId === DV && !['done', 'cancelled'].includes(t.status));
   const n0 = n.notifications.length;
-  must(TM.act(n, DV, 'task.comment', { id: mt.id, body: '@Enos 这个要不要加预算？' }), '留言里 @老板');
+  must(TM.act(n, DV, 'task.comment', { id: mt.id, body: '@Philip 这个要不要加预算？' }), '留言里 @老板');
   ok(n.notifications.slice(n0).some(x => x.userId === O && /提到了你/.test(x.title)), '被 @ 的人收到「提到了你」');
   // 共创讨论里回复别人的建议
   const ci = must(TM.act(n, O, 'idea.create', { note: '年会怎么办' }), '建想法'); must(TM.act(n, O, 'idea.submit', { id: ci.id, path: 'cocreate', shareAll: true }), '全体共创');
@@ -824,7 +824,7 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   const outsider = wc.users.map(u => u.id).find(u => !TM.canViewWork(wc, u, w));
   if (outsider) rej(TM.act(wc, outsider, 'work.comment', { id: w.id, body: '我也说一句' }), '不是项目成员不能发言');
   const n0 = wc.notifications.length;
-  must(TM.act(wc, w.leadId, 'work.comment', { id: w.id, body: '下周一前把方案定下来 @Enos' }), '负责人在项目里发言');
+  must(TM.act(wc, w.leadId, 'work.comment', { id: w.id, body: '下周一前把方案定下来 @Philip' }), '负责人在项目里发言');
   ok(wc.notifications.slice(n0).some(n => n.userId === O && /提到了你/.test(n.title)), '@老板 收到提到通知');
   ok(TM.viewFor(wc, w.leadId).comments.some(c => c.workId === w.id), '项目成员能看到讨论');
   if (outsider) ok(!TM.viewFor(wc, outsider).comments.some(c => c.workId === w.id), '非项目成员拿不到讨论'); }
@@ -839,7 +839,7 @@ ok(!vv || !(vv.media || []).some(m => m.transcript) || TM.canSeeMediaItem(s, DV,
   must(TM.act(nt, O, 'task.comment', { id: tk.id, body: '辛苦了' }), '老板留言');
   const got = nt.notifications.slice(n0).find(n => n.userId === DV);
   ok(got && got.read && got.muted, '静音类别的通知照样记下，但已读、标记静音');
-  ok(TM.ncat('3 个任务等你验收') === 'review' && TM.ncat('任务已逾期') === 'remind' && TM.ncat('Enos 提到了你') === 'cmt' && TM.ncat('新任务派给你') === 'task', '通知分类正确'); }
+  ok(TM.ncat('3 个任务等你验收') === 'review' && TM.ncat('任务已逾期') === 'remind' && TM.ncat('Philip 提到了你') === 'cmt' && TM.ncat('新任务派给你') === 'task', '通知分类正确'); }
 
 // ===== 老板改派跟进人 =====
 { const rf = fresh(); const op2 = must(TM.act(rf, O, 'member.add', { name: '小运', role: 'operator', group: '行政运营' }), '再加一位运营者');

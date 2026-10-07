@@ -6,7 +6,7 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
   const b = await chromium.launch(); const c = await b.newContext({ ...devices['iPhone 13'] });
   await c.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   const p = await c.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
-  await p.goto(URL); await p.click('.acct:has-text("Enos")'); await p.waitForTimeout(200);
+  await p.goto(URL); await p.click('.acct:has-text("Philip")'); await p.waitForTimeout(200);
   // 找一个执行中的任务，切到它的负责人
   const t = await p.evaluate(() => { const t = window.__tm.S.tasks.find(x => x.status === 'in_progress'); window.__tm.as(t.ownerId); return { id: t.id, owner: t.ownerId }; });
   await p.evaluate((h) => { location.hash = h; }, '#/task/' + t.id); await p.waitForTimeout(300);

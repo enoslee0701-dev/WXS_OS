@@ -289,8 +289,8 @@ const post = (u, b, t) => call('POST', u, b, t), get = (u, t) => call('GET', u, 
   // 10. 演示团队
   srv.kill(); fs.rmSync(DIR, { recursive: true, force: true }); fs.mkdirSync(DIR);
   srv = await start();
-  r = await post('/api/setup', { name: 'Enos', login: 'enos', password: 'enos1234', demo: true, code: 'code-1234' });
-  ok(r.state.users.length === 7 && r.state.ideas.length > 0 && r.state.users[0].name === 'Enos', '可以带演示数据创建');
+  r = await post('/api/setup', { name: 'Philip', login: 'enos', password: 'enos1234', demo: true, code: 'code-1234' });
+  ok(r.state.users.length === 7 && r.state.ideas.length > 0 && r.state.users[0].name === 'Philip', '可以带演示数据创建');
   // 任务交付物的照片：能看到任务的人能打开，看不到任务的人打不开
   { const enos = r.token, st0 = r.state;
     const t = st0.tasks.find(x => ['accepted', 'in_progress'].includes(x.status) && x.ownerId !== 'u_owner');

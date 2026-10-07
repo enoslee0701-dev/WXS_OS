@@ -7,7 +7,7 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
   await c.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   const p = await c.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
   const search = async (q) => { await p.fill('#q', q); await p.waitForTimeout(250); return p.evaluate(() => ({ groups: [...document.querySelectorAll('#qr .q-g')].map(x => x.firstChild.textContent), text: document.getElementById('qr').innerText, marks: document.querySelectorAll('#qr mark').length })); };
-  await p.goto(URL); await p.click('.acct:has-text("Enos")'); await p.waitForTimeout(200);
+  await p.goto(URL); await p.click('.acct:has-text("Philip")'); await p.waitForTimeout(200);
   // 准备：给一个任务加一条留言
   const tk = await p.evaluate(() => { const S = window.__tm.S, t = S.tasks.find(x => x.status !== 'cancelled'); S.comments.push({ id: 'Mzz', taskId: t.id, authorId: 'u_owner', body: '记得联系紫荆花酒店的王经理', at: Date.now() }); return t.title; });
   await p.goto(URL + '#/ideas'); await p.waitForTimeout(200); await p.click('[data-do=search]'); await p.waitForSelector('#q');

@@ -4,7 +4,7 @@ let pass=0,fail=0;const ok=(c,m)=>{if(c)pass++;else{fail++;console.log('✗',m);
 (async()=>{const b=await chromium.launch();const c=await b.newContext({...devices['iPhone 13']});
 await c.route(/fonts\.(googleapis|gstatic)\.com/, r=>r.fulfill({status:200,contentType:'text/css',body:''}));
 const p=await c.newPage();const errs=[];p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
-await p.goto(URL);await p.click('.acct:has-text("Enos")');await p.click('.hm-bell');await p.waitForTimeout(150);
+await p.goto(URL);await p.click('.acct:has-text("Philip")');await p.click('.hm-bell');await p.waitForTimeout(150);
 ok(p.url().endsWith('#/inbox') && (await p.textContent('.n-head h1'))==='通知','首页铃铛进入通知');
 ok(await p.locator('.n-stat').count()===4,'4 个数据卡');
 ok(await p.locator('.n-g').count()>=2 && await p.locator('.n-row.unread').count()===2,'按日期分组，2 条未读');

@@ -5,7 +5,7 @@ let pass=0,fail=0;const ok=(c,m)=>{if(c)pass++;else{fail++;console.log('✗',m);
 await c.route(/fonts\.(googleapis|gstatic)\.com/, r=>r.fulfill({status:200,contentType:'text/css',body:''}));
 const p=await c.newPage();const errs=[];p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
 const toast=async()=>p.textContent('#toast');const sub=async()=>{await p.click('.sheet footer button[type=submit]');await p.waitForTimeout(120);};
-await p.goto(URL);await p.click('.acct:has-text("Enos")');await p.click('.tabs a:has-text("项目")');await p.waitForTimeout(150);ok(p.url().endsWith('#/work') && (await p.locator('.tabs a').allTextContents()).join(',')==='首页,想法,任务,项目,我的','导航顺序：首页、想法、任务、项目、我的');ok(await p.locator('.sc-chip[data-do=workFilter]').count()>=4 && await p.evaluate(()=>document.querySelector('.w-card').getBoundingClientRect().top<innerHeight),'项目状态改为紧凑胶囊，打开即见项目');
+await p.goto(URL);await p.click('.acct:has-text("Philip")');await p.click('.tabs a:has-text("项目")');await p.waitForTimeout(150);ok(p.url().endsWith('#/work') && (await p.locator('.tabs a').allTextContents()).join(',')==='首页,想法,任务,项目,我的','导航顺序：首页、想法、任务、项目、我的');ok(await p.locator('.sc-chip[data-do=workFilter]').count()>=4 && await p.evaluate(()=>document.querySelector('.w-card').getBoundingClientRect().top<innerHeight),'项目状态改为紧凑胶囊，打开即见项目');
 ok((await p.textContent('.tk2-top h1'))==='项目','项目页标题');
 ok(await p.locator('.w-card').count()===2,'进行中 2 个项目');
 const meta=await p.locator('.w-card').first().locator('.wc-m').textContent();console.log('卡片信息:',meta);ok(/个任务未完成|任务已全部完成|还没有任务/.test(meta) && await p.locator('.w-card .wc-th').count()>=1,'卡片含图片与任务情况');
@@ -63,7 +63,7 @@ ok(errs.length===0,'无报错 '+errs.join('|'));
   await p.goto(URL+'#/work/'+wid);await p.waitForTimeout(200);await p.click('.actions .btn:has-text("更多操作")');await p.click('.sheet [data-do=wEscalate]');
   await p.selectOption('.sheet select[name=kind]','over_budget');await p.fill('.sheet textarea[name=question]','场地费超出预算 3000 元，是否同意？');await sub();await p.waitForTimeout(150);
   ok(await p.evaluate((w)=>window.__tm.S.decisions.some(d=>d.workId===w&&d.status==='pending'),wid),'负责人在项目里上报老板决策');
-  await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Enos")');await p.goto(URL+'#/stat/decide');await p.waitForTimeout(200);
+  await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Philip")');await p.goto(URL+'#/stat/decide');await p.waitForTimeout(200);
   ok((await p.textContent('main')).includes('场地费超出预算'),'老板在「需要你决策」里看到项目上报');
   const did=await p.evaluate((w)=>window.__tm.S.decisions.find(d=>d.workId===w&&d.status==='pending').id,wid);
   await p.evaluate((id)=>{const b=document.querySelector('[data-do=decide][data-arg="'+id+'"]');if(b)b.click();},did);await p.waitForSelector('.sheet input[name=status]');await sub();await p.waitForTimeout(150);
@@ -71,7 +71,7 @@ ok(errs.length===0,'无报错 '+errs.join('|'));
   const tid=await p.evaluate(()=>{const t=window.__tm.S.tasks.find(x=>['submitted','done'].includes(x.status));return t&&t.id;});
   await p.goto(URL+'#/task/'+tid);await p.waitForTimeout(200);await p.click('.actions [data-do=reviewNote]');await p.fill('.sheet textarea[name=note]','再补一份预算表');await sub();await p.waitForTimeout(150);
   ok(await p.evaluate((id)=>window.__tm.S.reviews.some(r=>r.taskId===id&&r.verdict==='comment'),tid),'老板写复核意见'); }
-await p.goto(URL+'#/home');await p.waitForTimeout(80);await p.click('[data-do=switch]');await p.click('.acct:has-text("Enos")');
+await p.goto(URL+'#/home');await p.waitForTimeout(80);await p.click('[data-do=switch]');await p.click('.acct:has-text("Philip")');
 await p.goto(URL+'#/work/W1');await p.waitForTimeout(200);await p.click('.actions .btn:has-text("更多操作")');ok(await p.locator('.sheet [data-do=cancelWork]').count()===1,'更多操作含取消项目');
 await p.click('.sheet [data-do=cancelWork]');await p.fill('.sheet textarea[name=reason]','方向调整');await sub();await p.waitForTimeout(150);
 ok(await p.evaluate(()=>{const S=window.__tm.S;return S.workItems.find(w=>w.id==='W1').status==='cancelled'&&S.tasks.filter(t=>t.workId==='W1').every(t=>['done','cancelled'].includes(t.status));}),'取消项目后项目和未完成任务都已取消');
@@ -88,7 +88,7 @@ ok(await p.locator('.actions .btn:has-text("更多操作")').count()===0 || !(aw
   await p.selectOption('.sheet select[name=reviewerId]',nr);await sub();await p.waitForTimeout(150);
   ok(await p.evaluate(([w,r])=>window.__tm.S.workItems.find(x=>x.id===w).reviewerId===r,[wid,nr]),'更换验收人成功'); }
 // 暂停的项目：任务页说明原因；分配任务页有验收人
-{ await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Enos")');
+{ await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Philip")');
   const ids=await p.evaluate(()=>{const S=window.__tm.S;const w=S.workItems.find(x=>x.status==='active');const t=S.tasks.find(x=>x.workId===(w&&w.id)&&!['done','cancelled'].includes(x.status));return w&&t?[w.id,t.id]:null;});
   if(ids){await p.evaluate((w)=>{window.__tm.S.workItems.find(x=>x.id===w).status='paused';},ids[0]);await p.goto(URL+'#/task/'+ids[1]);await p.waitForTimeout(150);
     ok((await p.textContent('main')).includes('老板暂停了这个项目'),'暂停的项目：任务页说明原因');await p.evaluate((w)=>{window.__tm.S.workItems.find(x=>x.id===w).status='active';},ids[0]);

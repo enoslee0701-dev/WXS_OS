@@ -4,7 +4,7 @@ const URL = (require('./_env').URL);
 let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; console.log('✗', m); } };
 const DENY = /只有|没有权限|不能|无权/;
 const EXPECT = {
-  Enos: { cards: ['quickIdea', 'quickProject'], tabs: ['首页', '想法', '任务', '项目', '我的'] },
+  Philip: { cards: ['quickIdea', 'quickProject'], tabs: ['首页', '想法', '任务', '项目', '我的'] },
   林晓: { cards: ['hmTriage', 'quickProject'], tabs: ['首页', '想法', '任务', '项目', '我的'] },
   陈立: { cards: ['quickIdea', 'quickProject'], tabs: ['首页', '想法', '任务', '项目', '我的'] },
   周敏: { cards: ['hmTasks', 'hmTodo'], tabs: ['首页', '想法', '任务', '项目', '我的'] },
@@ -83,14 +83,14 @@ const EXPECT = {
     ok(['周敏', '何静', '刘洋'].includes(n) ? st[0] === '待接收' && st[3] === '已逾期' : st[0] === '团队成员' && st[3] === '已逾期', `${n} 我的统计块 ${st.join(',')}`);
     // 设置与重置入口
     await shut(); await p.goto(URL + '#/me'); await p.waitForTimeout(80);
-    const canSet = n === 'Enos' || n === '孙磊';
+    const canSet = n === 'Philip' || n === '孙磊';
     ok((await p.locator('a[href="#/settings"]').count() > 0) === canSet, `${n} 更多设置入口${canSet ? '可见' : '隐藏'}`);
   }
   // 对照：检测手段本身有效（伪造一个执行者用不了的按钮，应该能抓到被拒提示）
   await login('周敏'); await home(); await p.evaluate(() => { window.__toasts.splice(0); const x = document.createElement('button'); x.dataset.do = 'quickIdea'; document.getElementById('app').appendChild(x); x.click(); }); await p.waitForTimeout(120);
   ok((await denied()).length === 1, '对照：被拒提示能被检测到');
   // 每条都送：运营者和负责人首页不再出现新建项目
-  await login('Enos'); await p.evaluate(() => { window.__tm.S.settings.ownerApprovalMode = 'all'; });
+  await login('Philip'); await p.evaluate(() => { window.__tm.S.settings.ownerApprovalMode = 'all'; });
   await p.goto(URL + '#/me'); await p.selectOption('[data-set=ownerApprovalMode]', 'all'); await p.waitForTimeout(80);
   await login('林晓'); await home(); ok(await p.locator('.hm-card[data-do=quickProject]').count() === 0, '每条都送：运营者首页不显示新建项目');
   await login('陈立'); await home(); ok(await p.locator('.hm-card[data-do=quickProject]').count() === 0 && await p.locator('.hm-card[data-do=quickIdea]').count() === 1, '每条都送：负责人只剩记录想法');

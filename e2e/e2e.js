@@ -14,7 +14,7 @@ let pass=0, fail=0; const ok=(c,m)=>{ if(c)pass++; else {fail++; console.log('�
   const toastTxt=async()=> (await p.textContent('#toast'));
   await p.screenshot({path:'shot-login.png'});
   // ---- 黄金路径一：老板录想法 → 直接推进
-  await login('Enos');
+  await login('Philip');
   await p.screenshot({path:'shot-owner-home.png',fullPage:true});
   ok((await p.textContent('.hm-copy h1')).includes('福音'),'首页极简：标语');
   ok(await p.locator('.hm-card').count()===2,'首页两张卡：记录想法、新建项目');
@@ -49,7 +49,7 @@ let pass=0, fail=0; const ok=(c,m)=>{ if(c)pass++; else {fail++; console.log('�
   await p.locator('.tx-work').first().click();
   await p.click('.wd-accept [data-do=closeWork]'); await sheetSubmit(); ok(await p.locator('.ws',{hasText:'已完成'}).count()>0,'项目完成');
   // 老板查验 + 纠偏
-  await login('Enos'); await p.goto(taskUrl);
+  await login('Philip'); await p.goto(taskUrl);
   ok(await p.locator('.tx-log .wx-tl li').count()>=6,'老板看到完整操作记录');
   await btn('纠偏'); await p.fill('.sheet textarea[name=reason]','照片模糊，需复查'); await sheetSubmit();
   ok(await p.locator('.pill',{hasText:'进行中'}).count()>0,'撤销验收后回执行中');
@@ -82,7 +82,7 @@ let pass=0, fail=0; const ok=(c,m)=>{ if(c)pass++; else {fail++; console.log('�
   ok(await p.locator('.tabs a:has-text("想法")').count()===0 && await p.locator('.tabs a:has-text("项目")').count()===0,'管理员底部没有想法、项目标签');
   ok(await p.locator('.hm-card[data-do=hmTeam]').count()===1 && await p.locator('.hm-card[data-do=hmKB]').count()===1,'管理员首页：成员与账号、AI 知识库');
   // 设置开关
-  await login('Enos'); await p.goto(URL+'#/me'); await p.locator('input[data-set=ownerFinalAdmin]').evaluate(e=>e.click());
+  await login('Philip'); await p.goto(URL+'#/me'); await p.locator('input[data-set=ownerFinalAdmin]').evaluate(e=>e.click());
   await p.waitForTimeout(100); ok(await p.evaluate(()=>window.__tm.S.settings.ownerFinalAdmin)===true,'C1 开关生效');
   await p.screenshot({path:'shot-settings.png',fullPage:true});
   // 持久化

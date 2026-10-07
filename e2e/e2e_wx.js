@@ -66,7 +66,7 @@ const URL=(require('./_env').URL);
     ok((await p.textContent('.wx-disc')).includes('这周五前给初稿'),'项目讨论发言后显示'); } else ok(false,'项目概览里没有讨论区');
   // 会议拆任务：贴一段会议纪要 → 拆出「谁、做什么、什么时候」→ 核对后一次派出
   { const wid = await p.evaluate(() => { const S = window.__tm.S; const w = S.workItems.find(x => x.status === 'active' && x.kind !== 'product'); return w && w.id; });
-    await p.evaluate(() => { const S = window.__tm.S; }); await p.goto(URL + '#/home'); await p.click('[data-do=switch]'); await p.click('.acct:has-text("Enos")');
+    await p.evaluate(() => { const S = window.__tm.S; }); await p.goto(URL + '#/home'); await p.click('[data-do=switch]'); await p.click('.acct:has-text("Philip")');
     await p.goto(URL + '#/work/' + wid); await p.waitForTimeout(200); await p.evaluate(() => document.querySelector('[data-do=wTab][data-t=tasks]').click()); await p.waitForTimeout(120);
     await p.evaluate(() => document.querySelector('[data-do=wMeeting]').click()); await p.waitForSelector('#mt-text');
     await p.fill('#mt-text', '会上定了：周五前刘洋把报名页面做出来；何静下周一给出海报初稿；餐盒由周敏这周订好。');

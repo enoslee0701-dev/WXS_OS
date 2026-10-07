@@ -5,7 +5,7 @@ let pass=0,fail=0;const ok=(c,m)=>{if(c)pass++;else{fail++;console.log('✗',m);
 await c.route(/fonts\.(googleapis|gstatic)\.com/, r=>r.fulfill({status:200,contentType:'text/css',body:''}));
 const p=await c.newPage();const errs=[];p.on('pageerror',e=>{errs.push(e.message);console.log('STACK',e.stack.split('\n').slice(0,3).join(' | '))});p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
 const toast=async()=>p.textContent('#toast');
-await p.goto(URL);await p.click('.acct:has-text("Enos")');
+await p.goto(URL);await p.click('.acct:has-text("Philip")');
 await p.click('.tabs a:has-text("任务")');await p.waitForTimeout(200);
 ok(await p.locator('.tk-top').count()===0 && await p.locator('.tk-compact .tk-month').count()===1,'任务页无顶部标题栏，保留月份选择');
 ok(await p.locator('.t-chk.sys').evaluateAll(a=>a.every(e=>getComputedStyle(e).borderTopStyle==='solid')),'勾选圈统一实线');

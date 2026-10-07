@@ -2,7 +2,7 @@
 const { chromium, devices } = require('playwright');
 const URL = (require('./_env').URL);
 let pass = 0, fail = 0, clicks = 0; const ok = (c, m) => { if (c) pass++; else { fail++; console.log('✗', m); } };
-const ROLES = ['Enos', '林晓', '陈立', '何静', '孙磊'];
+const ROLES = ['Philip', '林晓', '陈立', '何静', '孙磊'];
 const ROUTES = ['home', 'ideas', 'tasks', 'work', 'me', 'team', 'inbox', 'kb', 'settings', 'work/W1', 'work/W2', 'idea/I2', 'idea/I4', 'task/T1', 'task/T3', 'stat/decide', 'stat/due', 'stat/rate', 'stat/notif', 'new', 'project', 'todo/new'];
 // 会改变登录身份或清空数据的按钮不点（另有专门测试）
 const SKIP = /^(switch|reset|clearDemo|demoStart|srvLogout|srvLocal|srvConnect|login|demoChoose)$/;

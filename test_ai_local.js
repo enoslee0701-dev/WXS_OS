@@ -20,7 +20,7 @@ const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'tm-llm-'));
   const srv = spawn(process.execPath, [path.join(__dirname, 'server', 'server.js')], { env, stdio: ['ignore', 'pipe', 'inherit'] });
   await new Promise(r => { let o = ''; srv.stdout.on('data', d => { o += d; if (/已启动/.test(o)) r(); }); });
   const api = async (m, u, b, t) => { const x = await fetch(B + u, { method: m, headers: { 'Content-Type': 'application/json', ...(t ? { Authorization: 'Bearer ' + t } : {}) }, body: b ? JSON.stringify(b) : undefined }); const j = await x.json().catch(() => ({})); j.status = x.status; return j; };
-  const tok = (await api('POST', '/api/setup', { name: 'Enos', login: 'enos', password: 'enos123456', code: 'c', demo: true })).token;
+  const tok = (await api('POST', '/api/setup', { name: 'Philip', login: 'enos', password: 'enos123456', code: 'c', demo: true })).token;
   const st = await api('GET', '/api/ai/status', null, tok);
   ok(st.enabled && st.provider === 'local' && st.model === '本机 Qwen2.5 7B Instruct', '没有 Claude 密钥时启用本机 AI ' + JSON.stringify(st));
   const a = await api('POST', '/api/ai/ask', { q: '这周最该关注什么？' }, tok), q1 = seen[seen.length - 1];

@@ -5,7 +5,7 @@ let pass=0,fail=0;const ok=(c,m)=>{if(c)pass++;else{fail++;console.log('✗',m);
 await c.route(/fonts\.(googleapis|gstatic)\.com/, r=>r.fulfill({status:200,contentType:'text/css',body:''}));
 const p=await c.newPage();const errs=[];p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
 const sub=async()=>{await p.click('.sheet footer button[type=submit]');await p.waitForTimeout(150);};
-await p.goto(URL);await p.click('.acct:has-text("Enos")');await p.goto(URL+'#/me');await p.waitForTimeout(100);
+await p.goto(URL);await p.click('.acct:has-text("Philip")');await p.goto(URL+'#/me');await p.waitForTimeout(100);
 const homeN={};for(const k of ['decide','notif','due','rate']) homeN[k]=(await p.textContent(`a.me-ov[href="#/stat/${k}"] strong`)).trim();
 console.log('首页数字',JSON.stringify(homeN));
 // 1 决策
@@ -21,7 +21,7 @@ await p.click('[data-do=sDecTab][data-t=done]');ok(await p.locator('.s-hrow').co
 await p.goto(URL+'#/me');await p.waitForTimeout(100);const nN=(await p.textContent('a.me-ov[href="#/stat/notif"] strong')).trim();
 await p.click('a.me-ov[href="#/stat/notif"]');await p.waitForTimeout(150);
 ok((await p.textContent('.s-hero b')).trim()===nN,'通知页数字与首页一致');
-await p.click('[data-do=sNotif][data-f=at]');ok(await p.locator('.s-noti').count()===1 && (await p.textContent('.s-noti')).includes('@Enos'),'@我 分类');
+await p.click('[data-do=sNotif][data-f=at]');ok(await p.locator('.s-noti').count()===1 && (await p.textContent('.s-noti')).includes('@Philip'),'@我 分类');
 await p.screenshot({path:'s2.png',fullPage:true});
 await p.click('[data-do=sNotif][data-f=all]');const before=await p.locator('.s-noti').count();
 await p.locator('.s-noti').first().click();await p.waitForTimeout(150);await p.goto(URL+'#/stat/notif');await p.waitForTimeout(100);
@@ -45,7 +45,7 @@ await p.selectOption('[data-speriod]','1');await p.waitForTimeout(120);ok((await
 await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("林晓")');await p.goto(URL+'#/me');await p.waitForTimeout(100);await p.click('a.me-ov[href="#/stat/decide"]');await p.waitForTimeout(120);
 ok((await p.textContent('.s-head h1'))==='等你处理','运营者看到「等你处理」');
 // 首页第一屏「待你处理」（老板）：数量和「需要你决策」一致，点了去决策页
-await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Enos")');await p.waitForTimeout(150);
+await p.goto(URL+'#/home');await p.click('[data-do=switch]');await p.click('.acct:has-text("Philip")');await p.waitForTimeout(150);
 { const n=await p.evaluate(()=>{const S=window.__tm.S;return S.decisions.filter(d=>d.status==='pending').length+S.tasks.filter(t=>t.status==='owner_review').length;});
   if(n){ok((await p.textContent('.hm-todo b'))===String(n),'首页显示待你处理 '+n);await p.click('.hm-todo');await p.waitForTimeout(150);ok(p.url().endsWith('#/stat/decide'),'点了去「需要你决策」');} else ok(await p.locator('.hm-todo').count()===0,'没有待处理时不显示'); }
 // 运营者：想法页「我跟进的想法」

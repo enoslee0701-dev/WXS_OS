@@ -42,7 +42,7 @@ const FAKE = (opts) => {
     await c.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
     const p = await c.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message)); p.errs = errs;
     await p.goto(URL + (hash || '')); await p.waitForTimeout(400);
-    if (await p.locator('.acct:has-text("Enos")').count()) { await p.click('.acct:has-text("Enos")'); await p.waitForTimeout(300); }
+    if (await p.locator('.acct:has-text("Philip")').count()) { await p.click('.acct:has-text("Philip")'); await p.waitForTimeout(300); }
     return p;
   };
   const calls = (p) => p.evaluate(() => window.__fake.calls);
@@ -105,7 +105,7 @@ const FAKE = (opts) => {
 
   // 5b. 旧 WebView 不支持 flex gap：换成子元素外边距（这里强制按不支持处理）
   { const c3 = await b.newContext({ ...devices['Pixel 7'] }); await c3.addInitScript(() => { window.__tmNoFlexGap = true; localStorage.setItem('tm_demo_chosen', '1'); });
-    const p3 = await c3.newPage(); const e3 = []; p3.on('pageerror', e => e3.push(e.message)); await p3.goto(URL); await p3.click('.acct:has-text("Enos")'); await p3.evaluate(() => { location.hash = '#/ideas'; }); await p3.waitForTimeout(400);
+    const p3 = await c3.newPage(); const e3 = []; p3.on('pageerror', e => e3.push(e.message)); await p3.goto(URL); await p3.click('.acct:has-text("Philip")'); await p3.evaluate(() => { location.hash = '#/ideas'; }); await p3.waitForTimeout(400);
     const r = await p3.evaluate(() => { const fx = [...document.querySelectorAll('[data-fg]')]; const kids = fx.flatMap(e => [...e.children]).filter(k => k.style.marginLeft || k.style.marginTop || k.style.marginRight || k.style.marginBottom); return { fx: fx.length, kids: kids.length }; });
     ok(r.fx > 5 && r.kids > 5, '不支持 flex gap 时补上外边距 ' + JSON.stringify(r));
     ok(e3.length === 0, '无报错 ' + e3.join('|')); await c3.close(); }

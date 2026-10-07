@@ -7,7 +7,7 @@ let pass = 0, fail = 0; const ok = (c, m) => { if (c) pass++; else { fail++; con
   await c.route(/fonts\.(googleapis|gstatic)\.com/, r => r.fulfill({ status: 200, contentType: 'text/css', body: '' }));
   const p = await c.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
   const h = () => p.evaluate(() => location.hash), w = (t) => p.waitForTimeout(t || 200), go = (x) => p.evaluate((y) => { location.hash = y; }, x);
-  await p.goto(URL); await p.click('.acct:has-text("Enos")'); await w();
+  await p.goto(URL); await p.click('.acct:has-text("Philip")'); await w();
   // 1. 项目页 → 新建项目 → 返回：回项目页（以前回首页）
   await p.click('.tabs a:has-text("项目")'); await w(); await go('#/project'); await w();
   await p.click('[data-do=pBack]'); await w();

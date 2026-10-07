@@ -62,7 +62,7 @@ const c0route = (p) => p.context().route('http://join.test:8787/**', r => r.fulf
   await p.evaluate(() => { window.__tm.toast('好了'); window.__tm.toast('不行', true); });
   ok(JSON.stringify(await p.evaluate(() => __fake.haptics)) === '["impact:LIGHT","notification:ERROR"]', '提示时触感反馈：成功轻震、出错提示震动');
   // 2. 数据双存
-  await p.click('.acct:has-text("Enos")'); await p.waitForTimeout(500);
+  await p.click('.acct:has-text("Philip")'); await p.waitForTimeout(500);
   let pf = await p.evaluate(() => __fake.prefs());
   ok(pf.tm_user_v3 === 'u_owner', '登录身份备份到原生存储');
   ok(JSON.parse(pf.tm_backup_keys || '[]').includes('tm_user_v3'), '备份清单');

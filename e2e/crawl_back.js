@@ -4,7 +4,7 @@
 const { chromium, devices } = require('playwright');
 const URL = (require('./_env').URL);
 let pass = 0, fail = 0, tried = 0; const bad = [];
-const ROLES = process.argv.slice(2).length ? process.argv.slice(2) : ['Enos', '林晓', '陈立', '周敏', '孙磊'];
+const ROLES = process.argv.slice(2).length ? process.argv.slice(2) : ['Philip', '林晓', '陈立', '周敏', '孙磊'];
 const ROUTES = ['home', 'ideas', 'tasks', 'work', 'me', 'team', 'inbox', 'kb', 'settings', 'work/W1', 'work/W2', 'idea/I2', 'idea/I4', 'task/T1', 'task/T3', 'stat/decide', 'stat/due', 'stat/rate', 'stat/notif', 'new', 'project', 'todo/new'];
 const SKIP = /^(switch|reset|clearDemo|demoStart|srvLogout|srvLocal|srvConnect|login|demoChoose|back|pBack|closeSheet|demoExit)$/;
 const BACK = '[data-do=back]:visible, [data-do=pBack]:visible, [aria-label="返回"]:visible';

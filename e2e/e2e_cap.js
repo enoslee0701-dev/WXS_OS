@@ -6,7 +6,7 @@ const c=await b.newContext({...devices['iPhone 13'],permissions:['microphone','c
 await c.route(/fonts\.(googleapis|gstatic)\.com/, r=>r.fulfill({status:200,contentType:'text/css',body:''}));
 const p=await c.newPage();const errs=[];p.on('pageerror',e=>errs.push(e.message));p.on('console',m=>{if(m.type()==='error')errs.push(m.text())});
 const toast=async()=>p.textContent('#toast');
-await p.goto(URL);await p.click('.acct:has-text("Enos")');await p.click('[data-do=quickIdea]');await p.waitForTimeout(200);
+await p.goto(URL);await p.click('.acct:has-text("Philip")');await p.click('[data-do=quickIdea]');await p.waitForTimeout(200);
 ok(await p.locator('a.n-mode').count()===4,'总入口 4 种方式');
 ok(await p.locator('.n-drafts .h-todo').count()>=1,'显示我的草稿');
 await p.screenshot({path:'cap-hub.png',fullPage:true});

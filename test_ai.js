@@ -16,7 +16,7 @@ const mock = http.createServer((req, res) => {
       return reply(200, { id: 'msg_c', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ consensus: [{ point: 'Claude：大家同意先试点', src: [id] }, { point: '没有来源的结论', src: ['s_fake'] }], divergences: [], risks: [], open_questions: [{ point: '预算多少？', src: [] }], proposed_direction: 'Claude 建议：先做两周试点' }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 10, output_tokens: 10 } }); } }
     if (mode === '429') return reply(429, { type: 'error', error: { type: 'rate_limit_error', message: 'slow down' } });
     const fmt0 = body.output_config && body.output_config.format;
-    if (fmt0 && fmt0.schema.properties.items) return reply(200, { id: 'msg_t', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ items: [{ title: '和林晓开会', date: '2026-10-04', time: '15:00', priority: 'mid', people: ['林晓', '外人', 'Enos'], tag: '会议' }, { title: '发报价', date: 'next friday', time: '25:00', priority: 'urgent', people: [], tag: '其他' }] }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 100, output_tokens: 50 } });
+    if (fmt0 && fmt0.schema.properties.items) return reply(200, { id: 'msg_t', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: JSON.stringify({ items: [{ title: '和林晓开会', date: '2026-10-04', time: '15:00', priority: 'mid', people: ['林晓', '外人', 'Philip'], tag: '会议' }, { title: '发报价', date: 'next friday', time: '25:00', priority: 'urgent', people: [], tag: '其他' }] }) }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 100, output_tokens: 50 } });
     const hasDoc = (body.messages || []).some(m => Array.isArray(m.content) && m.content.some(c => c.type === 'document'));
     if (hasDoc) return reply(200, { id: 'msg_pdf', type: 'message', role: 'assistant', model: body.model, content: [{ type: 'text', text: '# 年度计划\n- 第一季度：试点' }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 900, output_tokens: 30 } });
     const fmt = body.output_config && body.output_config.format;
@@ -38,7 +38,7 @@ function start(env, dir) {
 }
 const mkApi = (B) => async (method, u, body, tok) => { const r = await fetch(B + u, { method, headers: { 'Content-Type': 'application/json', ...(tok ? { Authorization: 'Bearer ' + tok } : {}) }, body: body ? JSON.stringify(body) : undefined }); return { status: r.status, ...(await r.json()) }; };
 async function team(api) {
-  const st = await api('POST', '/api/setup', { name: 'Enos', login: 'enos', password: 'enos1234', demo: true, code: 'code-1234' });
+  const st = await api('POST', '/api/setup', { name: 'Philip', login: 'enos', password: 'enos1234', demo: true, code: 'code-1234' });
   const boss = st.token;
   await api('POST', '/api/act', { name: 'idea.create', payload: { note: '老板私人草稿：考虑明年换办公室' } }, boss);
   await api('POST', '/api/accounts', { uid: 'u_sys', login: 'sun', password: 'sun12345' }, boss);
