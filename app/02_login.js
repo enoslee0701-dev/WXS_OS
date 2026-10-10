@@ -95,7 +95,7 @@
   // 手机 App 里没有「浏览器」：提示改成手机上的说法
   var APP_WORDS = [
     [/（安卓 Chrome 支持）/g, ''],
-    [/请在浏览器设置里允许后再试/g, '请在手机「设置 → 应用 → WSX OS → 权限」里允许麦克风后再试'],
+    [/请在浏览器设置里允许后再试/g, '请在手机「设置 → 应用 → WXS OS → 权限」里允许麦克风后再试'],
     [/这台设备的浏览器里/g, '这台手机上'],
     [/(当前|这个)浏览器/g, '这台手机'],
     [/浏览器自带的?识别/g, '手机自带的识别'],
@@ -124,7 +124,7 @@
   /* App（原生）首次打开：先问连团队服务器还是看演示；浏览器演示网页不受影响 */
   function demoChosen() { try { return localStorage.getItem('tm_demo_chosen') === '1'; } catch (e) { return true; } }
   function viewWelcome() {
-    return '<div class="login welcome"><img class="mark" src="' + APPICON + '" alt=""><h1>欢迎使用 WSX OS</h1><p>用科技让福音走得更远。连接你们团队的服务器，用老板分派给你的账号登录。</p>' +
+    return '<div class="login welcome"><img class="mark" src="' + APPICON + '" alt=""><h1>欢迎使用 WXS OS</h1><p>用科技让福音走得更远。连接你们团队的服务器，用老板分派给你的账号登录。</p>' +
       '<button class="btn pri block wl-go" data-do="srvConnect">连接团队服务器</button>' +
       '<button class="btn block wl-demo" data-do="demoChoose">先看看演示</button>' +
       '<p class="muted wl-tip">服务器地址由老板提供，例如 http://192.168.1.20:8787。演示模式的数据只存在这台手机上。</p></div>';

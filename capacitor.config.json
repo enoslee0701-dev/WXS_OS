@@ -1,6 +1,6 @@
 {
   "appId": "com.teamops.app",
-  "appName": "WSX OS",
+  "appName": "WXS OS",
   "webDir": "dist/app",
   "backgroundColor": "#FFFFFF",
   "ios": {

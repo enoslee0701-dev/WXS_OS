@@ -92,7 +92,7 @@ let srv = null;
   ok((await A.textContent('.sheet .cred')).includes('在用账号'), '设置里能看使用情况');
   await A.click('.sheet footer button[type=submit]'); await A.waitForTimeout(100);
   const [dl] = await Promise.all([A.waitForEvent('download'), A.click('[data-do=srvExport]')]);
-  ok(/WSX OS 备份-.*\.json$/.test(dl.suggestedFilename()), '老板导出全部数据 ' + dl.suggestedFilename());
+  ok(/WXS OS 备份-.*\.json$/.test(dl.suggestedFilename()), '老板导出全部数据 ' + dl.suggestedFilename());
   await A.goto(URL + '#/me'); await A.waitForTimeout(150); await A.click('[data-do=srvSessions]'); await A.waitForSelector('.sheet .ses-r', { timeout: 5000 }).catch(() => {});
   ok(await A.locator('.sheet .ses-r').count() >= 1 && (await A.textContent('.sheet')).includes('这台'), '我的 → 登录设备：列出设备，标出这台');
   await A.click('.sheet footer button[type=submit]'); await A.waitForTimeout(100); await A.goto(URL + '#/settings'); await A.waitForTimeout(150);
@@ -100,7 +100,7 @@ let srv = null;
   ok(await A.locator('.sheet .ops-r').count() > 0, '老板打开操作日志看到记录');
   await A.click('.sheet footer button[type=submit]'); await A.waitForTimeout(100);
   const [dl2] = await Promise.all([A.waitForEvent('download'), A.click('[data-do=srvExportFull]')]);
-  ok(/WSX OS 完整备份-.*\.tar\.gz$/.test(dl2.suggestedFilename()), '老板下载完整备份（含附件） ' + dl2.suggestedFilename());
+  ok(/WXS OS 完整备份-.*\.tar\.gz$/.test(dl2.suggestedFilename()), '老板下载完整备份（含附件） ' + dl2.suggestedFilename());
   await A.goto(URL + '#/me'); await A.waitForTimeout(150);
   ok((await A.textContent('[data-do=onboard]')).includes('还有 2 步'), '加了成员后，「开始使用」还剩 2 步');
   // 还没有运营者：老板记的想法提交后，老板能在界面上认领跟进
